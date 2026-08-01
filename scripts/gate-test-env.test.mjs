@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { gateTestEnv } from './gate-test-env.mjs';
 
-test('gate test environment removes every ambient review timeout', () => {
+test('gate test environment removes ambient gate configuration', () => {
   const result = gateTestEnv({}, {
     KEEP: 'yes',
     AFK_REVIEW_TIMEOUT_MS: '1',
@@ -11,6 +11,10 @@ test('gate test environment removes every ambient review timeout', () => {
     CODEX_REVIEW_TIMEOUT_MS: '3',
     GLM_REVIEW_TIMEOUT_MS: '4',
     KIMI_REVIEW_TIMEOUT_MS: '5',
+    CODEX_REVIEW_MODEL: 'ambient-model',
+    CODEX_REVIEW_GATE: 'off',
+    CLAUDECODE: '1',
+    ZAI_API_KEY: 'ambient-key',
   });
   assert.deepEqual(result, { KEEP: 'yes' });
 });

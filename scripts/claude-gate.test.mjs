@@ -60,7 +60,7 @@ function withSleepingStub(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'claude-gate-timeout-'));
   try {
     const js = join(dir, 'stub.mjs');
-    writeFileSync(js, `setTimeout(() => process.stdout.write('{}'), 60000);\n`);
+    writeFileSync(js, `process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);\n`);
     const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
     writeFileSync(sh, process.platform === 'win32'
       ? `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`

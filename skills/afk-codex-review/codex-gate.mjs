@@ -341,6 +341,7 @@ const auth = spawnSync(codex, ['login', 'status'], {
   encoding: 'utf8',
   shell: isWin,
   timeout: preflightTimeoutMs(timeoutMs),
+  killSignal: 'SIGKILL',
 });
 if (isSpawnTimeout(auth)) {
   emitSkip('Codex CLI authentication preflight timed out; this reviewer is unavailable.');
@@ -366,8 +367,14 @@ const codexLock = acquireCodexLock();
 // review an empty prompt — a silent no-review. Diff mode has no stdin payload.
 const fd = openSync(logFile, 'w');
 const res = spawnSync(codex, reviewArgs, isDesign
-  ? { input: designPayload, stdio: ['pipe', fd, fd], shell: isWin, timeout: timeoutMs }
-  : { stdio: ['ignore', fd, fd], shell: isWin, timeout: timeoutMs });
+  ? {
+    input: designPayload, stdio: ['pipe', fd, fd], shell: isWin,
+    timeout: timeoutMs, killSignal: 'SIGKILL',
+  }
+  : {
+    stdio: ['ignore', fd, fd], shell: isWin,
+    timeout: timeoutMs, killSignal: 'SIGKILL',
+  });
 closeSync(fd);
 releaseCodexLock(codexLock);
 

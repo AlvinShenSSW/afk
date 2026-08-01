@@ -264,6 +264,7 @@ const spawnOpts = {
   encoding: 'utf8',
   maxBuffer: 64 * 1024 * 1024,
   timeout: timeoutMs,
+  killSignal: 'SIGKILL',
 };
 
 // No shell: it mangles empty args and imposes the command-line limit. A native

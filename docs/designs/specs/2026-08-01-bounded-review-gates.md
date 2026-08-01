@@ -24,10 +24,16 @@ environment parser, and make all four gates use one policy:
   follows the existing transient-error retry and fallback rule.
 - A timed-out availability probe emits `SKIPPED` because that provider could not
   establish local availability.
+- CLI timeouts use `SIGKILL`; a cooperative `SIGTERM` does not provide a hard
+  bound when the reviewed CLI is already wedged.
 
 Gate-specific override wins over shared override, which wins over the default.
 The policy and timeout-result detection have one implementation so providers
 cannot drift.
+
+On Windows, CLI shims require a shell. The gate process remains bounded, but the
+platform may leave a shim grandchild running after the shell is terminated; the
+operator may need to stop that orphaned CLI process separately.
 
 ## Files
 

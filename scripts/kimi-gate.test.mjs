@@ -174,7 +174,7 @@ test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
   const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-hang-'));
   try {
     const stub = join(dir, 'kimi-stub');
-    writeFileSync(stub, '#!/bin/sh\ncase "$1" in --version) echo stub; exit 0;; esac\nsleep 30\n');
+    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.on('SIGTERM', () => {}); setInterval(() => {}, 60000); }\n`);
     chmodSync(stub, 0o755);
 
     const result = runGate({

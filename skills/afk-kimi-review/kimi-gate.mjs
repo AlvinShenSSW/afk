@@ -124,6 +124,7 @@ const ver = spawnSync(kimi, ['--version'], {
   encoding: 'utf8',
   shell: isWin,
   timeout: preflightTimeoutMs(timeoutMs),
+  killSignal: 'SIGKILL',
 });
 if (isSpawnTimeout(ver)) {
   emitSkip('Kimi CLI preflight timed out; this reviewer is unavailable.');
@@ -147,6 +148,7 @@ const res = spawnSync(kimi, ['-p', reviewPrompt], {
   shell: isWin,
   maxBuffer: 64 * 1024 * 1024, // reviews can be long
   timeout: timeoutMs,
+  killSignal: 'SIGKILL',
 });
 
 const out = res.stdout || '';

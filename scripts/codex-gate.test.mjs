@@ -54,7 +54,8 @@ function withSleepingStub(fn) {
 if (process.argv.includes('status')) {
   process.stdout.write('Logged in');
 } else {
-  setTimeout(() => {}, 60000);
+  process.on('SIGTERM', () => {});
+  setInterval(() => {}, 60000);
 }
 `);
     const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');

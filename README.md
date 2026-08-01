@@ -84,6 +84,10 @@ with `CODEX_REVIEW_TIMEOUT_MS`, `CLAUDE_REVIEW_TIMEOUT_MS`,
 integer milliseconds; an unusable value retains a bounded limit and emits a
 warning.
 
+CLI timeouts use a hard kill so a process that ignores graceful termination
+cannot wedge the gate. On Windows, npm command shims run through a shell; the
+gate returns on time, but a surviving shim grandchild may require manual cleanup.
+
 ## Staying Up To Date
 
 The install cache is keyed by the plugin version, so an outdated install
