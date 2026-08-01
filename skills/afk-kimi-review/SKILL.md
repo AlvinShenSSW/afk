@@ -44,9 +44,17 @@ external gate"). Kimi is pointed at the document on disk and reads it with its o
 tools (keeping a large doc off the argv). A missing or unreadable `--design` path
 fails loudly (`ERROR`, non-zero), never a skip.
 
+**The review is bounded** by `KIMI_REVIEW_TIMEOUT_MS` (default 15 min). Kimi is a
+general agentic CLI, so nothing else ends a turn that stops converging. A review
+that outlives the bound is reported as a non-zero `ERROR`, never a `SKIPPED`: a
+hang says nothing about whether this reviewer is available, so it takes the
+role's transient retry rather than a fallback to another family.
+
 Read the verdict between the `===== KIMI REVIEW (final message) =====` markers.
 `SKIPPED: …` (Kimi absent, logged out, or disabled via `KIMI_REVIEW_GATE=off`)
-is not a failure — report it and continue.
+is not a failure — report it and continue. `ERROR: …` means the review itself
+failed or timed out — read the transcript it names; never report an errored run
+as clean.
 
 ## Handle findings (batch — minimise calls)
 

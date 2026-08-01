@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -127,6 +127,64 @@ test('kimi design mode: an unavailable reviewer skips and proceeds (Decision 6 a
     assert.match(result.stdout, /SKIPPED: Kimi gate disabled/);
     assert.doesNotMatch(result.stdout, /ERROR/);
   });
+});
+
+// ── review timeout ──────────────────────────────────────────────────────────
+// Kimi is a general agentic CLI with no built-in bound on a turn, so a review
+// that stops making progress hangs the whole run. The helper timeout is the
+// only boundedness control this gate has.
+
+test('kimi gate bounds a review by default', () => {
+  const result = runGate({ args: ['--print-args'] });
+
+  const { timeoutMs } = JSON.parse(result.stdout);
+  assert.equal(timeoutMs, 15 * 60 * 1000);
+});
+
+test('kimi gate honours KIMI_REVIEW_TIMEOUT_MS', () => {
+  const result = runGate({ args: ['--print-args'], env: { KIMI_REVIEW_TIMEOUT_MS: '1000' } });
+
+  const { timeoutMs } = JSON.parse(result.stdout);
+  assert.equal(timeoutMs, 1000);
+});
+
+test('kimi gate keeps the default bound when the override is unusable', () => {
+  // `0` is the dangerous one: Node reads it as "no timeout", so a typo would
+  // silently restore the unbounded hang this bound exists to prevent.
+  for (const value of ['0', '-1', 'abc']) {
+    const result = runGate({ args: ['--print-args'], env: { KIMI_REVIEW_TIMEOUT_MS: value } });
+    const { timeoutMs } = JSON.parse(result.stdout);
+    assert.equal(timeoutMs, 15 * 60 * 1000, JSON.stringify(value));
+    assert.match(result.stderr, /KIMI_REVIEW_TIMEOUT_MS/, JSON.stringify(value));
+  }
+});
+
+test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
+  // A POSIX shebang stub; the Windows launcher path cannot run one.
+  skip: process.platform === 'win32' ? 'needs a POSIX executable stub' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-hang-'));
+  try {
+    const stub = join(dir, 'kimi-stub');
+    writeFileSync(stub, '#!/bin/sh\ncase "$1" in --version) echo stub; exit 0;; esac\nsleep 30\n');
+    chmodSync(stub, 0o755);
+
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: { KIMI_GATE_BIN: stub, KIMI_REVIEW_TIMEOUT_MS: '2000' },
+    });
+
+    // A hang is transient, not a reviewer that is unavailable: it must not exit
+    // 0 as a SKIPPED, which the driver reads as "fall back to another family"
+    // rather than "retry this role once".
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /===== KIMI REVIEW \(final message\) =====/);
+    assert.match(result.stdout, /ERROR: .*timed out after 2s/);
+    assert.match(result.stdout, /KIMI_REVIEW_TIMEOUT_MS/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('kimi gate opt-out short-circuits before any target resolution', () => {

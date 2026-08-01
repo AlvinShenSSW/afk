@@ -23,14 +23,15 @@
 //   node kimi-gate.mjs --print-args    # resolve and print the target; no model call
 //
 // Opt out with KIMI_REVIEW_GATE=off. Skips cleanly (exit 0) if kimi is missing
-// or not logged in.
+// or not logged in. Bounded by KIMI_REVIEW_TIMEOUT_MS (default 15 min); a review
+// that outlives it ends as a non-zero ERROR, not a skip.
 
 import { spawnSync } from 'node:child_process';
 import { closeSync, mkdtempSync, openSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isGateDisabled } from '../../lib/gate/env.mjs';
+import { isGateDisabled, positiveIntEnv } from '../../lib/gate/env.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
@@ -91,6 +92,14 @@ if (target.kind === 'design') {
 
 const kimi = (process.env.KIMI_GATE_BIN || 'kimi').trim();
 
+// Kimi is a general agentic CLI: `-p` bounds neither the turn nor the tool
+// calls inside it, so a review that stops converging blocks the driver for as
+// long as the process lives. Every other gate ends on its own — codex on its
+// review, glm on an HTTP response — which leaves this helper timeout as the only
+// thing that ends a kimi review that will not end itself. It is deliberately
+// generous: cutting a slow but progressing review short costs a whole round.
+const reviewTimeoutMs = positiveIntEnv('KIMI_REVIEW_TIMEOUT_MS', 15 * 60 * 1000);
+
 if (printPromptOnly) {
   process.stdout.write(`${reviewPrompt}\n`);
   process.exit(0);
@@ -105,6 +114,7 @@ if (printArgsOnly) {
     label: target.label,
     command: target.command ?? null,
     promptBytes: reviewPrompt.length,
+    timeoutMs: reviewTimeoutMs,
   }, null, 2)}\n`);
   process.exit(0);
 }
@@ -122,12 +132,14 @@ const logFile = join(work, 'kimi.log');
 // default (KIMI_MODEL_THINKING_EFFORT applies only when a synthesized provider
 // is set), and project-doc injection is session-level, not per-turn.
 process.stderr.write('[kimi-gate] kimi -p <structural review prompt>\n');
+process.stderr.write(`[kimi-gate] timeout -> ${reviewTimeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
 
 const res = spawnSync(kimi, ['-p', reviewPrompt], {
   encoding: 'utf8',
   shell: isWin,
   maxBuffer: 64 * 1024 * 1024, // reviews can be long
+  timeout: reviewTimeoutMs,
 });
 
 const out = res.stdout || '';
@@ -142,6 +154,19 @@ try {
 
 if (res.error && res.error.code === 'ENOENT') {
   emitSkip('Kimi CLI not installed (run: npm i -g @moonshot-ai/kimi-code && kimi login).');
+}
+
+// A timed-out review is an ERROR, never a SKIPPED: the driver reads a skip as
+// "this reviewer is unavailable, fall back to another family", and a hang says
+// nothing about availability. As a transient error it gets the role's one sticky
+// retry first. This must also precede the emitReview path — stdout may hold a
+// partial answer, and half a review presented as a verdict is worse than none.
+if (res.error && res.error.code === 'ETIMEDOUT') {
+  emitError(
+    `kimi review timed out after ${Math.round(reviewTimeoutMs / 1000)}s with no verdict. `
+    + `Raise KIMI_REVIEW_TIMEOUT_MS or narrow the target. Transcript: ${logFile}`,
+    1,
+  );
 }
 
 const review = out.trim();

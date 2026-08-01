@@ -136,6 +136,72 @@ test('codex gate does not forward --print-args to codex', () => {
   assert.equal(args.includes('--print-args'), false);
 });
 
+// ── reviewer model ──────────────────────────────────────────────────────────
+// Inheriting the session model is the silent failure this pins against: the
+// gate would run on whatever the operator's interactive config selects, and a
+// downgraded reviewer looks exactly like a clean one.
+
+test('codex gate pins the reviewer model instead of inheriting the session one', () => {
+  const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
+
+  const { args, model } = JSON.parse(result.stdout);
+  assert.equal(model, 'gpt-5.6-terra');
+  assert.ok(args.includes('model=gpt-5.6-terra'), `no pinned model in ${JSON.stringify(args)}`);
+});
+
+test('codex gate honours an explicit CODEX_REVIEW_MODEL', () => {
+  const result = runGate({
+    args: ['--commit', 'HEAD', '--print-args'],
+    env: { CODEX_REVIEW_MODEL: 'gpt-5.6-sol' },
+  });
+
+  const { args, model } = JSON.parse(result.stdout);
+  assert.equal(model, 'gpt-5.6-sol');
+  assert.ok(args.includes('model=gpt-5.6-sol'));
+  assert.equal(args.includes('model=gpt-5.6-terra'), false);
+});
+
+test('codex gate treats every inherit spelling as "add no model override"', () => {
+  // The escape hatch for a CLI too old for the pinned id. It must emit no `-c
+  // model=` at all — an empty value would select a nameless model, not the
+  // configured one.
+  for (const value of ['inherit', 'default', 'config', '', '  ', 'INHERIT']) {
+    const result = runGate({
+      args: ['--commit', 'HEAD', '--print-args'],
+      env: { CODEX_REVIEW_MODEL: value },
+    });
+    const { args, model } = JSON.parse(result.stdout);
+    assert.equal(model, 'inherit', JSON.stringify(value));
+    assert.equal(
+      args.some((a) => String(a).startsWith('model=')),
+      false,
+      `${JSON.stringify(value)} left a model override in ${JSON.stringify(args)}`,
+    );
+  }
+});
+
+test('codex gate keeps the pinned model ahead of an operator -c override', () => {
+  // Codex applies later -c overrides last, so the pin must not outrank a
+  // deliberate per-run choice made on the command line.
+  const result = runGate({
+    args: ['--commit', 'HEAD', '-c', 'model=gpt-5.6-sol', '--print-args'],
+  });
+
+  const { args } = JSON.parse(result.stdout);
+  const models = args.filter((a) => String(a).startsWith('model='));
+  assert.deepEqual(models, ['model=gpt-5.6-terra', 'model=gpt-5.6-sol']);
+});
+
+test('codex design mode pins the same reviewer model as diff mode', () => {
+  // Design mode builds its own argv; a pin applied on only one path leaves the
+  // other inheriting, which is the defect this fixes.
+  withDesignDoc('# Spec\n', (path) => {
+    const result = runGate({ args: ['--design', path, '--print-args'] });
+    const { args } = JSON.parse(result.stdout);
+    assert.ok(args.includes('model=gpt-5.6-terra'), JSON.stringify(args));
+  });
+});
+
 // ── design mode ─────────────────────────────────────────────────────────────
 // The read-only argv shape is the load-bearing invariant: `exec -s read-only`,
 // never the `review`+bypass path (which has no `-s` and would run full-access on

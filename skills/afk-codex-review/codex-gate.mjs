@@ -27,9 +27,11 @@
 //
 // Lean context: overrides config per run via `-c` (the operator's interactive
 // Codex config is untouched):
+//   - model=gpt-5.6-terra       (pinned reviewer, never the session model)
 //   - model_reasoning_effort=medium
 //   - project_doc_max_bytes=0  (skip the project doc chain)
-// Override via CODEX_REVIEW_REASONING / CODEX_REVIEW_PROJECT_DOC_MAX_BYTES.
+// Override via CODEX_REVIEW_MODEL / CODEX_REVIEW_REASONING /
+// CODEX_REVIEW_PROJECT_DOC_MAX_BYTES.
 //
 // Exit code mirrors codex; 127 if the codex binary cannot be found.
 
@@ -239,6 +241,28 @@ const projectDocMaxBytes = (
   process.env.CODEX_REVIEW_PROJECT_DOC_MAX_BYTES || '0'
 ).trim();
 
+// The reviewer's model is PINNED, not inherited. `codex exec` otherwise runs
+// whatever `~/.codex/config.toml` selects for interactive work, so a session
+// tuned for speed or cost silently downgrades the gate — and a downgraded
+// review is indistinguishable from a thorough one at the point it is read. The
+// external-gate rule requires a current-generation frontier reviewer, and a
+// requirement nothing selects for is not met.
+//   - CODEX_REVIEW_MODEL=<id>  pins a different model for this call.
+//   - CODEX_REVIEW_MODEL=inherit (or default/config, or empty) restores
+//     inheritance — the escape hatch for a CLI too old for the pinned id, which
+//     the API rejects outright rather than degrading.
+const DEFAULT_REVIEW_MODEL = 'gpt-5.6-terra';
+const INHERIT_MODEL = new Set(['inherit', 'default', 'config']);
+const requestedModel = (process.env.CODEX_REVIEW_MODEL ?? DEFAULT_REVIEW_MODEL).trim();
+const reviewModel = INHERIT_MODEL.has(requestedModel.toLowerCase()) ? '' : requestedModel;
+
+// Shared by both argv builders: a pin applied on one path only would leave the
+// other inheriting, which is the defect this prevents.
+const leanConfig = [];
+if (reviewModel) leanConfig.push('-c', `model=${reviewModel}`);
+leanConfig.push('-c', `model_reasoning_effort=${reasoning}`);
+leanConfig.push('-c', `project_doc_max_bytes=${projectDocMaxBytes}`);
+
 const work = mkdtempSync(join(tmpdir(), 'codex-gate-'));
 const finalFile = join(work, 'review.txt');
 const logFile = join(work, 'codex.log');
@@ -272,16 +296,12 @@ if (isDesign) {
   const brief = buildDesignReviewPrompt({ scope: designTarget.label, context });
   designPayload = `${brief}\n\n## Design document (${designTarget.path})\n${text}`;
 
-  reviewArgs = ['exec', '-s', 'read-only'];
-  reviewArgs.push('-c', `model_reasoning_effort=${reasoning}`);
-  reviewArgs.push('-c', `project_doc_max_bytes=${projectDocMaxBytes}`);
+  reviewArgs = ['exec', '-s', 'read-only', ...leanConfig];
   reviewArgs.push('-o', finalFile, '-');
 } else {
-  reviewArgs = ['exec', 'review'];
   // Push lean defaults FIRST so an operator-supplied `-c key=...` in extra args
   // still takes precedence (codex applies later -c overrides last).
-  reviewArgs.push('-c', `model_reasoning_effort=${reasoning}`);
-  reviewArgs.push('-c', `project_doc_max_bytes=${projectDocMaxBytes}`);
+  reviewArgs = ['exec', 'review', ...leanConfig];
 
   // Resolve the base to its remote-tracking ref when one exists. A stale local
   // `main` otherwise makes the gate review the wrong commit range and report
@@ -302,6 +322,7 @@ if (printArgsOnly) {
   // size only — it rides on stdin, never in argv, so it can never leak here.
   process.stdout.write(`${JSON.stringify({
     bin: codex,
+    model: reviewModel || 'inherit',
     hasExplicitTarget: hasTarget,
     promptOnStdin: isDesign,
     stdinBytes: designPayload ? Buffer.byteLength(designPayload, 'utf8') : 0,
@@ -355,5 +376,9 @@ if (existsSync(finalFile)) {
 }
 
 // No verdict file: the review failed. Still emit a parseable block; never exit 0
-// without a verdict.
-emitError(`codex produced no final message (exit ${res.status}). Transcript: ${logFile}`, res.status || 1);
+// without a verdict. A pinned model the installed CLI does not know is rejected
+// before any review runs and looks identical here, so name it as a suspect.
+const modelHint = reviewModel
+  ? ` If the CLI rejected model "${reviewModel}", upgrade codex or set CODEX_REVIEW_MODEL=inherit.`
+  : '';
+emitError(`codex produced no final message (exit ${res.status}). Transcript: ${logFile}${modelHint}`, res.status || 1);
