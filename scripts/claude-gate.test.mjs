@@ -55,6 +55,22 @@ function withStub(envelope, fn) {
   }
 }
 
+function withSleepingStub(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-gate-timeout-'));
+  try {
+    const js = join(dir, 'stub.mjs');
+    writeFileSync(js, `setTimeout(() => process.stdout.write('{}'), 60000);\n`);
+    const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
+    writeFileSync(sh, process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+    if (process.platform !== 'win32') chmodSync(sh, 0o755);
+    return fn(sh);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // The identity the gate demands by default, and the envelope field it reads it
 // from. A real run also bills an auxiliary model, so a usage map is a map.
 const PINNED = 'claude-opus-5';
@@ -113,6 +129,18 @@ test('the independence skip is distinguishable from every cannot-run skip', () =
 
   assert.match(declined.stdout, /independence check/);
   assert.doesNotMatch(disabled.stdout, /independence check/);
+});
+
+test('a Claude review that never returns ends as a non-zero timeout error', () => {
+  withSleepingStub((bin) => {
+    const result = runGate({
+      args: ['--commit', 'HEAD', '--implementer', 'codex'],
+      env: { CLAUDE_GATE_BIN: bin, CLAUDE_REVIEW_TIMEOUT_MS: '30' },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: Claude review timed out/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
 });
 
 // ── target resolution (the surface the shared lib extracted) ────────────────

@@ -43,7 +43,9 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isGateDisabled } from '../../lib/gate/env.mjs';
+import {
+  isGateDisabled, isSpawnTimeout, preflightTimeoutMs, reviewTimeoutMs,
+} from '../../lib/gate/env.mjs';
 import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
@@ -315,6 +317,7 @@ if (isDesign) {
 }
 
 const codex = resolveCodex();
+const timeoutMs = reviewTimeoutMs('codex');
 
 if (printArgsOnly) {
   // Dry run: resolve the argv, call no model. Makes the target/base resolution
@@ -326,6 +329,7 @@ if (printArgsOnly) {
     hasExplicitTarget: hasTarget,
     promptOnStdin: isDesign,
     stdinBytes: designPayload ? Buffer.byteLength(designPayload, 'utf8') : 0,
+    timeoutMs,
     args: reviewArgs.map((a) => (a === finalFile ? '<review-file>' : a)),
   }, null, 2)}\n`);
   process.exit(0);
@@ -333,7 +337,14 @@ if (printArgsOnly) {
 
 // Availability + auth pre-check (local only, no model call / no metered cost).
 // Skip cleanly if Codex is missing or not logged in.
-const auth = spawnSync(codex, ['login', 'status'], { encoding: 'utf8', shell: isWin });
+const auth = spawnSync(codex, ['login', 'status'], {
+  encoding: 'utf8',
+  shell: isWin,
+  timeout: preflightTimeoutMs(timeoutMs),
+});
+if (isSpawnTimeout(auth)) {
+  emitSkip('Codex CLI authentication preflight timed out; this reviewer is unavailable.');
+}
 if (auth.error && auth.error.code === 'ENOENT') {
   emitSkip('Codex CLI not installed (run: npm i -g @openai/codex && codex login).');
 }
@@ -355,9 +366,18 @@ const codexLock = acquireCodexLock();
 // review an empty prompt — a silent no-review. Diff mode has no stdin payload.
 const fd = openSync(logFile, 'w');
 const res = spawnSync(codex, reviewArgs, isDesign
-  ? { input: designPayload, stdio: ['pipe', fd, fd], shell: isWin }
-  : { stdio: ['ignore', fd, fd], shell: isWin });
+  ? { input: designPayload, stdio: ['pipe', fd, fd], shell: isWin, timeout: timeoutMs }
+  : { stdio: ['ignore', fd, fd], shell: isWin, timeout: timeoutMs });
+closeSync(fd);
 releaseCodexLock(codexLock);
+
+if (isSpawnTimeout(res)) {
+  emitError(
+    `codex review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
+    + `Raise CODEX_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    1,
+  );
+}
 
 if (res.error) {
   if (res.error.code === 'ENOENT') {

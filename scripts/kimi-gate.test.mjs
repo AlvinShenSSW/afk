@@ -138,7 +138,7 @@ test('kimi gate bounds a review by default', () => {
   const result = runGate({ args: ['--print-args'] });
 
   const { timeoutMs } = JSON.parse(result.stdout);
-  assert.equal(timeoutMs, 15 * 60 * 1000);
+  assert.equal(timeoutMs, 30 * 60 * 1000);
 });
 
 test('kimi gate honours KIMI_REVIEW_TIMEOUT_MS', () => {
@@ -148,13 +148,19 @@ test('kimi gate honours KIMI_REVIEW_TIMEOUT_MS', () => {
   assert.equal(timeoutMs, 1000);
 });
 
+test('kimi gate inherits AFK_REVIEW_TIMEOUT_MS when no gate override exists', () => {
+  const result = runGate({ args: ['--print-args'], env: { AFK_REVIEW_TIMEOUT_MS: '1234' } });
+  const { timeoutMs } = JSON.parse(result.stdout);
+  assert.equal(timeoutMs, 1234);
+});
+
 test('kimi gate keeps the default bound when the override is unusable', () => {
   // `0` is the dangerous one: Node reads it as "no timeout", so a typo would
   // silently restore the unbounded hang this bound exists to prevent.
   for (const value of ['0', '-1', 'abc']) {
     const result = runGate({ args: ['--print-args'], env: { KIMI_REVIEW_TIMEOUT_MS: value } });
     const { timeoutMs } = JSON.parse(result.stdout);
-    assert.equal(timeoutMs, 15 * 60 * 1000, JSON.stringify(value));
+    assert.equal(timeoutMs, 30 * 60 * 1000, JSON.stringify(value));
     assert.match(result.stderr, /KIMI_REVIEW_TIMEOUT_MS/, JSON.stringify(value));
   }
 });

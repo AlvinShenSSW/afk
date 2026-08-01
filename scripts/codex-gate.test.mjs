@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -44,6 +44,28 @@ function withDesignDoc(text, fn) {
   }
 }
 
+function withSleepingStub(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-timeout-'));
+  try {
+    const js = join(dir, 'stub.mjs');
+    writeFileSync(js, `
+if (process.argv.includes('status')) {
+  process.stdout.write('Logged in');
+} else {
+  setTimeout(() => {}, 60000);
+}
+`);
+    const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
+    writeFileSync(sh, process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+    if (process.platform !== 'win32') chmodSync(sh, 0o755);
+    return fn(sh);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 test('codex gate disabled flag emits a clean skipped review', () => {
   const result = runGate({ args: ['--base', 'main'], env: { CODEX_REVIEW_GATE: 'off' } });
 
@@ -59,6 +81,22 @@ test('codex gate honours every documented opt-out spelling', () => {
     assert.equal(result.status, 0, `${value}: ${result.stderr}`);
     assert.match(result.stdout, /SKIPPED: Codex gate disabled/, `value ${JSON.stringify(value)}`);
   }
+});
+
+test('a Codex review that never returns ends as a non-zero timeout error', () => {
+  withSleepingStub((bin) => {
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: {
+        CODEX_GATE_BIN: bin,
+        CODEX_GATE_NO_LOCK: '1',
+        CODEX_REVIEW_TIMEOUT_MS: '3000',
+      },
+    });
+    assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /ERROR: codex review timed out/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
 });
 
 test('codex gate selftest acquires and releases its lock', () => {

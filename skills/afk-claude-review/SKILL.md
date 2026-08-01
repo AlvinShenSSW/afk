@@ -74,6 +74,10 @@ Run it in the **background** with a generous timeout; redirect stdout to a file
 and read it when it completes. Pass through any target flag (`--base <branch>` /
 `--commit <sha>` / `--uncommitted`). Do not poll in a sleep loop.
 
+**The review is bounded** by `CLAUDE_REVIEW_TIMEOUT_MS` (default 15 min), with
+`AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
+never a partial verdict; it follows the role's transient retry rule.
+
 **Design mode** (`--design <path>`) reviews a design document's reasoning instead
 of a diff — the opt-in design-stage gate (see `../afk/SKILL.md`, "Design-stage
 external gate"). The reviewer keeps its read-only `Read,Grep,Glob` tools, so it
