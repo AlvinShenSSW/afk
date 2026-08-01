@@ -1,7 +1,7 @@
 # Ordered External Gate List
 
 - **Issue:** [#1 — default double external gates: Codex outer, Kimi final](https://github.com/AlvinShenSSW/afk/issues/1)
-- **Status:** Revision 13 — design approved after evidence-based P1 triage
+- **Status:** Revision 14 — shared notice mechanism added after final-review P2
 - **Author:** Codex
 - **Date:** 2026-08-01
 
@@ -385,10 +385,13 @@ interchangeable second pass.
 ### D6 — Existing configs get a non-mutating, bounded notice
 
 The ignored notice receipt is the single source of truth across install modes.
-The SessionStart hook, `afk-init`, and AFK kickoff may each attempt the same
-notice operation; the first one observing no current receipt emits and writes it,
-and the others skip. This covers plugin, drop-in, non-startup, and already-active
-sessions without intentionally double-notifying. The operation distinguishes two
+`scripts/gate-profile-notice.mjs` is the sole implementation of notice
+classification, signature calculation, output, and receipt writing. The
+SessionStart hook imports its resolver; `afk-init` and AFK kickoff invoke its CLI
+through the resolved plugin root. The first entry point observing no current
+receipt emits and writes it, and the others skip. This covers plugin, drop-in,
+non-startup, and already-active sessions without systematically duplicating the
+notice. The operation distinguishes two
 bounded, config-aware notices. D2 case 3 (`gates` absent and at least one
 external-gate field present) receives the legacy opt-in notice:
 
@@ -414,9 +417,10 @@ single-gate escape hatch if reduced coverage is your deliberate choice.
 No entry point adds the field automatically because writing config would alter
 reviewer count/cost and erase the distinction between explicit and default
 choice. The non-secret receipt
-under ignored `.afk/` is keyed by plugin version and a hash of the normalized
-`## external gate` section only, so unrelated command or policy edits do not re-
-fire it. Writers use temp-file-plus-rename and ignore write failure. Concurrent
+under ignored `.afk/` is keyed by plugin version and a hash of the recognized
+profile fields in `## external gate`, so unrelated command or policy edits do
+not re-fire it. The shared writer uses temp-file-plus-rename and ignores write
+failure. Concurrent
 windows therefore provide at-least-once rather than exactly-once delivery; the
 worst race is one duplicated bounded notice. Editing that section or installing
 a later behavior-changing version permits one fresh notice. When `.afk/` is
@@ -584,7 +588,8 @@ single-provider installation reaches the explicit external-dependency blocker.
 | `skills/afk-glm-review/SKILL.md` | Describe GLM, including frontmatter, as a fallback rather than an interchangeable gate; document sticky-role substitution and same-HEAD metering. |
 | `skills/afk-internal-review/SKILL.md` | Hand off to the complete ordered role sequence and prevent an early final report. |
 | `skills/afk-init/SKILL.md` | Participate in the shared receipt-first notice operation for drop-in installs without rewriting config. |
-| `hooks/afk-resume-detect.mjs` + test | Emit/cache the same applicable notice for plugin sessions, keyed to the external-gate section with atomic writes. |
+| `scripts/gate-profile-notice.mjs` + test | Own notice classification, signature, CLI output, and atomic receipt writing for all three entry points. |
+| `hooks/afk-resume-detect.mjs` + test | Import the shared notice resolver for plugin sessions instead of carrying a private implementation. |
 | `lib/config.mjs` + `lib/config.test.mjs` | Add section-scoped presence/value readers so absent, empty, and same-named keys outside `## external gate` have different safe outcomes; leave legacy readers compatible. |
 | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` | Update the default pipeline, config, compatibility, local-test ordering, and cost/escalation behavior. |
 | `scripts/external-gate-profile.test.mjs` | Pin active doctrine and the scenario table. |

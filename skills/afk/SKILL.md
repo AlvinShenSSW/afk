@@ -14,19 +14,21 @@ self-contained spec.
 1. **Require a scope.** The operator must name the explicit issues/PRs (and/or
    file areas) to touch. **No scope → stop and ask.** Never browse the tracker
    and pick work yourself; the scope fences everything you may touch.
-2. **Auto-bootstrap first.** If `.afk/` is absent, run the `afk-init` bootstrap
-   automatically (create `.afk/` from the template, add the ignore entry,
-   detect commands, record `pluginRoot`) — idempotent — announce it, and
-   continue. This runs before any config-dependent step, so a first run reads a
-   populated config rather than only defaults. No manual step; `/afk-init` stays
-   available to re-run detection.
+2. **Notice and auto-bootstrap.** If `.afk/` is absent, run the `afk-init`
+   bootstrap automatically; it calls the shared notice CLI. Otherwise run
+   `node "<plugin-root>/scripts/gate-profile-notice.mjs" --afk-dir
+   "<main-worktree>/.afk" --plugin-root "<plugin-root>"` now and pass on any line
+   it prints. This one implementation owns the receipt for kickoff, init, and
+   SessionStart. Bootstrap remains idempotent: add the ignore entry, detect
+   commands, record `pluginRoot`, announce it, and continue. No manual step;
+   `/afk-init` stays available to re-run detection.
 3. **Update check.** Run the bundled update check; if the installed plugin is
    behind the canonical repo's latest version, surface a one-line notice. Never
    block on it (silent when offline).
 4. **Resolve the PR gate profile.** New/profileless configs use ordered
    `gates: codex > kimi`; an existing config with `priority`, `min-pass`, or
-   `mode` but no `gates` keeps the legacy behavior. Surface the bounded opt-in/
-   cost notice described under "External gate". Resolve the implementer and a
+   `mode` but no `gates` keeps the legacy behavior. The bounded notice was
+   resolved by step 2. Resolve the implementer and a
    complete locally plausible role assignment now. Missing reviewer capacity is
    an anticipated readiness blocker, not a reason to discard safe issue work.
 5. **Confirm the merge policy** (from `.afk/config.md`: `leave-open` default /
@@ -258,8 +260,9 @@ Resolve the `## external gate` section as one total function:
 Do not rewrite an existing legacy config. Emit one bounded notice with the exact
 opt-in snippet. An existing no/profileless config gets a one-time cost notice;
 `gates: codex` is the explicit single-gate escape hatch. Hook, `afk-init`, and
-kickoff share an atomic at-least-once receipt keyed by plugin version plus the
-normalized external-gate section (`AFK_GATE_PROFILE_NOTICE=off` opts out).
+kickoff all call `scripts/gate-profile-notice.mjs`; that shared implementation
+owns the atomic at-least-once receipt keyed by plugin version plus recognized
+external-gate profile fields (`AFK_GATE_PROFILE_NOTICE=off` opts out).
 
 ### Assignment, availability, and outcomes
 
