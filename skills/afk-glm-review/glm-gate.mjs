@@ -20,7 +20,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { isGateDisabled } from '../../lib/gate/env.mjs';
+import { abortAfter, isGateDisabled, reviewTimeoutMs } from '../../lib/gate/env.mjs';
 import { git } from '../../lib/gate/git.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
@@ -67,6 +67,7 @@ const printPromptOnly = userArgs.includes('--print-prompt');
 const model = (process.env.GLM_REVIEW_MODEL || 'glm-5.2').trim();
 const baseUrl = (process.env.GLM_REVIEW_BASE_URL || 'https://api.z.ai/api/anthropic').replace(/\/+$/, '');
 const maxCtx = Number.parseInt(process.env.GLM_REVIEW_MAX_CTX_BYTES || '400000', 10) || 400000;
+const timeoutMs = reviewTimeoutMs('glm');
 
 const target = parseTarget(userArgs);
 const isDesign = target.kind === 'design';
@@ -121,6 +122,7 @@ if (printArgsOnly) {
     changedFiles,
     model,
     baseUrl,
+    timeoutMs,
   }, null, 2)}\n`);
   process.exit(0);
 }
@@ -243,13 +245,29 @@ if (isAnthropic) {
 }
 
 let response;
+let raw;
+let requestError;
+const deadline = abortAfter(timeoutMs);
 try {
-  response = await fetch(url, { method: 'POST', headers, body: reqBody });
+  response = await fetch(url, {
+    method: 'POST', headers, body: reqBody, signal: deadline.signal,
+  });
+  raw = await response.text();
 } catch (error) {
-  emitSkip(`network error calling Z.ai (${error?.message || error}). Gate skipped.`);
+  requestError = error;
+} finally {
+  deadline.clear();
 }
-
-const raw = await response.text();
+if (deadline.signal.aborted) {
+  emitError(
+    `GLM review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
+    + 'Raise GLM_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target.',
+    1,
+  );
+}
+if (requestError) {
+  emitSkip(`network error calling Z.ai (${requestError?.message || requestError}). Gate skipped.`);
+}
 if (!response.ok) {
   if (response.status === 401 || response.status === 403) {
     emitSkip(`Z.ai auth failed (HTTP ${response.status}); check ZAI_API_KEY. ${raw.slice(0, 200)}`);

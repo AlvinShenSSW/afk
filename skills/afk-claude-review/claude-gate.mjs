@@ -30,7 +30,7 @@ import { closeSync, mkdtempSync, openSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { isGateDisabled } from '../../lib/gate/env.mjs';
+import { isGateDisabled, isSpawnTimeout, reviewTimeoutMs } from '../../lib/gate/env.mjs';
 import { git } from '../../lib/gate/git.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
@@ -182,6 +182,7 @@ if (isDesign) {
 // afterwards, so accepting one would only spend a metered call to learn it.
 const model = (process.env.CLAUDE_REVIEW_MODEL || 'claude-opus-5').trim();
 const effort = (process.env.CLAUDE_REVIEW_EFFORT || 'medium').trim();
+const timeoutMs = reviewTimeoutMs('claude');
 
 if (!isPinnedModelId(model)) {
   emitError(
@@ -234,6 +235,7 @@ if (printArgsOnly) {
     changedFiles,
     promptBytes: prompt.length,
     promptOnStdin: true,
+    timeoutMs,
     args,
   }, null, 2)}\n`);
   process.exit(0);
@@ -257,7 +259,13 @@ function dropEmptyValued(argv, flag) {
   return i >= 0 && argv[i + 1] === '' ? [...argv.slice(0, i), ...argv.slice(i + 2)] : argv;
 }
 
-const spawnOpts = { input: prompt, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 };
+const spawnOpts = {
+  input: prompt,
+  encoding: 'utf8',
+  maxBuffer: 64 * 1024 * 1024,
+  timeout: timeoutMs,
+  killSignal: 'SIGKILL',
+};
 
 // No shell: it mangles empty args and imposes the command-line limit. A native
 // install (winget/installer/homebrew) launches directly.
@@ -278,6 +286,14 @@ try {
   closeSync(fd);
 } catch {
   // The transcript is a convenience; losing it must not fail the review.
+}
+
+if (isSpawnTimeout(res)) {
+  emitError(
+    `Claude review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
+    + `Raise CLAUDE_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    1,
+  );
 }
 
 if (res.error && res.error.code === 'ENOENT') {

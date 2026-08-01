@@ -70,6 +70,24 @@ up explicitly or re-detect commands, run:
 
 It never overwrites developer-authored values.
 
+## Review Timeouts
+
+Every external review is bounded. Claude, Codex, and GLM default to 15 minutes;
+Kimi defaults to 30 minutes because its agentic reviews commonly take longer.
+CLI availability and authentication probes are capped at 30 seconds. A
+timed-out review produces no verdict and follows the existing transient-error
+retry and fallback rule.
+
+Set `AFK_REVIEW_TIMEOUT_MS` to change the shared limit, or override one provider
+with `CODEX_REVIEW_TIMEOUT_MS`, `CLAUDE_REVIEW_TIMEOUT_MS`,
+`KIMI_REVIEW_TIMEOUT_MS`, or `GLM_REVIEW_TIMEOUT_MS`. Values must be positive
+integer milliseconds; an unusable value retains a bounded limit and emits a
+warning.
+
+CLI timeouts use a hard kill so a process that ignores graceful termination
+cannot wedge the gate. On Windows, npm command shims run through a shell; the
+gate returns on time, but a surviving shim grandchild may require manual cleanup.
+
 ## Staying Up To Date
 
 The install cache is keyed by the plugin version, so an outdated install

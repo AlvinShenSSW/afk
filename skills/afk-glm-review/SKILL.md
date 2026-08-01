@@ -38,6 +38,10 @@ Run it in the **background** with a generous timeout; redirect stdout to a file
 and read it when it completes. Pass through any target flag (`--base <branch>` /
 `--commit <sha>` / `--uncommitted`). Do not poll in a sleep loop.
 
+**The review is bounded** by `GLM_REVIEW_TIMEOUT_MS` (default 15 min), with
+`AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
+never a partial verdict; it follows the role's transient retry rule.
+
 **Design mode** (`--design <path>`) reviews a design document's reasoning instead
 of a diff — the opt-in design-stage gate (see `../afk/SKILL.md`, "Design-stage
 external gate"). GLM has no tools, so the gate sends the document's full text as
@@ -89,3 +93,5 @@ Config knobs:
 - `GLM_REVIEW_MODEL` (default `glm-5.2`)
 - `GLM_REVIEW_BASE_URL` (default `https://api.z.ai/api/anthropic`)
 - `GLM_REVIEW_MAX_CTX_BYTES` (default `400000`)
+- `GLM_REVIEW_TIMEOUT_MS` (default `900000`; shared fallback
+  `AFK_REVIEW_TIMEOUT_MS`)

@@ -7,11 +7,13 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { test } from 'node:test';
+
+import { gateTestEnv } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-codex-review/codex-gate.mjs';
@@ -20,7 +22,7 @@ function runGate({ args = [], env = {} } = {}) {
   return spawnSync(process.execPath, [GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: gateTestEnv(env),
   });
 }
 
@@ -44,6 +46,29 @@ function withDesignDoc(text, fn) {
   }
 }
 
+function withSleepingStub(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-timeout-'));
+  try {
+    const js = join(dir, 'stub.mjs');
+    writeFileSync(js, `
+if (process.argv.includes('status')) {
+  process.stdout.write('Logged in');
+} else {
+  process.on('SIGTERM', () => {});
+  setInterval(() => {}, 60000);
+}
+`);
+    const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
+    writeFileSync(sh, process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+    if (process.platform !== 'win32') chmodSync(sh, 0o755);
+    return fn(sh);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 test('codex gate disabled flag emits a clean skipped review', () => {
   const result = runGate({ args: ['--base', 'main'], env: { CODEX_REVIEW_GATE: 'off' } });
 
@@ -59,6 +84,22 @@ test('codex gate honours every documented opt-out spelling', () => {
     assert.equal(result.status, 0, `${value}: ${result.stderr}`);
     assert.match(result.stdout, /SKIPPED: Codex gate disabled/, `value ${JSON.stringify(value)}`);
   }
+});
+
+test('a Codex review that never returns ends as a non-zero timeout error', () => {
+  withSleepingStub((bin) => {
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: {
+        CODEX_GATE_BIN: bin,
+        CODEX_GATE_NO_LOCK: '1',
+        CODEX_REVIEW_TIMEOUT_MS: '3000',
+      },
+    });
+    assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /ERROR: codex review timed out/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
 });
 
 test('codex gate selftest acquires and releases its lock', () => {
@@ -134,6 +175,72 @@ test('codex gate does not forward --print-args to codex', () => {
   const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
   const { args } = JSON.parse(result.stdout);
   assert.equal(args.includes('--print-args'), false);
+});
+
+// ── reviewer model ──────────────────────────────────────────────────────────
+// Inheriting the session model is the silent failure this pins against: the
+// gate would run on whatever the operator's interactive config selects, and a
+// downgraded reviewer looks exactly like a clean one.
+
+test('codex gate pins the reviewer model instead of inheriting the session one', () => {
+  const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
+
+  const { args, model } = JSON.parse(result.stdout);
+  assert.equal(model, 'gpt-5.6-terra');
+  assert.ok(args.includes('model=gpt-5.6-terra'), `no pinned model in ${JSON.stringify(args)}`);
+});
+
+test('codex gate honours an explicit CODEX_REVIEW_MODEL', () => {
+  const result = runGate({
+    args: ['--commit', 'HEAD', '--print-args'],
+    env: { CODEX_REVIEW_MODEL: 'gpt-5.6-sol' },
+  });
+
+  const { args, model } = JSON.parse(result.stdout);
+  assert.equal(model, 'gpt-5.6-sol');
+  assert.ok(args.includes('model=gpt-5.6-sol'));
+  assert.equal(args.includes('model=gpt-5.6-terra'), false);
+});
+
+test('codex gate treats every inherit spelling as "add no model override"', () => {
+  // The escape hatch for a CLI too old for the pinned id. It must emit no `-c
+  // model=` at all — an empty value would select a nameless model, not the
+  // configured one.
+  for (const value of ['inherit', 'default', 'config', '', '  ', 'INHERIT']) {
+    const result = runGate({
+      args: ['--commit', 'HEAD', '--print-args'],
+      env: { CODEX_REVIEW_MODEL: value },
+    });
+    const { args, model } = JSON.parse(result.stdout);
+    assert.equal(model, 'inherit', JSON.stringify(value));
+    assert.equal(
+      args.some((a) => String(a).startsWith('model=')),
+      false,
+      `${JSON.stringify(value)} left a model override in ${JSON.stringify(args)}`,
+    );
+  }
+});
+
+test('codex gate keeps the pinned model ahead of an operator -c override', () => {
+  // Codex applies later -c overrides last, so the pin must not outrank a
+  // deliberate per-run choice made on the command line.
+  const result = runGate({
+    args: ['--commit', 'HEAD', '-c', 'model=gpt-5.6-sol', '--print-args'],
+  });
+
+  const { args } = JSON.parse(result.stdout);
+  const models = args.filter((a) => String(a).startsWith('model='));
+  assert.deepEqual(models, ['model=gpt-5.6-terra', 'model=gpt-5.6-sol']);
+});
+
+test('codex design mode pins the same reviewer model as diff mode', () => {
+  // Design mode builds its own argv; a pin applied on only one path leaves the
+  // other inheriting, which is the defect this fixes.
+  withDesignDoc('# Spec\n', (path) => {
+    const result = runGate({ args: ['--design', path, '--print-args'] });
+    const { args } = JSON.parse(result.stdout);
+    assert.ok(args.includes('model=gpt-5.6-terra'), JSON.stringify(args));
+  });
 });
 
 // ── design mode ─────────────────────────────────────────────────────────────

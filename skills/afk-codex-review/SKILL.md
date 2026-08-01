@@ -47,6 +47,18 @@ on stdin — never the `review` subcommand or the sandbox bypass, so it stays
 read-only on every OS. A missing or unreadable `--design` path fails loudly
 (`ERROR`, non-zero), never a skip.
 
+**The review is bounded** by `CODEX_REVIEW_TIMEOUT_MS` (default 15 min), with
+`AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
+never a partial verdict; it follows the role's transient retry rule.
+
+**The reviewer's model is pinned**, not inherited from `~/.codex/config.toml`: an
+interactive session tuned for speed or cost would otherwise decide the gate's
+model, and a downgraded reviewer reads exactly like a thorough one.
+`CODEX_REVIEW_MODEL=<id>` pins a different one for the call;
+`CODEX_REVIEW_MODEL=inherit` restores inheritance — the escape hatch when the
+installed CLI is too old for the pinned id and rejects it outright. `--print-args`
+reports the resolved model without spending a call.
+
 Read the verdict between the `===== CODEX REVIEW (final message) =====` markers.
 `SKIPPED: …` (Codex absent, logged out, or disabled via `CODEX_REVIEW_GATE=off`)
 is not a failure — report it and continue. `ERROR: …` means the review itself

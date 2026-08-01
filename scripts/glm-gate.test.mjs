@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createServer } from 'node:http';
 
 import { test } from 'node:test';
+
+import { gateTestEnv } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-glm-review/glm-gate.mjs';
@@ -13,8 +17,24 @@ function runGate({ args = [], env = {} } = {}) {
   return spawnSync(process.execPath, [GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: gateTestEnv(env),
   });
+}
+
+async function runGateAsync({ args = [], env = {} } = {}) {
+  const child = spawn(process.execPath, [GATE, ...args], {
+    cwd: repoRoot,
+    env: gateTestEnv(env),
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  const [status] = await once(child, 'close');
+  return { status, stdout, stderr };
 }
 
 function withDesignDoc(text, fn) {
@@ -35,6 +55,32 @@ test('glm gate disabled flag emits a clean skipped review', () => {
   assert.match(result.stdout, /===== GLM REVIEW \(final message\) =====/);
   assert.match(result.stdout, /SKIPPED: GLM gate disabled via GLM_REVIEW_GATE\./);
   assert.match(result.stdout, /===== END GLM REVIEW =====/);
+});
+
+test('a GLM response body that never finishes ends as a non-zero timeout error', async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.write('{"partial":');
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const { port } = server.address();
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: {
+        ZAI_API_KEY: 'test-only',
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}/anthropic`,
+        GLM_REVIEW_TIMEOUT_MS: '30',
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: GLM review timed out/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
 });
 
 // ── design mode ─────────────────────────────────────────────────────────────
