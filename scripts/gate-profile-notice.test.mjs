@@ -10,6 +10,7 @@ import { prepareGateProfileNotice } from './gate-profile-notice.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'scripts', 'gate-profile-notice.mjs');
+const PLUGIN_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
 function withAfk(config, fn) {
   const root = mkdtempSync(join(tmpdir(), 'afk-gate-profile-'));
@@ -31,7 +32,7 @@ test('shared resolver emits and receipts a legacy-profile notice once', () => {
     first.commit();
     assert.equal(prepareGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }).notice, '');
     const receipt = JSON.parse(readFileSync(join(afkDir, 'gate-profile-notice.json'), 'utf8'));
-    assert.equal(receipt.version, '0.2.12');
+    assert.equal(receipt.version, PLUGIN_VERSION);
     assert.match(receipt.signature, /^[a-f0-9]{64}$/);
   });
 });
