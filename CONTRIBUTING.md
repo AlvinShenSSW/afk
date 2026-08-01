@@ -39,6 +39,8 @@ node --test
 
 ## Review and merge
 
-Every PR is reviewed by the owner/maintainer and passes one independent external
-review before merge. PRs are squash-merged. CI must be green, but a green CI is
-not by itself approval to merge.
+Every PR is reviewed by the owner/maintainer and passes its configured ordered
+external roles before merge. By default Codex is the outer reviewer and Kimi is
+the final reviewer; independent fallbacks replace a provider that implemented
+the change or cannot run. PRs are squash-merged. CI must be green, but a green
+CI is not by itself approval to merge.

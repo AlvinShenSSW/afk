@@ -1,14 +1,13 @@
 ---
 name: afk-glm-review
-description: Part of the afk pipeline. Runs GLM (Z.ai glm-5.2) as an independent, read-only external review gate on the current PR/branch, then triages and fixes the findings. Interchangeable with afk-codex-review and afk-kimi-review, subject to .afk/config.md gate priority and min-pass. Triggers include "/afk-glm-review", "run glm review", "glm gate", and "GLM external gate".
+description: Part of the afk pipeline. Runs GLM (Z.ai glm-5.2) as an independent, read-only fallback external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-glm-review", "run glm review", "glm gate", and "GLM external gate".
 ---
 
 # afk-glm-review
 
-An independent second-opinion review by Z.ai `glm-5.2`, used as an external gate
-after `afk-internal-review`. It is interchangeable with `afk-codex-review` and
-`afk-kimi-review`: run the number of gates required by `.afk/config.md`, and
-never use a gate whose model matches the implementer's model.
+An independent second-opinion review by Z.ai `glm-5.2`, used as a fallback role
+after `afk-internal-review`. Run the ordered roles required by `.afk/config.md`,
+and never use a reviewer whose model matches the implementer or another role.
 
 GLM is reached through the Z.ai REST API, not an agentic CLI. The helper gathers
 the diff and full current contents of changed files, then sends that bounded

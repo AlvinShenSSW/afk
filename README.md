@@ -4,7 +4,7 @@ Autonomous PR-pipeline skills for AI coding agents.
 
 `afk-skills` packages a stack-agnostic workflow for handing a scoped software
 task to an AI coding agent and getting back PR-ready work: planning,
-implementation, self-review, internal review, independent external review, final
+implementation, self-review, internal review, ordered independent external review, final
 checks, and handoff.
 
 The plugin stays generic. Project-specific commands, merge preferences,
@@ -20,10 +20,10 @@ gitignored `.afk/` directory.
 | `afk-spec-planner` | Turns an issue into a reviewable implementation plan. |
 | `afk-implementation-pilot` | Implements an approved plan and self-reviews it. |
 | `afk-internal-review` | Performs the internal production-readiness review. |
-| `afk-codex-review` | Runs Codex as an independent external review gate. |
-| `afk-claude-review` | Runs Claude as an independent external review gate; declines to review Claude's own work. |
-| `afk-kimi-review` | Runs Kimi as an independent external review gate. |
-| `afk-glm-review` | Runs GLM as an independent diff-scoped external review gate. |
+| `afk-codex-review` | Runs the default Codex outer role. |
+| `afk-claude-review` | Runs a Claude fallback role; declines to review Claude's own work. |
+| `afk-kimi-review` | Runs the default Kimi final role. |
+| `afk-glm-review` | Runs a GLM fallback role with bounded diff context. |
 | `afk-agent-relay` | Offloads large reads or scoping work to an external model. |
 
 ## Pipeline
@@ -37,7 +37,8 @@ scope
 -> pull request
 -> CI
 -> internal review
--> independent external gate
+-> Codex outer external role (or independent fallback)
+-> Kimi final external role (or independent fallback)
 -> full final test suite
 -> owner approval or configured merge policy
 ```
@@ -136,9 +137,8 @@ lint:  <cmd>
 build: <cmd>
 
 ## external gate
+gates:    codex > kimi
 priority: codex > claude > kimi > glm
-min-pass: 1
-mode:     waterfall
 # implementer:   # who writes the code, if not the driver; may only block a gate
 
 ## merge
@@ -149,6 +149,10 @@ auto-resume: notify   # off · notify (default) · auto
 
 ## invariants
 ```
+
+`gates` defines ordered required roles and their count; `priority` is only the
+fallback pool. Existing configs with legacy `priority`/`min-pass`/`mode` and no
+`gates` keep their prior behavior until the operator opts in.
 
 Secrets never belong in `.afk/config.md`; use environment variables or a
 gitignored `.env`.

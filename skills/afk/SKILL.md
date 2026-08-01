@@ -23,11 +23,17 @@ self-contained spec.
 3. **Update check.** Run the bundled update check; if the installed plugin is
    behind the canonical repo's latest version, surface a one-line notice. Never
    block on it (silent when offline).
-4. **Confirm the merge policy** (from `.afk/config.md`: `leave-open` default /
+4. **Resolve the PR gate profile.** New/profileless configs use ordered
+   `gates: codex > kimi`; an existing config with `priority`, `min-pass`, or
+   `mode` but no `gates` keeps the legacy behavior. Surface the bounded opt-in/
+   cost notice described under "External gate". Resolve the implementer and a
+   complete locally plausible role assignment now. Missing reviewer capacity is
+   an anticipated readiness blocker, not a reason to discard safe issue work.
+5. **Confirm the merge policy** (from `.afk/config.md`: `leave-open` default /
    `merge-to-unblock` / `merge-when-green`) and any constraints (branches not to
    touch, naming, safe-direction-only, deploy is the operator's job, summary
    language, explicit gate choice).
-5. **Restate the scope** in one line, then start.
+6. **Restate the scope** in one line, then start.
 
 ## Per issue — the full waterfall (one at a time)
 
@@ -185,7 +191,8 @@ never-scale-down-gates rule, which governs PR gates only.
   another model authored the design (a design relay) declare that model — do NOT
   pass the eventual code implementer, or a driver-authored design could be
   reviewed by the driver's own model, defeating this step.
-- **Exactly one gate, regardless of `min-pass`.** `min-pass` governs the PR gate;
+- **Exactly one gate, regardless of PR `gates` length or legacy `min-pass`.**
+  Those fields govern the PR gate;
   one round is the whole point here. **One gate per design version, hard cap 2 per
   issue** — a design-invalidating finding restarts the design step, and the
   rewrite gets exactly one more gate.
@@ -218,17 +225,57 @@ can and cannot enforce").
 
 ## External gate (the independent check)
 
-An external gate is **mandatory**: run the number set by `min-pass` in
-`.afk/config.md` (default 1) each round, never skipped by choice. Constraints:
-each gate's model is **not** the implementer's model, and is a
-current-generation mainstream frontier model.
+An external role sequence is **mandatory**. New/profileless configurations run
+Codex as the preferred **outer**, then Kimi as the preferred **final**, in order.
+Both clean results must cover the same final revision. Each actual reviewer is a
+current-generation mainstream frontier model, differs from the implementer, and
+differs from every other role in the sequence.
 
-- **Selection** follows `.afk/config.md`: `priority` (default
-  `codex > claude > kimi > glm`),
-  `min-pass` (default 1), and `mode` (`waterfall` = try in priority order,
-  stopping once `min-pass` gates pass; `parallel` = run `min-pass` at once).
-  Skip any gate that is the implementer's own model or cannot run (uninstalled,
-  logged out, out of credit, below tier); the next in priority takes its place.
+### PR gate profile and compatibility
+
+`gates` is the ordered required role list: first = `outer`, last = `final` when
+there are two or more, and positions between are stable `intermediate-N` roles.
+Its length is the required count. `priority` is the closed fallback pool for an
+ineligible/unavailable preferred role; it does not add roles. Roles are always
+waterfall—final is never parallelized.
+
+Resolve the `## external gate` section as one total function:
+
+1. A present `gates` key selects ordered roles. It uses `>` separators, ignores
+   surrounding whitespace/case and a trailing comment, and must contain no empty
+   segment. A present-but-empty `gates` key is a blocking config error, never a
+   fallback to one gate. Valid role families are `codex`, `claude`, `kimi`, and
+   `glm`; an unknown preference is recorded and uses fallback. A later duplicate
+   preference is ineligible and also uses fallback. Legacy `min-pass` and `mode`
+   beside a valid `gates` key are ignored for PR roles without rewriting the file.
+2. With no `gates`, any legacy external-gate field (`priority`, `min-pass`, or
+   `mode`) preserves the complete legacy profile. Omitted legacy `min-pass`
+   retains the former one-gate default.
+3. Otherwise use built-in `gates: codex > kimi` and built-in priority
+   `codex > claude > kimi > glm`. `design-gate` and `implementer` do not select
+   PR role count/order.
+
+Do not rewrite an existing legacy config. Emit one bounded notice with the exact
+opt-in snippet. An existing no/profileless config gets a one-time cost notice;
+`gates: codex` is the explicit single-gate escape hatch. Hook, `afk-init`, and
+kickoff share an atomic at-least-once receipt keyed by plugin version plus the
+normalized external-gate section (`AFK_GATE_PROFILE_NOTICE=off` opts out).
+
+### Assignment, availability, and outcomes
+
+Resolve every stable role before a paid verdict. Walk roles left-to-right; for
+each, deduplicate `[preferred, ...priority]`, exclude the declared implementer
+and already-used families, then choose the first locally plausible candidate.
+The implementer must be known; a relay declares it. A missing complete plan is
+recorded at kickoff but blocks **ready**, not safe implementation work. Recheck
+unstamped roles immediately before review.
+
+Local presence is deliberately narrow: Codex requires its binary plus `codex
+login status`; Claude/Kimi require their binaries (and Claude rejects an alias in
+`CLAUDE_REVIEW_MODEL`); GLM requires `ZAI_API_KEY`/`GLM_API_KEY` from the
+environment or its existing `.env` locations. Remote auth, credit, network, and
+model identity may still fail on first invocation.
+
 - **Declare the implementer when it is not the driver.** Pass
   `--implementer <family>` to the gate whenever another model wrote the change —
   most often after `afk-agent-relay`. Each gate applies the no-self-review rule
@@ -240,12 +287,23 @@ current-generation mainstream frontier model.
   A helper cannot constrain a round it was never asked to run — the rule that
   the gate runs at all is doctrine (see AGENTS.md, "What this plugin can and
   cannot enforce").
-- **Stickiness:** a gate chosen in round 1 is locked for later rounds of the same
-  PR; a mid-loop switch resets that gate's finding baseline and is recorded.
-- **`SKIPPED` is the last resort only** — when no qualifying reviewer can run.
-  Record it in the ledger and end-of-run report and continue. Stopping early or
-  handing the gate to the operator is not a valid skip. When `min-pass` cannot be
-  met, the round is not clean — do not mark ready.
+- **Stickiness:** a provider is locked to its stable role for the PR and changes
+  only for independence or availability. A substitution is recorded, resets the
+  incoming provider's baseline/consecutive counter, and keeps the role's PR-wide
+  finding archive and lifetime budget.
+- **Classify the complete outcome.** Only a review message is a verdict.
+  Stable-unavailable `SKIPPED` reasons (disabled/missing executable/credential;
+  Claude-only quota/model-unavailable) trigger fallback. Independence refusal
+  makes that provider ineligible. A rejected/missing driver-supplied implementer
+  or bad target stops as a driver error. GLM transient `SKIPPED` and other gates'
+  transient nonzero `ERROR` get one sticky retry per role per full sequence,
+  then fallback. Unknown `ERROR` stops with its transcript. Skip/error attempts
+  consume no finding-verdict budget and never count as clean.
+
+Default assignments are Codex outer + Kimi final for a Claude/GLM implementer;
+Claude outer + Kimi final for a Codex implementer; and Codex outer + Claude final
+for a Kimi implementer. If two distinct eligible families cannot finish, the PR
+is not clean/ready—one pass is never presented as two.
 
 **A finding asserts two things; reading settles one.** Every structural finding
 claims both that the code is as described and that this shape produces a wrong
@@ -312,6 +370,38 @@ names such a difference is new, or a reopening, however small. When the diff
 under review is a design doc, a remainder the tests-first step will enforce
 counts as closed only once it is recorded in the design doc as a required
 test — the record is the closure, not the future test.
+
+### Ordered-role revision and convergence rules
+
+Before/after every PR role, record a clean worktree, `HEAD`, merge-base, base-tip
+context, and the normalized external-gate-section hash. Claude/Kimi/GLM receive
+the immutable merge-base SHA; Codex receives its supported base ref and its
+verdict is invalid if the before/after merge-base changed. All configured role
+verdicts must name the same `HEAD`, merge-base, and role-profile hash.
+
+Outer closes its finding loop on the current sequence. Only then run each later
+role. A later-role content change invalidates every earlier stamp and starts the
+ordered sequence again at outer. Finding identity is PR-scoped. A role keeps the
+same provider across sequences unless availability/independence forces a
+recorded substitution.
+
+Cost convergence has separate hard counters:
+
+- each stable role permits **four finding-bearing verdicts** over the PR;
+- the **full-sequence counter** increments on **every sequence start regardless of cause**
+  (initial, finding fix, changed HEAD/merge-base/profile, rebase,
+  final-suite repair, or operator edit). AFK **refuses to start a fourth
+  sequence**; only an operator may authorize a separately recorded fresh epoch
+  after the root cause is fixed;
+- each role gets **one transient retry** per sequence. Clean re-verification,
+  finding verdicts, retries, skips, and total paid attempts remain separately
+  visible in the ledger.
+
+After final is clean, run the full native suite once on the same commit. A test
+failure or content fix restarts ordered roles; a green suite with unchanged
+stamps permits ready. Remote-CI exceptions are per-run only: name replacement
+local commands in the ledger/PR and report `remote CI not run`, never claim the
+pushed revision had deterministic remote-CI green.
 
 **Accepted findings and the merge bar.** A finding is *open* until it has a
 recorded disposition, so an Accepted finding does not hold the loop open. It

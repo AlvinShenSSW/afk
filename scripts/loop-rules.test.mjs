@@ -100,3 +100,11 @@ test('the pilot defines the clean round its stop condition counts', () => {
 test('the pilot handoff records the lens results, not just round numbers', () => {
   assert.match(pilot, /lens-by-lens results/);
 });
+
+test('ordered external roles have separate bounded role and sequence counters', () => {
+  assert.match(afkSkill, /four finding-bearing verdicts/);
+  assert.match(afkSkill, /full-sequence counter/);
+  assert.match(afkSkill, /every sequence start regardless\s+of cause/);
+  assert.match(afkSkill, /one transient retry/);
+  assert.match(afkSkill, /refuses to start a fourth\s+sequence/);
+});

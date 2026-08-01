@@ -1,18 +1,18 @@
 ---
 name: afk-internal-review
-description: Part of the afk pipeline. The deep internal production-readiness review of a PR, run BEFORE the independent external gate. Emits APPROVE / APPROVE-WITH-COMMENTS / BLOCK as a concise, agent-actionable handoff; the full report is produced only once internal review and the external gate are both clean. Triggers include "/afk-internal-review", "internal review PR N", "review before merge".
+description: Part of the afk pipeline. The deep internal production-readiness review of a PR, run BEFORE the ordered independent external roles. Emits APPROVE / APPROVE-WITH-COMMENTS / BLOCK as a concise, agent-actionable handoff; the full report is produced only once internal review and every configured external role are clean. Triggers include "/afk-internal-review", "internal review PR N", "review before merge".
 ---
 
 # afk-internal-review
 
 The final **internal** review before merge — a rigorous, high-stakes read whose
-job is to protect production. It runs **before** the independent external gate:
-internal review first, external gate last. Use the strongest available reasoning
+job is to protect production. It runs **before** the ordered external roles:
+internal review first, outer through final afterward. Use the strongest available reasoning
 model; if the session runs a lighter one, flag it before proceeding. If no PR or
 branch is given, ask for one.
 
 This review is not the last gate, so its routine output is a **cheap, structured
-handoff** the fixing agent and the external gate can act on — not a long report.
+handoff** the fixing agent and ordered external roles can act on — not a long report.
 The long report is written only at the very end (see Output).
 
 ## 1 — Gather context
@@ -62,7 +62,7 @@ concern needs no live check, say so.
 
 ### Interim (every round until clean) — a concise handoff
 
-A terse, structured block, optimized for the fixing agent and the external gate —
+A terse, structured block, optimized for the fixing agent and external roles —
 no prose essay, no full checklist dump:
 
 ```text
@@ -77,11 +77,12 @@ verify: targeted tests run and results, or "none needed"
 Hand this back to be fixed; re-review after fixes. Never emit APPROVE while a
 blocker is open.
 
-### Final report — only when internal review AND the external gate are both clean
+### Final report — only when internal review AND all configured roles are clean
 
-Once this review has no open blockers **and** the configured external gate has
-returned clean, write the full human report: summary, decision and rationale,
-everything reviewed, residual risk, and the production-readiness checklist.
+Once this review has no open blockers **and** all configured external roles have
+returned clean on the same `HEAD` and merge-base, and the final full suite is
+green, write the full human report: summary, decision and rationale, everything
+reviewed, residual risk, and the production-readiness checklist.
 
 - **Auto-merge policy** (`merge-when-green` / `merge-to-unblock` in
   `.afk/config.md`): write the final report into the run's own directory, as
@@ -112,5 +113,6 @@ everything reviewed, residual risk, and the production-readiness checklist.
 - Always cite `file:line`; always read surrounding context, not only the diff.
 - Spec compliance is a first-class check: passing tests but not doing what the
   issue asks is a blocker.
-- You are not the last gate — an external gate runs after your verdict. Note the
-  handoff ("next: external gate") so the operator knows the pass is not final.
+- You are not the last gate — the ordered outer-to-final role sequence runs
+  after your verdict. Note the handoff ("next: external outer role") so the
+  operator knows the pass is not final.

@@ -1,14 +1,14 @@
 ---
 name: afk-claude-review
-description: Part of the afk pipeline. Runs Claude (Claude Code CLI) as an independent, read-only external review gate on the current PR/branch, then triages and fixes the findings. For use when another model implemented the change — it declines to review its own work. Interchangeable with afk-codex-review, afk-kimi-review and afk-glm-review, subject to .afk/config.md gate priority and min-pass. Triggers include "/afk-claude-review", "run claude review", "claude gate".
+description: Part of the afk pipeline. Runs Claude (Claude Code CLI) as an independent, read-only fallback external role, and the default outer fallback when Codex implemented the change. It declines to review its own work and follows ordered .afk/config.md gates. Triggers include "/afk-claude-review", "run claude review", "claude gate".
 ---
 
 # afk-claude-review
 
-An independent second-opinion review by Claude, used as an external gate after
-`afk-internal-review`. Interchangeable with `afk-codex-review`,
-`afk-kimi-review` and `afk-glm-review`: run the number of gates required by
-`.afk/config.md`, and never use a gate whose model matches the implementer's.
+An independent second-opinion review by Claude, used as a fallback external role
+after `afk-internal-review`; it is the default outer fallback when Codex is the
+implementer. Run the ordered roles required by `.afk/config.md`, and never use a
+reviewer whose model matches the implementer or another role.
 
 **This gate exists for the case where Claude is not the implementer** — Codex,
 Kimi, Gemini or Copilot wrote the change and Claude reviews it. It refuses to run

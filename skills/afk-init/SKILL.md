@@ -44,13 +44,21 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
    by every linked worktree and is not tracked, so one write covers `.afk/`
    wherever it is read from without dirtying a checkout that another session may
    have mid-work on another branch.
-7. **Surface the update notice.** Run
+7. **Surface the ordered-gate notice once.** New configs already contain
+   `gates: codex > kimi`. Never insert it into an existing config. Instead share
+   `.afk/gate-profile-notice.json` with the SessionStart hook and AFK kickoff:
+   the first entry point without a current receipt emits the bounded legacy
+   opt-in or profileless two-review cost notice and writes the receipt atomically
+   (plugin version + normalized `## external gate` section hash). Honor an
+   existing receipt; a concurrent duplicate is harmless at-least-once delivery.
+   `AFK_GATE_PROFILE_NOTICE=off` opts out.
+8. **Surface the update notice.** Run
    `node "<plugin-root>/scripts/update-check.mjs"` and pass on any line it
    prints. It is silent when current, offline, or opted out, and never blocks —
    a stale install is otherwise invisible to anyone who does not run the full
    `afk` driver. Installing the update is the host's job and the operator's
    call; never self-update from a skill.
-8. **Report** each action as created / updated / already present.
+9. **Report** each action as created / updated / already present.
 
 ## Rules
 

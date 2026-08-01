@@ -1,18 +1,15 @@
 ---
 name: afk-kimi-review
-description: Part of the afk pipeline. Runs Kimi (Kimi CLI) as an independent, read-only external review gate on the current PR/branch, then triages and fixes the findings. Interchangeable with afk-codex-review and afk-glm-review, subject to .afk/config.md gate priority and min-pass. Internal review first, external gate last. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
+description: Part of the afk pipeline. Runs Kimi (Kimi CLI) as the default final independent, read-only external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
 ---
 
 # afk-kimi-review
 
 An independent second-opinion review by Kimi (a *different* model), used as the
-**last** check before a PR is handed back for approval. Interchangeable with
-`afk-codex-review` and `afk-glm-review`: run the configured external gate set
-from `.afk/config.md`, and never use a gate whose model matches the implementer's
-model. Run `afk-internal-review` first and resolve it, then run this gate:
-internal review first, external gate last. Kimi reviews the diff read-only; you
-triage and fix. Same role and output contract as the other gate skills; only the
-underlying model differs.
+default **final** role after internal review and all outer findings are resolved.
+Run the ordered `gates` profile from `.afk/config.md`, and never use a reviewer
+whose model matches the implementer or another role. Kimi reviews the diff
+read-only; you triage and fix.
 
 The helper `kimi-gate.mjs` ships with this skill and travels with the plugin.
 
@@ -78,10 +75,11 @@ authority to merge.
 
 ## Selection
 
-Same role, same contract as the other external gate skills. The operator's
-explicit choice wins; otherwise the `afk` skill's selection rule applies (skip
-the implementer's own model). The round-1 gate choice is locked for later rounds
-of the same PR; a mid-loop switch resets the finding baseline and is recorded.
+Kimi is the default final role, not a generic second pass. The operator's
+explicit ordered profile wins; otherwise the `afk` skill's role/fallback rule
+applies (skip the implementer's and already-used models). The provider is locked
+to final for later sequences; a substitution is recorded and resets only its
+provider-specific finding baseline.
 
 ## Setup (per machine, once)
 
