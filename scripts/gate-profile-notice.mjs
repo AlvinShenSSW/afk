@@ -26,17 +26,21 @@ function optionValue(argv, name) {
   return String(argv[index + 1] || '').trim();
 }
 
-export function resolveGateProfileNotice({
+function noNotice() {
+  return { notice: '', commit() {} };
+}
+
+export function prepareGateProfileNotice({
   afkDir,
   pluginRoot,
   env = process.env,
 } = {}) {
-  if (!afkDir || isGateDisabled('AFK_GATE_PROFILE_NOTICE', env)) return '';
+  if (!afkDir || isGateDisabled('AFK_GATE_PROFILE_NOTICE', env)) return noNotice();
 
   const configPath = join(afkDir, 'config.md');
   const receiptPath = join(afkDir, 'gate-profile-notice.json');
   const section = 'external gate';
-  if (hasConfigKeyInSection(configPath, section, 'gates')) return '';
+  if (hasConfigKeyInSection(configPath, section, 'gates')) return noNotice();
 
   const values = Object.fromEntries(
     PROFILE_KEYS.map((key) => [key, readConfigSectionValue(configPath, section, key)]),
@@ -51,7 +55,7 @@ export function resolveGateProfileNotice({
 
   try {
     const prior = JSON.parse(readFileSync(receiptPath, 'utf8'));
-    if (prior.signature === signature) return '';
+    if (prior.signature === signature) return noNotice();
   } catch {
     // Missing/unreadable receipt means at-least-once notification.
   }
@@ -67,29 +71,37 @@ export function resolveGateProfileNotice({
         'If reduced coverage is deliberate, a one-item profile such as `gates: codex` is the explicit escape hatch.',
       ].join(' ');
 
-  try {
-    mkdirSync(dirname(receiptPath), { recursive: true });
-    const temp = `${receiptPath}.${process.pid}.tmp`;
-    writeFileSync(temp, JSON.stringify({ signature, version }), 'utf8');
-    renameSync(temp, receiptPath);
-  } catch {
-    // A lost receipt write costs at most one duplicate bounded notice.
-  }
-  return notice;
+  return {
+    notice,
+    commit() {
+      try {
+        mkdirSync(dirname(receiptPath), { recursive: true });
+        const temp = `${receiptPath}.${process.pid}.tmp`;
+        writeFileSync(temp, JSON.stringify({ signature, version }), 'utf8');
+        renameSync(temp, receiptPath);
+      } catch {
+        // A lost receipt write costs at most one duplicate bounded notice.
+      }
+    },
+  };
 }
 
-function runCli(argv = process.argv.slice(2), env = process.env) {
+async function runCli(argv = process.argv.slice(2), env = process.env) {
   const pluginRoot = optionValue(argv, '--plugin-root')
     || join(dirname(fileURLToPath(import.meta.url)), '..');
-  const notice = resolveGateProfileNotice({
+  const pending = prepareGateProfileNotice({
     afkDir: optionValue(argv, '--afk-dir'),
     pluginRoot,
     env,
   });
-  if (notice) console.log(notice);
+  if (!pending.notice) return;
+  await new Promise((resolve, reject) => {
+    process.stdout.write(`${pending.notice}\n`, (error) => (error ? reject(error) : resolve()));
+  });
+  pending.commit();
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { runCli(); } catch { /* advisory notice never blocks AFK */ }
+  try { await runCli(); } catch { /* advisory notice never blocks AFK */ }
   process.exitCode = 0;
 }

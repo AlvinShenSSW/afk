@@ -391,7 +391,9 @@ SessionStart hook imports its resolver; `afk-init` and AFK kickoff invoke its CL
 through the resolved plugin root. The first entry point observing no current
 receipt emits and writes it, and the others skip. This covers plugin, drop-in,
 non-startup, and already-active sessions without systematically duplicating the
-notice. The operation distinguishes two
+notice. The resolver prepares a notice plus a receipt commit; each caller commits
+only after its stdout delivery succeeds, so a failed delivery remains retryable.
+The operation distinguishes two
 bounded, config-aware notices. D2 case 3 (`gates` absent and at least one
 external-gate field present) receives the legacy opt-in notice:
 

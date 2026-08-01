@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
-import { resolveGateProfileNotice } from './gate-profile-notice.mjs';
+import { prepareGateProfileNotice } from './gate-profile-notice.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(ROOT, 'scripts', 'gate-profile-notice.mjs');
@@ -25,9 +25,11 @@ function withAfk(config, fn) {
 
 test('shared resolver emits and receipts a legacy-profile notice once', () => {
   withAfk('## external gate\nmin-pass: 1\n', (afkDir) => {
-    const first = resolveGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} });
-    assert.match(first, /legacy gate profile/i);
-    assert.equal(resolveGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }), '');
+    const first = prepareGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} });
+    assert.match(first.notice, /legacy gate profile/i);
+    assert.throws(() => readFileSync(join(afkDir, 'gate-profile-notice.json'), 'utf8'));
+    first.commit();
+    assert.equal(prepareGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }).notice, '');
     const receipt = JSON.parse(readFileSync(join(afkDir, 'gate-profile-notice.json'), 'utf8'));
     assert.equal(receipt.version, '0.2.12');
     assert.match(receipt.signature, /^[a-f0-9]{64}$/);
@@ -42,20 +44,20 @@ test('CLI and imported resolver honor the same receipt', () => {
     });
     assert.equal(run.status, 0, run.stderr);
     assert.match(run.stdout, /two sequential external reviews/i);
-    assert.equal(resolveGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }), '');
+    assert.equal(prepareGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }).notice, '');
   });
 });
 
 test('explicit gates and the opt-out stay silent without a receipt', () => {
   withAfk('## external gate\ngates: codex > kimi\n', (afkDir) => {
-    assert.equal(resolveGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }), '');
+    assert.equal(prepareGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }).notice, '');
   });
   withAfk('## external gate\nmin-pass: 1\n', (afkDir) => {
-    assert.equal(resolveGateProfileNotice({
+    assert.equal(prepareGateProfileNotice({
       afkDir,
       pluginRoot: ROOT,
       env: { AFK_GATE_PROFILE_NOTICE: 'off' },
-    }), '');
+    }).notice, '');
   });
 });
 
