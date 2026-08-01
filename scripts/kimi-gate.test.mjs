@@ -12,6 +12,8 @@ import { join } from 'node:path';
 
 import { test } from 'node:test';
 
+import { gateTestEnv } from './gate-test-env.mjs';
+
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-kimi-review/kimi-gate.mjs';
 
@@ -19,7 +21,7 @@ function runGate({ args = [], env = {} } = {}) {
   return spawnSync(process.execPath, [GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: gateTestEnv(env),
   });
 }
 

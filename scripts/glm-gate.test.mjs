@@ -8,6 +8,8 @@ import { createServer } from 'node:http';
 
 import { test } from 'node:test';
 
+import { gateTestEnv } from './gate-test-env.mjs';
+
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-glm-review/glm-gate.mjs';
 
@@ -15,14 +17,14 @@ function runGate({ args = [], env = {} } = {}) {
   return spawnSync(process.execPath, [GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: gateTestEnv(env),
   });
 }
 
 async function runGateAsync({ args = [], env = {} } = {}) {
   const child = spawn(process.execPath, [GATE, ...args], {
     cwd: repoRoot,
-    env: { ...process.env, ...env },
+    env: gateTestEnv(env),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '';
