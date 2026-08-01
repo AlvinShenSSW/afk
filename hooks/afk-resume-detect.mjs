@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { readConfigValue } from '../lib/config.mjs';
 import { mainWorktree } from '../lib/gate/git.mjs';
 import { buildContext, collectResumable, normalizeMode } from '../lib/resume/detect.mjs';
+import { prepareGateProfileNotice } from '../scripts/gate-profile-notice.mjs';
 import { resolveUpdateNotice } from '../scripts/update-check.mjs';
 
 async function readStdin() {
@@ -59,12 +60,15 @@ async function main() {
     ? []
     : collectResumable(join(afkDir, 'runs'), { root, now: new Date() });
 
+  const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
   const notice = await resolveUpdateNotice({
-    pluginRoot: join(dirname(fileURLToPath(import.meta.url)), '..'),
+    pluginRoot,
     cachePath: join(afkDir, 'update-check.json'),
   });
+  const resumeContext = buildContext(runs, { mode });
+  const profileNotice = prepareGateProfileNotice({ afkDir, pluginRoot });
 
-  const context = [notice, buildContext(runs, { mode })].filter(Boolean).join('\n\n');
+  const context = [notice, profileNotice.notice, resumeContext].filter(Boolean).join('\n\n');
   if (!context) return; // nothing to say
 
   const payload = JSON.stringify({
@@ -75,7 +79,10 @@ async function main() {
   });
   // Await the write: a forced process.exit() can truncate a still-pending pipe
   // write, which would silently drop the JSON the whole hook exists to emit.
-  await new Promise((resolve) => { process.stdout.write(payload, resolve); });
+  await new Promise((resolve, reject) => {
+    process.stdout.write(payload, (error) => (error ? reject(error) : resolve()));
+  });
+  profileNotice.commit();
 }
 
 main()

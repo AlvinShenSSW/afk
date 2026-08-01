@@ -4,7 +4,7 @@ Canonical instructions for any agent or human working **on this repository**.
 `CLAUDE.md` and `GEMINI.md` defer here.
 
 This repo packages a set of skills — an autonomous PR pipeline (plan → implement
-→ internal review → independent external gate) — as a standalone, cross-agent
+→ internal review → ordered independent external roles) — as a standalone, cross-agent
 plugin. It is stack-agnostic and carries no project's specifics; a consuming
 project supplies its own via a gitignored `.afk/` directory.
 
@@ -87,9 +87,11 @@ node --test                                  # unit tests
 
 Design (for anything non-trivial, a spec under `docs/designs/specs/`) → tests
 first → implement → self-review → open a PR. Before merge a PR passes the owner
-review and **one** independent external gate — a different model than the one
-that wrote the change. CI green is necessary but not sufficient; the owner's
-review is the merge gate.
+review and the configured ordered external roles — by default Codex is the outer
+reviewer and Kimi is the final reviewer, with independent fallbacks when either
+matches the implementer or is unavailable. Both roles differ from the
+implementer and each other. CI green is necessary but not sufficient; the
+owner's review is the merge gate.
 
 ## What this plugin can and cannot enforce
 

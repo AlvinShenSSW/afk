@@ -51,7 +51,7 @@ round — and every finding from an earlier round has its fix verified: by
 re-running the affected checks where one applies, otherwise by a recorded
 verification step; a fix's absence from later rounds verifies
 nothing. Two consecutive clean rounds bound the **effort**, not correctness —
-the reason internal review and the external gate still follow.
+the reason internal review and the ordered external roles still follow.
 
 - **Spec:** every acceptance criterion met; nothing out-of-scope added.
 - **Correctness:** edge cases, error paths, off-by-one, concurrency.

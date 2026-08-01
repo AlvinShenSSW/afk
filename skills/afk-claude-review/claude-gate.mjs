@@ -3,7 +3,7 @@
 //
 // Runs a READ-ONLY structural review of a branch/commit/uncommitted diff via
 // `claude -p` and prints ONLY the final review between markers (transcript ->
-// log file). External review gate, interchangeable with the other afk gates.
+// log file). External reviewer that can fill a configured ordered AFK role.
 //
 // Read-only by construction: the reviewer session loads `Read,Grep,Glob` and
 // nothing else. It has no shell, so there is no command allowlist to maintain
