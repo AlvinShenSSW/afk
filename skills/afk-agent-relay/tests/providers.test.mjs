@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRegistry, resolveProvider } from '../lib/providers.mjs';
-import { deepseekUsage } from '../lib/openai_provider.mjs';
+import { deepseekUsage } from '../../../lib/http/openai-provider.mjs';
 
 function mockFetch(captured, responseJson) {
   return async (url, opts) => {
     captured.url = url;
     captured.body = JSON.parse(opts.body);
     captured.auth = opts.headers.Authorization;
+    captured.apiKey = opts.headers['api-key'];
     return { ok: true, async json() { return responseJson; } };
   };
 }
@@ -26,14 +27,19 @@ test('deepseek sends thinking + bearer key and normalizes usage', async () => {
     maxTokens: 100,
     env: { DEV_DEEPSEEK_API_KEY: 'k123' },
     fetchImpl: mockFetch(captured, {
-      choices: [{ message: { content: 'hello' } }],
+      model: 'deepseek-v4-pro-20260801',
+      choices: [{ finish_reason: 'stop', message: { content: 'hello' } }],
       usage: { prompt_tokens: 10, completion_tokens: 5, prompt_cache_hit_tokens: 4 },
     }),
   });
   assert.equal(res.text, 'hello');
+  assert.equal(res.reportedModel, 'deepseek-v4-pro-20260801');
+  assert.equal(res.finishReason, 'stop');
   assert.deepEqual(res.usage, { input: 10, output: 5, cacheRead: 4 });
   assert.equal(captured.auth, 'Bearer k123');
   assert.deepEqual(captured.body.thinking, { type: 'enabled' });
+  assert.equal(captured.body.max_tokens, 100);
+  assert.equal(captured.body.max_completion_tokens, undefined);
   assert.match(captured.url, /api\.deepseek\.com\/chat\/completions/);
 });
 
@@ -48,18 +54,28 @@ test('deepseek thinking can be disabled via env', async () => {
   assert.deepEqual(captured.body.thinking, { type: 'disabled' });
 });
 
-test('mimo does NOT send a thinking field (per-provider normalization)', async () => {
+test('mimo uses the Token Plan header and V2.5 token field', async () => {
   const p = resolveProvider(buildRegistry(), 'mimo');
   const captured = {};
-  await p.complete({
+  const res = await p.complete({
     system: 's', user: 'u', model: 'mimo-v2.5-pro', maxTokens: 50,
     env: { DEV_MIMO_API_KEY: 'mk' },
-    fetchImpl: mockFetch(captured, { choices: [{ message: { content: 'x' } }], usage: {} }),
+    fetchImpl: mockFetch(captured, {
+      model: 'mimo-v2.5-pro',
+      choices: [{ finish_reason: 'stop', message: { content: 'x' } }],
+      usage: {},
+    }),
   });
   assert.equal(captured.body.thinking, undefined);
+  assert.equal(captured.auth, undefined);
+  assert.equal(captured.apiKey, 'mk');
+  assert.equal(captured.body.max_completion_tokens, 50);
+  assert.equal(captured.body.max_tokens, undefined);
+  assert.equal(res.reportedModel, 'mimo-v2.5-pro');
+  assert.equal(res.finishReason, 'stop');
 });
 
-test('token-limit field is per-provider (deepseek vs kimi)', async () => {
+test('token-limit field is per-provider (DeepSeek V4/MiMo V2.5 vs Kimi)', async () => {
   const reg = buildRegistry();
   const capD = {};
   await resolveProvider(reg, 'deepseek').complete({
@@ -67,8 +83,17 @@ test('token-limit field is per-provider (deepseek vs kimi)', async () => {
     env: { DEV_DEEPSEEK_API_KEY: 'k' },
     fetchImpl: mockFetch(capD, { choices: [{ message: { content: 'x' } }], usage: {} }),
   });
-  assert.equal(capD.body.max_completion_tokens, 42);
-  assert.equal(capD.body.max_tokens, undefined);
+  assert.equal(capD.body.max_tokens, 42);
+  assert.equal(capD.body.max_completion_tokens, undefined);
+
+  const capM = {};
+  await resolveProvider(reg, 'mimo').complete({
+    system: 's', user: 'u', model: 'm', maxTokens: 11,
+    env: { DEV_MIMO_API_KEY: 'k' },
+    fetchImpl: mockFetch(capM, { choices: [{ message: { content: 'x' } }], usage: {} }),
+  });
+  assert.equal(capM.body.max_completion_tokens, 11);
+  assert.equal(capM.body.max_tokens, undefined);
 
   const capK = {};
   await resolveProvider(reg, 'kimi').complete({
@@ -105,6 +130,29 @@ test('HTTP 429 maps to rate_limit code', async () => {
   await assert.rejects(
     () => p.complete({ system: 's', user: 'u', model: 'm', maxTokens: 1, env: { DEV_DEEPSEEK_API_KEY: 'k' }, fetchImpl }),
     (e) => e.code === 'rate_limit',
+  );
+});
+
+test('HTTP error messages never retain the upstream response body', async () => {
+  const p = resolveProvider(buildRegistry(), 'deepseek');
+  const key = 'review-key-that-must-not-echo';
+  const token = `tp-${'X7y'.repeat(12)}`;
+  const fetchImpl = async () => ({
+    ok: false,
+    status: 500,
+    async text() { return `upstream echoed ${key} and ${token}`; },
+  });
+  await assert.rejects(
+    () => p.complete({
+      system: 's', user: 'u', model: 'm', maxTokens: 1,
+      env: { DEV_DEEPSEEK_API_KEY: key }, fetchImpl,
+    }),
+    (error) => {
+      assert.equal(error.code, 'upstream');
+      assert.doesNotMatch(error.message, new RegExp(key));
+      assert.doesNotMatch(error.message, /tp-/);
+      return true;
+    },
   );
 });
 

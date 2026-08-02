@@ -7,7 +7,14 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
-import { isExcluded, redactSecrets } from './redact.mjs';
+import {
+  filterDiffByExcludes,
+  filterGrepByExcludes,
+  isExcluded,
+  redactSecrets,
+} from '../../../lib/secret.mjs';
+
+export { filterDiffByExcludes, filterGrepByExcludes };
 
 function defaultRun(cmd, args) {
   const r = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -31,55 +38,6 @@ function detectBase(run) {
   const r = run('git', ['rev-parse', '--abbrev-ref', 'origin/HEAD']);
   if (r.status === 0 && r.stdout.trim()) return r.stdout.trim().replace(/^origin\//, '');
   return 'main';
-}
-
-// Drop per-file sections of a `git diff` whose path is on the exclude list, so a
-// secret file caught in the diff (e.g. an accidental .env change) is NOT sent to
-// the provider. The exclude check is the same one used for --files/--logs.
-export function filterDiffByExcludes(diff, excludeGlobs = []) {
-  const sections = [];
-  let cur = null;
-  for (const line of diff.split('\n')) {
-    const m = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-    if (m) {
-      if (cur) sections.push(cur);
-      // Capture BOTH sides — a rename/copy of a secret to a non-secret name
-      // (`diff --git a/.env b/config.txt`) must still be dropped.
-      cur = { aPath: m[1], bPath: m[2], lines: [line] };
-    } else if (cur) {
-      cur.lines.push(line);
-    } else {
-      cur = { aPath: null, bPath: null, lines: [line] }; // preamble before first file
-    }
-  }
-  if (cur) sections.push(cur);
-
-  const kept = [];
-  const dropped = [];
-  for (const s of sections) {
-    const excluded =
-      (s.aPath && isExcluded(s.aPath, excludeGlobs)) ||
-      (s.bPath && isExcluded(s.bPath, excludeGlobs));
-    if (excluded) dropped.push(s.bPath || s.aPath);
-    else kept.push(s.lines.join('\n'));
-  }
-  return { text: kept.join('\n'), dropped };
-}
-
-// Same idea for ripgrep output (`path:line:content`) — drop hits from excluded
-// files so a `--grep` over the tree can't surface a secret file's contents.
-export function filterGrepByExcludes(out, excludeGlobs = []) {
-  const kept = [];
-  const dropped = new Set();
-  for (const line of out.split('\n')) {
-    const m = line.match(/^([^:]+):\d+:/);
-    if (m && isExcluded(m[1], excludeGlobs)) {
-      dropped.add(m[1]);
-      continue;
-    }
-    kept.push(line);
-  }
-  return { text: kept.join('\n'), dropped: [...dropped] };
 }
 
 export function gatherContext(sources = {}, opts = {}) {

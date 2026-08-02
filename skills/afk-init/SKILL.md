@@ -38,8 +38,8 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
    `refresh` (the recorded value is a superseded version of this same install —
    write the resolved one), or `keep` (a custom or manual root, which is a
    deliberate choice and survives). Report the reason either way.
-6. **Ignore `.afk/`.** Append the line from the plugin's
-   `templates/gitignore-snippet.txt`, if absent, to `info/exclude` under
+6. **Ignore local AFK state and credentials.** Append the missing entries from
+   the plugin's `templates/gitignore-snippet.txt` to `info/exclude` under
    `git rev-parse --path-format=absolute --git-common-dir`. That file is shared
    by every linked worktree and is not tracked, so one write covers `.afk/`
    wherever it is read from without dirtying a checkout that another session may
@@ -67,5 +67,6 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
 - Idempotent and non-destructive: existing values win; re-runs only fill gaps.
   The one exception is a `pluginRoot` that names a superseded version of the
   install now running — a stale cache path is an expired fact, not a choice.
-- Secrets never enter `.afk/config.md`; keys stay in the environment.
+- Secrets never enter `.afk/config.md`; keys stay in the environment or the
+  ignored local `.env` installed by the same bootstrap rule.
 - A blank or absent `config.md` is valid — the pipeline resolves safe defaults.

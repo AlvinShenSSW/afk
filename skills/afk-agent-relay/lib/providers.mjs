@@ -8,7 +8,7 @@
 // Tool *behaviour* — which provider per role, timeouts, redaction — stays
 // under the AGENT_RELAY_* namespace; only provider config lives under DEV_*.
 
-import { makeOpenAiProvider, deepseekUsage } from './openai_provider.mjs';
+import { makeOpenAiProvider, deepseekUsage } from '../../../lib/http/openai-provider.mjs';
 import { makeCodexProvider } from './codex_provider.mjs';
 import { isOff, relayError } from './relay.mjs';
 
@@ -21,9 +21,7 @@ export function buildRegistry() {
       baseUrlDefault: 'https://api.deepseek.com',
       modelEnv: 'DEV_DEEPSEEK_MODEL',
       modelDefault: 'deepseek-v4-pro',
-      // DeepSeek V4 Pro is a reasoning model — needs `max_completion_tokens`,
-      // not `max_tokens`.
-      tokenParam: 'max_completion_tokens',
+      tokenParam: 'max_tokens',
       // DeepSeek dual-mode: send `thinking` explicitly (default enabled) so a
       // server-side default flip can't silently change behaviour. Disable via
       // DEV_DEEPSEEK_THINKING=off. Top-level field (raw HTTP, not SDK extra_body).
@@ -40,9 +38,8 @@ export function buildRegistry() {
       baseUrlDefault: 'https://token-plan-cn.xiaomimimo.com/v1',
       modelEnv: 'DEV_MIMO_MODEL',
       modelDefault: 'mimo-v2.5-pro',
-      // Classic OpenAI-compatible default; override with AGENT_RELAY_TOKEN_PARAM
-      // if this endpoint wants max_completion_tokens.
-      tokenParam: 'max_tokens',
+      tokenParam: 'max_completion_tokens',
+      buildHeaders: (key) => ({ 'api-key': key }),
     }),
 
     kimi: makeOpenAiProvider({

@@ -21,6 +21,8 @@ const gates = {
   claude: read('../skills/afk-claude-review/SKILL.md'),
   kimi: read('../skills/afk-kimi-review/SKILL.md'),
   glm: read('../skills/afk-glm-review/SKILL.md'),
+  deepseek: read('../skills/afk-deepseek-review/SKILL.md'),
+  mimo: read('../skills/afk-mimo-review/SKILL.md'),
 };
 
 // The summary every gate skill carries, byte-identical. The driver holds the
@@ -112,7 +114,7 @@ test('structural P2 risk remains operator-owned at auto-merge', () => {
   assert.match(internalReview, /operator owns that risk at the merge boundary/i);
 });
 
-test('all four gate skills carry the identical triage sentence', () => {
+test('all gate skills carry the identical triage sentence', () => {
   for (const [name, text] of Object.entries(gates)) {
     assert.equal(
       countMatches(text, TRIAGE_SENTENCE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
@@ -130,7 +132,7 @@ test('valuable lower-severity work batches only into an already-required P1 pass
   assert.match(afkSkill, /lower-severity-only verdict never reopens a clean\s+revision/i);
 });
 
-test('all four gate skills carry the identical value-aware batch rule', () => {
+test('all gate skills carry the identical value-aware batch rule', () => {
   for (const [name, text] of Object.entries(gates)) {
     assert.equal(
       countMatches(text, BATCH_SENTENCE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),

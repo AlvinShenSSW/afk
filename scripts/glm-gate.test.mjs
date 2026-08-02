@@ -83,6 +83,62 @@ test('a GLM response body that never finishes ends as a non-zero timeout error',
   }
 });
 
+test('a GLM upstream error never echoes its response body', async () => {
+  const key = 'glm-key-must-not-echo';
+  const token = `tp-${'R8w'.repeat(12)}`;
+  const server = createServer((_request, response) => {
+    response.writeHead(500, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ error: `echo ${key} ${token}` }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const { port } = server.address();
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: {
+        ZAI_API_KEY: key,
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /SKIPPED: Z\.ai HTTP 500/);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(key));
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /tp-/);
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
+
+test('a GLM successful response cannot echo the configured key', async () => {
+  const key = 'glm-success-key-with-arbitrary-shape';
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      choices: [{ message: { content: `APPROVE ${key}` } }],
+    }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const { port } = server.address();
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: {
+        ZAI_API_KEY: key,
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /APPROVE/);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(key));
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+});
+
 // ── design mode ─────────────────────────────────────────────────────────────
 
 test('glm design mode resolves the design kind, not a diff selector', () => {
@@ -152,7 +208,10 @@ test('every external gate is listed on every plugin surface', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   const config = readFileSync(new URL('../templates/afk-config.example.md', import.meta.url), 'utf8');
 
-  for (const gate of ['afk-codex-review', 'afk-claude-review', 'afk-kimi-review', 'afk-glm-review']) {
+  for (const gate of [
+    'afk-codex-review', 'afk-claude-review', 'afk-kimi-review',
+    'afk-glm-review', 'afk-deepseek-review', 'afk-mimo-review',
+  ]) {
     assert.match(afkSkill, new RegExp(gate), `afk/SKILL.md must list ${gate}`);
     assert.match(readme, new RegExp(gate), `README must list ${gate}`);
   }

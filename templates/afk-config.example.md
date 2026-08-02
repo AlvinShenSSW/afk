@@ -9,6 +9,7 @@ build: <cmd>
 gates:    codex > kimi
                          # ordered required roles: outer → ... → final
 priority: codex > claude > kimi > glm # closed fallback pool for an ineligible preferred role
+                         # explicit profiles may also name deepseek or mimo; neither is a built-in fallback
 design-gate: off         # opt-in pilot: one gate over the design doc before code
                          #   off (default) · risky (design-heavy/high-blast-radius only) · on (every issue)
 # implementer:           # who writes the code, if not the driver (relay). May only

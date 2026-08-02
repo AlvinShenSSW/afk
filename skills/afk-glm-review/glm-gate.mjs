@@ -17,45 +17,17 @@
 //
 // Opt out with GLM_REVIEW_GATE=off.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-
-import { abortAfter, isGateDisabled, reviewTimeoutMs } from '../../lib/gate/env.mjs';
-import { git } from '../../lib/gate/git.mjs';
+import {
+  abortAfter, isGateDisabled, positiveIntEnv, reviewTimeoutMs,
+} from '../../lib/gate/env.mjs';
+import { readCredential } from '../../lib/gate/credential.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
-import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
-import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
+import { buildSnapshot } from '../../lib/gate/snapshot.mjs';
+import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
+import { redactCredential } from '../../lib/secret.mjs';
 
 const { emitSkip, emitReview, emitError } = createProtocol({ label: 'GLM', slug: 'glm-gate' });
-
-if (isGateDisabled('GLM_REVIEW_GATE')) {
-  emitSkip('GLM gate disabled via GLM_REVIEW_GATE.');
-}
-
-function keyFromDotenv() {
-  const gitTop = git(['rev-parse', '--show-toplevel']).trim();
-  const commonDir = git(['rev-parse', '--path-format=absolute', '--git-common-dir']).trim();
-  const mainWorktree = commonDir ? dirname(commonDir) : '';
-  const candidates = [
-    join(process.cwd(), '.env'),
-    gitTop && join(gitTop, '.env'),
-    mainWorktree && join(mainWorktree, '.env'),
-  ].filter(Boolean);
-
-  for (const path of candidates) {
-    try {
-      if (!existsSync(path)) continue;
-      for (const line of readFileSync(path, 'utf8').split('\n')) {
-        const match = line.match(/^\s*(?:export\s+)?(ZAI_API_KEY|GLM_API_KEY)\s*=\s*(.+?)\s*$/);
-        if (match) return match[2].replace(/^["']|["']$/g, '').trim();
-      }
-    } catch {
-      // Continue probing other local key locations.
-    }
-  }
-  return '';
-}
 
 const userArgs = process.argv.slice(2);
 const printArgsOnly = userArgs.includes('--print-args');
@@ -64,13 +36,14 @@ const printArgsOnly = userArgs.includes('--print-args');
 // document text (not a diff) is what got sent.
 const printPromptOnly = userArgs.includes('--print-prompt');
 
-const model = (process.env.GLM_REVIEW_MODEL || 'glm-5.2').trim();
-const baseUrl = (process.env.GLM_REVIEW_BASE_URL || 'https://api.z.ai/api/anthropic').replace(/\/+$/, '');
-const maxCtx = Number.parseInt(process.env.GLM_REVIEW_MAX_CTX_BYTES || '400000', 10) || 400000;
+const model = String(process.env.GLM_REVIEW_MODEL ?? '').trim() || 'glm-5.2';
+const baseUrl = (String(process.env.GLM_REVIEW_BASE_URL ?? '').trim() || 'https://api.z.ai/api/anthropic').replace(/\/+$/, '');
+const maxCtx = positiveIntEnv('GLM_REVIEW_MAX_CTX_BYTES', 400000);
 const timeoutMs = reviewTimeoutMs('glm');
 
 const target = parseTarget(userArgs);
 const isDesign = target.kind === 'design';
+let snapshot;
 
 // A malformed --design is operator error that must fail loud on EVERY gate, even
 // one about to self-skip, so a design target validates BEFORE the independence
@@ -80,6 +53,14 @@ if (isDesign) {
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
+  snapshot = buildSnapshot({
+    target, maxBytes: maxCtx, budgetName: 'GLM_REVIEW_MAX_CTX_BYTES',
+  });
+  if (snapshot.error) emitError(`cannot review — ${snapshot.error}`, 1);
+}
+
+if (isGateDisabled('GLM_REVIEW_GATE')) {
+  emitSkip('GLM gate disabled via GLM_REVIEW_GATE.');
 }
 
 const guard = guardFor('glm', userArgs);
@@ -92,132 +73,70 @@ if (!isDesign) {
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
+  snapshot = buildSnapshot({
+    target, maxBytes: maxCtx, budgetName: 'GLM_REVIEW_MAX_CTX_BYTES',
+  });
+  if (snapshot.error) emitError(`cannot review — ${snapshot.error}`, 1);
 }
 
-// A design target never touches the diff path: collectDiff has no design branch,
-// so a leaked design kind would diff `undefined...HEAD`.
-let diff = '';
-let stat = '';
-let changedFiles = [];
-if (!isDesign) {
-  const collected = collectDiff(target);
-  if (collected.error) {
-    // Never a skip: a target git cannot read is unreviewable, not unchanged.
-    emitError(`cannot review — ${collected.error}`, 1);
-  }
-  ({ diff, stat, changedFiles } = collected);
-}
-const hasChanges = isDesign ? true : Boolean(diff.trim() || changedFiles.length);
+const availableKey = readCredential(['ZAI_API_KEY', 'GLM_API_KEY']);
 
 if (printArgsOnly) {
   // Dry run: resolve the target, call nothing. Runs before every skip so a dry
   // run on a clean tree can still report which base it resolved.
-  process.stdout.write(`${JSON.stringify({
+  const safe = (value) => redactCredential(value, availableKey).text;
+  const rendered = JSON.stringify({
     kind: target.kind,
-    base: target.base ?? null,
-    commit: target.commit ?? null,
-    label: target.label,
-    command: target.command ?? null,
-    hasChanges,
-    changedFiles,
-    model,
-    baseUrl,
+    base: target.base == null ? null : safe(target.base),
+    commit: target.commit == null ? null : safe(target.commit),
+    label: safe(target.label),
+    command: target.command == null ? null : safe(target.command),
+    hasChanges: snapshot.hasChanges,
+    changedFiles: snapshot.changedFiles.map(safe),
+    model: safe(model),
+    baseUrl: safe(baseUrl),
     timeoutMs,
-  }, null, 2)}\n`);
+  }, null, 2);
+  process.stdout.write(`${rendered}\n`);
   process.exit(0);
 }
 
-// Build the payload and the mode-specific context clause. GLM has NO tools in
-// either mode: it must be told the snapshot is all it has, and never told to
-// "inspect" or "run" anything — that invites a fabricated "I checked X" from a
-// reviewer that cannot check. See lib/gate/prompt.mjs for why this is not shared.
-let payload;
-let systemPrompt;
-if (isDesign) {
-  // Design mode replaces the whole payload builder: send the document text, not
-  // the diff + per-file contents + byte budget a code review needs.
-  const doc = readDesign(target);
-  if (doc.error) {
-    // A read that failed after validateTarget passed (TOCTOU) is unreviewable,
-    // not unchanged — fail loud, never skip.
-    emitError(`cannot review — ${doc.error}`, 1);
-  }
-  // Enforce the context bound: the design stage runs exactly ONE gate, so
-  // sending an oversized doc whole (letting Z.ai reject it and reporting that as
-  // a SKIP) leaves the design unreviewed. Truncating a design is worse than a
-  // diff — a partial design reads as whole. Over budget is operator/config error:
-  // fail loud so the operator scopes it or raises GLM_REVIEW_MAX_CTX_BYTES.
-  const docBytes = Buffer.byteLength(doc.text, 'utf8');
-  if (docBytes > maxCtx) {
-    emitError(`--design doc is ${docBytes} bytes, over the ${maxCtx}-byte budget. A design cannot be truncated and reviewed honestly — scope it or raise GLM_REVIEW_MAX_CTX_BYTES.`, 1);
-  }
-  payload = `## Design document (${target.path})\n${doc.text}\n`;
-  const context = 'You are given the full text of a design document. That document is everything you have: you cannot run commands or open other files, so never claim to have done either. Where a judgement would require a file you were not given, say so rather than assume.';
-  systemPrompt = buildDesignReviewPrompt({ scope: target.label, context });
-} else {
-  const diffCap = Math.floor(maxCtx * 0.6);
-  let diffText = diff;
-  if (diffText.length > diffCap) {
-    diffText = `${diffText.slice(0, diffCap)}\n\n[diff truncated at ${diffCap} bytes of ${diff.length}; raise GLM_REVIEW_MAX_CTX_BYTES or scope the review to fewer files]\n`;
-  }
-
-  payload = `## Diff stat\n${stat}\n\n## Full diff\n${diffText}\n`;
-  let budget = maxCtx - payload.length;
-  let filesBlock = '\n## Full current contents of changed files\n';
-
-  for (const file of changedFiles) {
-    if (budget <= 0) {
-      filesBlock += '\n[omitted remaining files; context budget reached]\n';
-      break;
-    }
-
-    let content = '';
-    try {
-      const fileStat = statSync(file);
-      if (!fileStat.isFile()) continue;
-      if (fileStat.size > 200000) {
-        filesBlock += `\n### ${file}\n[skipped; file >200KB]\n`;
-        continue;
-      }
-      content = readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-
-    const block = `\n### ${file}\n\`\`\`\n${content}\n\`\`\`\n`;
-    if (block.length > budget) {
-      filesBlock += `\n### ${file}\n[truncated; context budget reached]\n`;
-      break;
-    }
-    filesBlock += block;
-    budget -= block.length;
-  }
-
-  payload += filesBlock;
-
-  const context = 'You are given the diff and the full current contents of the changed files. That snapshot is everything you have: you cannot run commands or open other files, so never claim to have done either. Where a judgement would require a file you were not given, say so rather than assume.';
-  systemPrompt = buildReviewPrompt({ scope: target.label, context });
-}
-
-const userPrompt = `Review ${target.label}.\n\n${payload}`;
+const previewSystem = redactCredential(snapshot.systemPrompt, availableKey).text;
+const previewLabel = redactCredential(snapshot.reviewLabel, availableKey).text;
+const previewPayload = redactCredential(snapshot.payload, availableKey).text;
+const previewUserPrompt = `Review ${previewLabel}.\n\n${previewPayload}`;
 
 if (printPromptOnly) {
-  process.stdout.write(`${systemPrompt}\n\n----- user -----\n${userPrompt}\n`);
+  process.stdout.write(`${previewSystem}\n\n----- user -----\n${previewUserPrompt}\n`);
   process.exit(0);
 }
 
-const apiKey = (process.env.ZAI_API_KEY || process.env.GLM_API_KEY || keyFromDotenv()).trim();
+const apiKey = availableKey;
 if (!apiKey) {
   emitSkip('No API key; set ZAI_API_KEY or GLM_API_KEY in env or .env, or GLM_REVIEW_GATE=off to disable.');
 }
 
-if (!hasChanges) {
-  emitSkip(`No changes found for ${target.label}.`);
+for (const note of [...new Set(snapshot.notes)]) {
+  process.stderr.write(`[glm-gate] snapshot: ${note}\n`);
 }
+if (!snapshot.hasChanges) {
+  const reason = snapshot.notes.length
+    ? `No reviewable changes found for ${target.label} after snapshot exclusions.`
+    : `No changes found for ${target.label}.`;
+  emitSkip(reason);
+}
+
+const requestSystem = redactCredential(snapshot.systemPrompt, apiKey).text;
+const requestLabel = redactCredential(snapshot.reviewLabel, apiKey).text;
+const requestPayload = redactCredential(snapshot.payload, apiKey).text;
+if (Buffer.byteLength(requestPayload, 'utf8') > maxCtx) {
+  emitError(`cannot review — credential redaction exceeded the ${maxCtx}-byte snapshot budget.`, 1);
+}
+const userPrompt = `Review ${requestLabel}.\n\n${requestPayload}`;
 
 const isAnthropic = /\/anthropic(\/|$)/.test(baseUrl);
 const url = isAnthropic ? `${baseUrl}/v1/messages` : `${baseUrl}/chat/completions`;
-process.stderr.write(`[glm-gate] POST ${url} model=${model} mode=${isAnthropic ? 'anthropic' : 'openai'} payload=${payload.length}B files=${changedFiles.length}\n`);
+process.stderr.write(`[glm-gate] POST model=${model} mode=${isAnthropic ? 'anthropic' : 'openai'} payload=${Buffer.byteLength(snapshot.payload, 'utf8')}B files=${snapshot.changedFiles.length}\n`);
 
 const headers = { 'Content-Type': 'application/json' };
 let reqBody;
@@ -229,7 +148,7 @@ if (isAnthropic) {
     model,
     max_tokens: 8192,
     temperature: 0.2,
-    system: systemPrompt,
+    system: requestSystem,
     messages: [{ role: 'user', content: userPrompt }],
   });
 } else {
@@ -238,7 +157,7 @@ if (isAnthropic) {
     model,
     temperature: 0.2,
     messages: [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: requestSystem },
       { role: 'user', content: userPrompt },
     ],
   });
@@ -266,21 +185,20 @@ if (deadline.signal.aborted) {
   );
 }
 if (requestError) {
-  emitSkip(`network error calling Z.ai (${requestError?.message || requestError}). Gate skipped.`);
+  emitSkip('network error calling Z.ai. Gate skipped.');
 }
 if (!response.ok) {
   if (response.status === 401 || response.status === 403) {
-    emitSkip(`Z.ai auth failed (HTTP ${response.status}); check ZAI_API_KEY. ${raw.slice(0, 200)}`);
+    emitSkip(`Z.ai auth failed (HTTP ${response.status}); check ZAI_API_KEY.`);
   }
-  process.stderr.write(`[glm-gate] HTTP ${response.status}: ${raw.slice(0, 500)}\n`);
-  emitSkip(`Z.ai HTTP ${response.status}; gate could not run. ${raw.slice(0, 200)}`);
+  emitSkip(`Z.ai HTTP ${response.status}; gate could not run.`);
 }
 
 let data;
 try {
   data = JSON.parse(raw);
 } catch {
-  emitSkip(`Z.ai returned non-JSON: ${raw.slice(0, 200)}`);
+  emitSkip('Z.ai returned non-JSON content.');
 }
 
 const review = (isAnthropic
@@ -289,7 +207,7 @@ const review = (isAnthropic
 ).trim();
 
 if (!review) {
-  emitSkip(`Z.ai returned no content: ${JSON.stringify(data).slice(0, 300)}`);
+  emitSkip('Z.ai returned no review content.');
 }
 
-emitReview(review);
+emitReview(redactCredential(review, apiKey).text);

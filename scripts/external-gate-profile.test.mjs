@@ -19,6 +19,8 @@ const gates = {
   kimi: read('../skills/afk-kimi-review/SKILL.md'),
   claude: read('../skills/afk-claude-review/SKILL.md'),
   glm: read('../skills/afk-glm-review/SKILL.md'),
+  deepseek: read('../skills/afk-deepseek-review/SKILL.md'),
+  mimo: read('../skills/afk-mimo-review/SKILL.md'),
 };
 
 test('new configs choose ordered Codex outer then Kimi final', () => {
@@ -81,5 +83,7 @@ test('gate skills name stable default roles instead of interchangeability', () =
   assert.match(gates.kimi, /default final/i);
   assert.match(gates.claude, /fallback/i);
   assert.match(gates.glm, /fallback/i);
+  assert.match(gates.deepseek, /optional/i);
+  assert.match(gates.mimo, /optional/i);
   for (const text of Object.values(gates)) assert.doesNotMatch(text, /interchangeable/i);
 });

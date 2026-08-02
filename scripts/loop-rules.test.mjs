@@ -19,6 +19,8 @@ const gates = {
   claude: read('../skills/afk-claude-review/SKILL.md'),
   kimi: read('../skills/afk-kimi-review/SKILL.md'),
   glm: read('../skills/afk-glm-review/SKILL.md'),
+  deepseek: read('../skills/afk-deepseek-review/SKILL.md'),
+  mimo: read('../skills/afk-mimo-review/SKILL.md'),
 };
 
 // The exact stop sentence every gate skill carries, byte-identical. The driver
@@ -61,7 +63,7 @@ test('an unverifiable load-bearing finding narrows safely before escalation', ()
   assert.match(afkSkill, /task depends on the unresolved choice/i);
 });
 
-test('all four gate skills carry the identical stop sentence', () => {
+test('all gate skills carry the identical stop sentence', () => {
   for (const [name, text] of Object.entries(gates)) {
     assert.equal(
       countMatches(text, STOP_SENTENCE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
@@ -87,7 +89,7 @@ test('the drifted stop-rule wordings do not return', () => {
   assert.doesNotMatch(gates.kimi, /findings narrow to your own\s+last fix/);
 });
 
-test('every gate round ends in an affirmative report, in all four gates', () => {
+test('every gate round ends in an affirmative report', () => {
   // An empty round must be an attested statement, not unattested absence; two
   // of the four gates previously ended a round with no report at all.
   for (const [name, text] of Object.entries(gates)) {

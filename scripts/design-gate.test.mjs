@@ -20,6 +20,8 @@ const gates = {
   claude: read('../skills/afk-claude-review/SKILL.md'),
   kimi: read('../skills/afk-kimi-review/SKILL.md'),
   glm: read('../skills/afk-glm-review/SKILL.md'),
+  deepseek: read('../skills/afk-deepseek-review/SKILL.md'),
+  mimo: read('../skills/afk-mimo-review/SKILL.md'),
 };
 
 test('afk SKILL.md defines the design-stage gate step and its placement', () => {
