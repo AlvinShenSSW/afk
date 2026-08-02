@@ -224,6 +224,28 @@ test('reviewer model mismatch discards the verdict', async () => {
   });
 });
 
+test('the request log cannot echo a credential reused as the configured model', async () => {
+  const key = 'credential-reused-as-model-id';
+  await withServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      model: key,
+      choices: [{ finish_reason: 'stop', message: { content: 'APPROVE' } }],
+      usage: {},
+    }));
+  }, async (port) => {
+    const result = await runGateAsync('deepseek', {
+      env: {
+        DEEPSEEK_REVIEW_API_KEY: key,
+        DEEPSEEK_REVIEW_MODEL: key,
+        DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(key));
+  });
+});
+
 test('a response body that stalls after headers is classified as a timeout', async () => {
   await withServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -323,6 +345,7 @@ test('the gate request excludes secret files, symlinks, and secret-shaped values
       });
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /APPROVE/);
+      assert.match(result.stderr, /configured credential/);
     });
 
     assert.doesNotMatch(requestBody, new RegExp(dotenvSecret));

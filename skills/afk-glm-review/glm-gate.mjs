@@ -126,9 +126,18 @@ if (!snapshot.hasChanges) {
   emitSkip(reason);
 }
 
-const requestSystem = redactCredential(snapshot.systemPrompt, apiKey).text;
-const requestLabel = redactCredential(snapshot.reviewLabel, apiKey).text;
-const requestPayload = redactCredential(snapshot.payload, apiKey).text;
+const redactedSystem = redactCredential(snapshot.systemPrompt, apiKey);
+const redactedLabel = redactCredential(snapshot.reviewLabel, apiKey);
+const redactedPayload = redactCredential(snapshot.payload, apiKey);
+const requestSystem = redactedSystem.text;
+const requestLabel = redactedLabel.text;
+const requestPayload = redactedPayload.text;
+const exactCredentialCount = redactedSystem.exactCount + redactedLabel.exactCount + redactedPayload.exactCount;
+if (exactCredentialCount) {
+  process.stderr.write(
+    `[glm-gate] snapshot: redacted ${exactCredentialCount} occurrence(s) of the configured credential\n`,
+  );
+}
 if (Buffer.byteLength(requestPayload, 'utf8') > maxCtx) {
   emitError(`cannot review — credential redaction exceeded the ${maxCtx}-byte snapshot budget.`, 1);
 }
@@ -136,7 +145,8 @@ const userPrompt = `Review ${requestLabel}.\n\n${requestPayload}`;
 
 const isAnthropic = /\/anthropic(\/|$)/.test(baseUrl);
 const url = isAnthropic ? `${baseUrl}/v1/messages` : `${baseUrl}/chat/completions`;
-process.stderr.write(`[glm-gate] POST model=${model} mode=${isAnthropic ? 'anthropic' : 'openai'} payload=${Buffer.byteLength(snapshot.payload, 'utf8')}B files=${snapshot.changedFiles.length}\n`);
+const logModel = redactCredential(model, apiKey).text;
+process.stderr.write(`[glm-gate] POST model=${logModel} mode=${isAnthropic ? 'anthropic' : 'openai'} payload=${Buffer.byteLength(snapshot.payload, 'utf8')}B files=${snapshot.changedFiles.length}\n`);
 
 const headers = { 'Content-Type': 'application/json' };
 let reqBody;
@@ -210,4 +220,10 @@ if (!review) {
   emitSkip('Z.ai returned no review content.');
 }
 
-emitReview(redactCredential(review, apiKey).text);
+const safeReview = redactCredential(review, apiKey);
+if (safeReview.exactCount) {
+  process.stderr.write(
+    `[glm-gate] response: redacted ${safeReview.exactCount} occurrence(s) of the configured credential\n`,
+  );
+}
+emitReview(safeReview.text);

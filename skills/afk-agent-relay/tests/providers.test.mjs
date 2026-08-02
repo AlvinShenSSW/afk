@@ -103,6 +103,15 @@ test('token-limit field is per-provider (DeepSeek V4/MiMo V2.5 vs Kimi)', async 
   });
   assert.equal(capK.body.max_tokens, 7);
   assert.equal(capK.body.max_completion_tokens, undefined);
+
+  const capO = {};
+  await resolveProvider(reg, 'openai').complete({
+    system: 's', user: 'u', model: 'gpt-5', maxTokens: 13,
+    env: { DEV_OPENAI_API_KEY: 'k' },
+    fetchImpl: mockFetch(capO, { choices: [{ message: { content: 'x' } }], usage: {} }),
+  });
+  assert.equal(capO.body.max_completion_tokens, 13);
+  assert.equal(capO.body.max_tokens, undefined);
 });
 
 test('AGENT_RELAY_TOKEN_PARAM overrides the token field name', async () => {
@@ -151,6 +160,49 @@ test('HTTP error messages never retain the upstream response body', async () => 
       assert.equal(error.code, 'upstream');
       assert.doesNotMatch(error.message, new RegExp(key));
       assert.doesNotMatch(error.message, /tp-/);
+      return true;
+    },
+  );
+});
+
+test('transport errors retain only a bounded diagnostic cause', async () => {
+  const p = resolveProvider(buildRegistry(), 'deepseek');
+  const fetchImpl = async () => {
+    const error = new TypeError('request failed with sensitive implementation detail');
+    error.cause = { code: 'ECONNREFUSED' };
+    throw error;
+  };
+  await assert.rejects(
+    () => p.complete({
+      system: 's', user: 'u', model: 'm', maxTokens: 1,
+      env: { DEV_DEEPSEEK_API_KEY: 'k' }, fetchImpl,
+    }),
+    (error) => {
+      assert.equal(error.code, 'transport');
+      assert.match(error.message, /TypeError\/ECONNREFUSED/);
+      assert.doesNotMatch(error.message, /sensitive implementation detail/);
+      return true;
+    },
+  );
+});
+
+test('transport diagnostics cannot echo the configured credential', async () => {
+  const p = resolveProvider(buildRegistry(), 'deepseek');
+  const key = 'ECONNREFUSED';
+  const fetchImpl = async () => {
+    const error = new TypeError('request failed');
+    error.cause = { code: key };
+    throw error;
+  };
+  await assert.rejects(
+    () => p.complete({
+      system: 's', user: 'u', model: 'm', maxTokens: 1,
+      env: { DEV_DEEPSEEK_API_KEY: key }, fetchImpl,
+    }),
+    (error) => {
+      assert.equal(error.code, 'transport');
+      assert.doesNotMatch(error.message, new RegExp(key));
+      assert.match(error.message, /TypeError/);
       return true;
     },
   );

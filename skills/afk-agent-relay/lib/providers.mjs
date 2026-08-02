@@ -61,6 +61,7 @@ export function buildRegistry() {
       baseUrlDefault: 'https://api.openai.com/v1',
       modelEnv: 'DEV_OPENAI_MODEL',
       modelDefault: null,
+      tokenParam: 'max_completion_tokens',
     }),
 
     codex: makeCodexProvider(),
