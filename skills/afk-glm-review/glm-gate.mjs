@@ -23,7 +23,7 @@ import {
 import { readCredential } from '../../lib/gate/credential.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
-import { buildSnapshot } from '../../lib/gate/snapshot.mjs';
+import { buildSnapshot, formatExcludedPathsNote } from '../../lib/gate/snapshot.mjs';
 import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 import { redactCredential } from '../../lib/secret.mjs';
 
@@ -117,7 +117,11 @@ if (!apiKey) {
 }
 
 for (const note of [...new Set(snapshot.notes)]) {
-  process.stderr.write(`[glm-gate] snapshot: ${note}\n`);
+  process.stderr.write(`[glm-gate] snapshot: ${redactCredential(note, apiKey).text}\n`);
+}
+const excludedPathsNote = formatExcludedPathsNote(snapshot.excludedPaths, apiKey);
+if (excludedPathsNote) {
+  process.stderr.write(`[glm-gate] snapshot: ${excludedPathsNote}\n`);
 }
 if (!snapshot.hasChanges) {
   const reason = snapshot.notes.length

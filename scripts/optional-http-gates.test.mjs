@@ -9,6 +9,10 @@ test('optional DeepSeek and MiMo gate entry points and skills are bundled', () =
     const dir = new URL(`skills/afk-${family}-review/`, root);
     assert.equal(existsSync(new URL('SKILL.md', dir)), true, `${family} skill missing`);
     assert.equal(existsSync(new URL(`${family}-gate.mjs`, dir)), true, `${family} helper missing`);
+    const skill = readFileSync(new URL('SKILL.md', dir), 'utf8');
+    const prefix = family.toUpperCase();
+    assert.match(skill, new RegExp(`${prefix}_REVIEW_MAX_OUTPUT_TOKENS`));
+    assert.match(skill, new RegExp(`${prefix}_REVIEW_EXCLUDE_GLOBS`));
   }
 });
 

@@ -35,7 +35,8 @@ The bounded snapshot excludes secret-bearing paths, redacts secret-shaped
 values, and rejects unsafe design inputs before the request. A missing or
 invalid `--design` target is `ERROR`, not a skip. A timeout, unsafe finish
 reason, or unverified response model also yields a non-zero `ERROR` with no
-partial verdict.
+partial verdict. A successful review that omitted entries carries a bounded
+`SNAPSHOT_NOTE` count; redacted excluded paths stay in local stderr only.
 
 Read the verdict between the
 `===== DEEPSEEK REVIEW (final message) =====` markers. A `SKIPPED` result is not
@@ -89,5 +90,8 @@ Config knobs:
 - `DEEPSEEK_REVIEW_BASE_URL` (default `https://api.deepseek.com`)
 - `DEEPSEEK_REVIEW_THINKING` (`off` disables thinking; enabled by default)
 - `DEEPSEEK_REVIEW_MAX_CTX_BYTES` (default `400000`)
+- `DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS` (default `8192`)
+- `DEEPSEEK_REVIEW_EXCLUDE_GLOBS` (comma- or newline-separated additions;
+  built-in exclusions remain)
 - `DEEPSEEK_REVIEW_TIMEOUT_MS` (default `900000`; shared fallback
   `AFK_REVIEW_TIMEOUT_MS`)

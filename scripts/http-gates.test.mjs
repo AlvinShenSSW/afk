@@ -135,6 +135,43 @@ for (const [family, config] of Object.entries(CASES)) {
     });
   });
 
+  test(`${family} accepts a bounded output-token override`, async () => {
+    let body;
+    await withServer(async (request, response) => {
+      let raw = '';
+      for await (const chunk of request) raw += chunk;
+      body = JSON.parse(raw);
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        model: config.model,
+        choices: [{ finish_reason: 'stop', message: { content: 'APPROVE' } }],
+        usage: {},
+      }));
+    }, async (port) => {
+      const result = await runGateAsync(family, {
+        env: {
+          [config.keyEnv]: 'test-only',
+          [config.baseEnv]: `http://127.0.0.1:${port}`,
+          [`${config.marker}_REVIEW_MAX_OUTPUT_TOKENS`]: '1234',
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+    });
+    const field = family === 'deepseek' ? 'max_tokens' : 'max_completion_tokens';
+    assert.equal(body[field], 1234);
+  });
+
+  test(`${family} rejects an unversioned model alias before any request`, () => {
+    const result = runGate(family, {
+      env: {
+        [config.keyEnv]: 'test-only',
+        [`${config.marker}_REVIEW_MODEL`]: family,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /pinned model ID/i);
+  });
+
   test(`${family} rejects nonterminal content and never echoes an upstream body`, async () => {
     const key = `${family}-key-must-not-echo`;
     const token = `tp-${'Q7x'.repeat(12)}`;
@@ -238,7 +275,7 @@ test('target validation errors redact secret-shaped path and ref text', () => {
 });
 
 test('the request log cannot echo a credential reused as the configured model', async () => {
-  const key = 'credential-reused-as-model-id';
+  const key = 'credential-reused-as-model-id-5';
   await withServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
@@ -333,8 +370,10 @@ test('the gate request excludes secret files, symlinks, and secret-shaped values
     const outsideSecret = 'outside-symlink-secret';
     const token = `tp-${'T9z'.repeat(12)}`;
     const configuredKey = 'mimo-configured-key-with-arbitrary-shape';
+    const excludedName = `omit-${configuredKey}.fixture`;
     writeFileSync(join(dir, '.env'), `SECRET=${dotenvSecret}\n`);
     writeFileSync(join(dir, 'safe.txt'), `review this ${token} ${configuredKey}\n`);
+    writeFileSync(join(dir, excludedName), 'operator-excluded-content\n');
     writeFileSync(join(outside, 'secret.txt'), `${outsideSecret}\n`);
     symlinkSync(join(outside, 'secret.txt'), join(dir, 'leak-link'));
 
@@ -354,12 +393,15 @@ test('the gate request excludes secret files, symlinks, and secret-shaped values
         env: {
           MIMO_REVIEW_API_KEY: configuredKey,
           MIMO_REVIEW_BASE_URL: `http://127.0.0.1:${port}/v1`,
+          MIMO_REVIEW_EXCLUDE_GLOBS: '*.fixture',
         },
       });
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /APPROVE/);
       assert.match(result.stderr, /configured credential/);
-      assert.match(result.stdout, /SNAPSHOT_NOTE excluded_entries=2/);
+      assert.match(result.stdout, /SNAPSHOT_NOTE excluded_entries=3/);
+      assert.match(result.stderr, /omit-\[REDACTED\]\.fixture/);
+      assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(configuredKey));
     });
 
     assert.doesNotMatch(requestBody, new RegExp(dotenvSecret));
@@ -368,6 +410,7 @@ test('the gate request excludes secret files, symlinks, and secret-shaped values
     assert.doesNotMatch(requestBody, new RegExp(configuredKey));
     assert.doesNotMatch(requestBody, /\.env/);
     assert.doesNotMatch(requestBody, /leak-link/);
+    assert.doesNotMatch(requestBody, /operator-excluded-content|omit-/);
     assert.match(requestBody, /\[REDACTED/);
   });
 });

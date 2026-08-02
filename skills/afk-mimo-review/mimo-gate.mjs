@@ -26,5 +26,7 @@ await runOpenAiSnapshotGate({
   baseUrlEnv: 'MIMO_REVIEW_BASE_URL',
   baseUrlDefault: 'https://token-plan-cn.xiaomimimo.com/v1',
   maxContextEnv: 'MIMO_REVIEW_MAX_CTX_BYTES',
+  maxOutputEnv: 'MIMO_REVIEW_MAX_OUTPUT_TOKENS',
+  excludeGlobsEnv: 'MIMO_REVIEW_EXCLUDE_GLOBS',
   provider,
 });

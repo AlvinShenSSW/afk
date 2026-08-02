@@ -30,5 +30,7 @@ await runOpenAiSnapshotGate({
   baseUrlEnv: 'DEEPSEEK_REVIEW_BASE_URL',
   baseUrlDefault: 'https://api.deepseek.com',
   maxContextEnv: 'DEEPSEEK_REVIEW_MAX_CTX_BYTES',
+  maxOutputEnv: 'DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS',
+  excludeGlobsEnv: 'DEEPSEEK_REVIEW_EXCLUDE_GLOBS',
   provider,
 });
