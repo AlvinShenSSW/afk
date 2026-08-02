@@ -47,8 +47,13 @@ linked worktree reads a different `.afk/` than the one `afk-init` wrote.
 ### 5 — Self-review loop
 
 Self-review against the checklist, triage every finding against the frozen
-contract, fix admitted defects, record structural P2 for the operator-owned
-merge boundary, defer minor or out-of-scope proposals,
+contract, and fix admitted defects. When an admitted P1 already requires a
+content pass, also batch a verified lower-severity item only if it is in scope,
+shares the root cause or touched surface, adds no dependency, migration, public
+contract, or product choice, and needs no review round beyond the P1 re-review.
+Record structural P2 for the operator-owned merge boundary; defer every other
+ineligible lower-severity or out-of-scope proposal. A lower-severity-only round
+never reopens a clean revision. Then
 re-run affected checks, and repeat until **two consecutive clean rounds**. A
 round is **clean** only if
 every checklist lens below was applied to the full diff and reported a result —

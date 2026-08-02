@@ -15,9 +15,10 @@ The helper `codex-gate.mjs` ships with this skill and travels with the plugin.
 
 ## Metering
 
-Codex calls are metered — keep invocations to a minimum. Batch every finding into
-one fix pass, self-review, then re-run once; defer documentation and minor items
-to a single final pass. Never spend a round-trip on a small or doc-only edit.
+Codex calls are metered — keep invocations to a minimum. Batch admitted P1 and
+eligible lower-severity fixes into one content pass, self-review, then re-run
+once. Record every other disposition together at the end without editing a clean
+revision. Never spend a round-trip on a small or doc-only observation.
 
 ## Run it
 
@@ -70,13 +71,12 @@ failed — read the transcript it names; never report an errored run as clean.
    the P1 admission standard below, and identify duplicates or scope proposals.
 2. **Verify before trusting.** Push back with evidence on anything disproved or
    unverified; severity proposed by the reviewer is not authority to edit.
-3. **Fix admitted P1 findings in one batch** and sweep the same demonstrated
-   pattern; record structural P2 for the merge boundary and defer minor or
-   out-of-scope items without expanding the PR.
+3. **Fix admitted P1 findings in one batch**, sweep the same demonstrated
+   pattern, and include only lower-severity work eligible under the rule below.
 4. **Self-review once** over your fixes.
 5. **Re-run the gate once.** Repeat until the stop rule holds.
-6. **Deferred pass once, at the end** for the minor items — do not re-run the
-   gate to confirm doc edits.
+6. **Record remaining dispositions once, at the end.** Do not edit the clean
+   revision or re-run the gate for lower-severity-only observations.
 
 Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to
 the frozen issue contract or an invariant, demonstrating a reachable trigger
@@ -85,13 +85,20 @@ advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
 record structural P2 for the operator-owned merge boundary, and defer minor or
 out-of-scope items without expanding the PR.
 
+When an admitted P1 already requires a content pass, batch-fix a verified
+lower-severity item only when it is in scope, shares that root cause or touched
+surface, adds no dependency, migration, public contract, or product choice, and
+needs no gate round beyond the P1 re-review. Otherwise record its disposition
+without editing; a lower-severity-only verdict never reopens a clean revision.
+
 Apply any invariant in `.afk/config.md` as an extra must-check lens.
 
 ## Stop rule
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
 holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
-lower-severity item has a recorded non-blocking disposition. That same verdict
+lower-severity item has a recorded disposition that does not block the role stamp (a
+structural P2 may still bar auto-merge). That same verdict
 earns the role stamp only if it requires no content change; a content fix
 invalidates it and the role re-reviews the fixed revision.
 

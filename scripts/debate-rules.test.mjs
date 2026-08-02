@@ -18,6 +18,11 @@ test('the debate has evidence-based exit criteria without a round permission gat
   assert.doesNotMatch(afkSkill, /~3 rounds is the cap|refuses to start a fourth\s+sequence/i);
 });
 
+test('an unfixable verified P1 remains an operator authority decision', () => {
+  assert.match(afkSkill, /abandoning or replanning a verified P1/i);
+  assert.match(afkSkill, /cannot be fixed inside the frozen contract/i);
+});
+
 test('the debate asks the clean-round question without a parallel cap condition', () => {
   assert.match(afkSkill, /has the\s+design in front of you had a clean\s+round/);
   assert.match(afkSkill, /revised after its last clean round/);

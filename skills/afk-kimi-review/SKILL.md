@@ -15,9 +15,10 @@ The helper `kimi-gate.mjs` ships with this skill and travels with the plugin.
 
 ## Metering
 
-Metered like any external gate — keep invocations to a minimum. Batch findings
-into one fix pass, self-review, then re-run once; defer minor items to a single
-final pass.
+Metered like any external gate — keep invocations to a minimum. Batch admitted
+P1 and eligible lower-severity fixes into one content pass, self-review, then
+re-run once. Record every other disposition together at the end without editing
+a clean revision.
 
 ## Run it
 
@@ -60,10 +61,10 @@ as clean.
 ## Handle findings (batch — minimise calls)
 
 Identical discipline to `afk-codex-review`: map every hypothesis to the frozen
-contract; admit P1 only on demonstrated evidence; batch-fix admitted P1 findings;
-record structural P2 for the merge boundary; defer minor or out-of-scope items;
-self-review once; re-run after content fixes; resolve minor items without another
-paid round.
+contract; admit P1 only on demonstrated evidence; batch-fix admitted P1 findings
+and only eligible lower-severity work; self-review once; re-run after content
+fixes; then record every other disposition without editing the clean revision or
+spending another paid round.
 
 Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to
 the frozen issue contract or an invariant, demonstrating a reachable trigger
@@ -72,13 +73,20 @@ advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
 record structural P2 for the operator-owned merge boundary, and defer minor or
 out-of-scope items without expanding the PR.
 
+When an admitted P1 already requires a content pass, batch-fix a verified
+lower-severity item only when it is in scope, shares that root cause or touched
+surface, adds no dependency, migration, public contract, or product choice, and
+needs no gate round beyond the P1 re-review. Otherwise record its disposition
+without editing; a lower-severity-only verdict never reopens a clean revision.
+
 Apply any invariant in `.afk/config.md` as an extra lens.
 
 ## Stop rule
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
 holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
-lower-severity item has a recorded non-blocking disposition. That same verdict
+lower-severity item has a recorded disposition that does not block the role stamp (a
+structural P2 may still bar auto-merge). That same verdict
 earns the role stamp only if it requires no content change; a content fix
 invalidates it and the role re-reviews the fixed revision.
 

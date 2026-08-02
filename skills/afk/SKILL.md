@@ -53,7 +53,7 @@ design-stage external gate (opt-in pilot, default off; one role per evaluation �
 first (targeted) → implementation → adversarial sweep →
 commit → push early → open the PR as draft → deterministic CI green (fix red
 now) → **internal review** (`afk-internal-review`) → triage every finding and
-batch-fix admitted P1s →
+batch-fix admitted P1s plus eligible lower-severity work →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
 the final commit → mark ready → merge per policy. The design doc matters more
@@ -161,7 +161,8 @@ design in front of you had a clean round? If yes, advance. If no — an untriage
 finding or admitted P1 is open, a claim the design depends on remains unverified,
 or the design was revised after its last clean round — **do not start
 implementing**. Continue while a round closes an admitted P1, turns a check green,
-reduces a demonstrated shared root cause, or cleanly advances the waterfall.
+reduces a demonstrated shared root cause, a design version lands with its frozen
+contract and a named next validation, or the waterfall cleanly advances.
 
 Two consecutive unfinished rounds without material progress trigger an automatic
 root-cause checkpoint: cluster the stable finding IDs, remove duplicates and
@@ -170,7 +171,9 @@ minimal batch revision. A clean terminal round never counts as stalled. If the
 checkpoint still cannot progress, mark the issue `OUTSTANDING` and continue
 independent queued work. Escalate only if the task depends on scope expansion, an
 unavailable external capability, or a product choice with no safe default. Round
-count never requests operator permission.
+count never requests operator permission. Abandoning or replanning a verified P1
+that cannot be fixed inside the frozen contract is also an operator authority
+decision, not a driver-owned deferral.
 
 This is level 3 — doctrine, not a guarantee (AGENTS.md, "What this plugin can and
 cannot enforce"). Nothing stops a driver from implementing anyway. It stops if it
@@ -360,10 +363,10 @@ history:
   visible. None blocks the role stamp. A structural P2 bars auto-merge until the
   operator owns it at the merge boundary; deferred minor and out-of-scope
   findings do not bar auto-merge. A P1 cannot be deferred.
-- **Suppressed** — repeating a Refuted finding twice without new evidence may
-  close it for this PR only when the disproof is pinned by an executable check or
-  reproducible verification artifact and the repeats come from the same
-  role/provider. New
+- **Suppressed** — two evidence-free repeats of a pinned-Refuted finding may be
+  recorded `Suppressed` without reopening it for this PR only when the disproof
+  is pinned by an executable check or reproducible verification artifact and the
+  repeats come from the same role/provider. New
   evidence still reopens it.
 - **Contested** — a different role/provider independently repeats a Refuted
   finding, or the existing disproof is not pinned. It authorizes no edit, appears
@@ -383,9 +386,19 @@ narrow the change, choose a fail-safe default, or use a default-off guard.
 Escalate only when the task depends on the unresolved choice and there is no safe
 default.
 
+**Batch lower-severity work by value, not by label.** When an admitted P1 already
+requires a content pass, batch-fix a verified lower-severity item only when it is
+in scope, shares that root cause or touched surface, adds no dependency,
+migration, public contract, or product choice, and needs no gate round beyond the
+P1 re-review. Otherwise record its disposition without editing; a
+lower-severity-only verdict never reopens a clean revision. This is not authority
+to fix every P2 or minor: a structural P2 not admitted to the batch remains
+operator-owned at the merge boundary, and unrelated polish remains deferred.
+
 **The loop ends** as soon as triage leaves no `UNTRIAGED`, `Contested`, or open
-admitted P1 finding, and every lower-severity item has a recorded non-blocking disposition. That
-same verdict earns the role's clean stamp only if that verdict requires no
+admitted P1 finding, and every lower-severity item has a recorded disposition
+that does not block the role stamp (a structural P2 may still bar auto-merge).
+That same verdict earns the role's clean stamp only if that verdict requires no
 content change. A content fix invalidates that verdict; the role must re-review
 the fixed revision. No extra empty review is needed after a verdict whose only
 findings receive non-content dispositions. A final reviewer has no special power
@@ -408,8 +421,9 @@ recorded substitution.
 Convergence follows evidence and material progress, not a finding or sequence
 counter. A round makes material progress only when it closes an admitted P1,
 turns a failing check green, reduces a demonstrated shared root cause, or earns a
-clean stage stamp that advances the waterfall. A clean terminal round never
-counts as stalled. Each role still gets **one transient retry** per sequence;
+clean stage stamp that advances the waterfall. A design version lands with its
+frozen contract and a named next validation also counts. A clean terminal
+round never counts as stalled. Each role still gets **one transient retry** per sequence;
 retries, skips, finding verdicts, and paid attempts remain visible in the ledger.
 During implementation, a contract-mapped RED test or implementation slice with
 a named next verification also counts as material progress; ordinary commits,
@@ -542,12 +556,10 @@ would leave a finished run forever resumable and its scope never free again.
 - **State checks** (scoped, not global): view each scoped issue; list PRs for
   your branches; check the current branch and status; resume the first
   unfinished step. One branch per issue off the default branch; push early.
-- **Auto-pause:** use the External gate's one material-progress definition — an
-  admitted P1 closes, a failing check turns green, a demonstrated shared root
-  cause shrinks, a contract-mapped RED test or implementation slice lands with a
-  named next verification, or a clean stage stamp advances the waterfall.
-  Commits, pushes, and notes that do none of those are activity, not progress. Two consecutive
-  working ticks with none → run the automatic root-cause checkpoint; if it also
+- **Auto-pause:** use the External gate's one material-progress definition above.
+  Commits, pushes, and notes outside that definition are activity, not progress. Two consecutive
+  working ticks with none → run the automatic root-cause checkpoint. Count a
+  barren tick only while the current stage is unfinished. If the checkpoint also
   cannot progress, stop the tick loop, post a status report, and leave
   `state: active` so the run can resume. Queue complete → stop with a final report
   and set `state: complete` in the same breath, ending the tick and claim.

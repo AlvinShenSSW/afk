@@ -15,6 +15,7 @@ const read = (p) =>
 
 const afkSkill = read('../skills/afk/SKILL.md');
 const internalReview = read('../skills/afk-internal-review/SKILL.md');
+const pilot = read('../skills/afk-implementation-pilot/SKILL.md');
 const gates = {
   codex: read('../skills/afk-codex-review/SKILL.md'),
   claude: read('../skills/afk-claude-review/SKILL.md'),
@@ -32,6 +33,14 @@ const TRIAGE_SENTENCE = [
   'advance, and naming the minimal causal fix. Do not edit for an untriaged claim;',
   'record structural P2 for the operator-owned merge boundary, and defer minor or',
   'out-of-scope items without expanding the PR.',
+].join('\n');
+
+const BATCH_SENTENCE = [
+  'When an admitted P1 already requires a content pass, batch-fix a verified',
+  'lower-severity item only when it is in scope, shares that root cause or touched',
+  'surface, adds no dependency, migration, public contract, or product choice, and',
+  'needs no gate round beyond the P1 re-review. Otherwise record its disposition',
+  'without editing; a lower-severity-only verdict never reopens a clean revision.',
 ].join('\n');
 
 const countMatches = (text, re) => (text.match(new RegExp(re, 'g')) ?? []).length;
@@ -111,6 +120,46 @@ test('all four gate skills carry the identical triage sentence', () => {
       `expected exactly one copy of the triage sentence in ${name} gate skill`,
     );
   }
+});
+
+test('valuable lower-severity work batches only into an already-required P1 pass', () => {
+  assert.match(afkSkill, /admitted P1 already\s+requires a content pass/i);
+  assert.match(afkSkill, /shares that root cause or touched\s+surface/i);
+  assert.match(afkSkill, /adds no dependency,\s+migration, public contract, or product choice/i);
+  assert.match(afkSkill, /needs no gate round beyond the\s+P1 re-review/i);
+  assert.match(afkSkill, /lower-severity-only verdict never reopens a clean\s+revision/i);
+});
+
+test('all four gate skills carry the identical value-aware batch rule', () => {
+  for (const [name, text] of Object.entries(gates)) {
+    assert.equal(
+      countMatches(text, BATCH_SENTENCE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      1,
+      `expected exactly one copy of the batch sentence in ${name} gate skill`,
+    );
+    assert.doesNotMatch(text, /resolve minor items|Deferred pass once/i);
+  }
+});
+
+test('implementation and internal review apply the same value boundary', () => {
+  for (const text of [pilot, internalReview]) {
+    assert.match(text, /admitted P1 already\s+requires a\s+content pass/i);
+    assert.match(text, /root cause or touched\s+surface/i);
+    assert.match(text, /no dependency, migration,\s+(?:public contract|public\s+contract), or product choice/i);
+    assert.match(text, /no review round beyond the P1\s+re-review/i);
+    assert.match(text, /lower-severity-only (?:round|verdict)\s+never reopens a\s+clean revision/i);
+  }
+});
+
+test('suppression closes evidence-free repeats, not the already-refuted finding', () => {
+  assert.match(afkSkill, /Two evidence-free repeats of a pinned-Refuted finding/i);
+  assert.match(afkSkill, /recorded `Suppressed` without reopening it/i);
+  assert.match(afkSkill, /for this PR only/i);
+  assert.doesNotMatch(afkSkill, /repeating a Refuted finding twice without new evidence may\s+close it/i);
+});
+
+test('only an unfixed structural P2 remains operator-owned', () => {
+  assert.match(afkSkill, /structural P2 not admitted to the batch remains\s+operator-owned/i);
 });
 
 test('the retired shape-only verification standard does not return', () => {
