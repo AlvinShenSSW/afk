@@ -46,13 +46,14 @@ pass). A design doc, a pushed branch, or a draft PR is a mid-waterfall
 checkpoint — never a stopping point and never an operator handoff. "Next:
 operator runs the review" is a bug, not an end state.
 
-design doc → adversarial debate (rules below; cap ~3 rounds; implement only from a
-design version a round found clean, at the cap too, otherwise escalate) →
-design-stage external gate (opt-in pilot, default off; one round when enabled —
+design doc with a frozen issue contract → adversarial debate (rules below;
+evidence and material progress govern convergence, never round count) →
+design-stage external gate (opt-in pilot, default off; one role per evaluation —
 "Design-stage external gate" below) → tests
 first (targeted) → implementation → adversarial sweep →
 commit → push early → open the PR as draft → deterministic CI green (fix red
-now) → **internal review** (`afk-internal-review`) → fix every finding →
+now) → **internal review** (`afk-internal-review`) → triage every finding and
+batch-fix admitted P1s →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
 the final commit → mark ready → merge per policy. The design doc matters more
@@ -64,6 +65,15 @@ than the code.
 - **Green** = deterministic CI green AND the full test suite green on the final
   commit. A green PR page alone is not green. Never mark ready before the suite
   is green.
+
+**Freeze the issue contract before implementation.** The design records the
+acceptance criteria, product and engineering invariants, explicit non-goals,
+allowed user-visible behavior changes, and the smallest causal boundary the fix
+may operate in. Every implementation edit and admitted finding maps to one of
+those items. Repository evidence may correct the contract; a reviewer's
+architectural preference may not. Anything else is `OUT-OF-SCOPE`: record it for
+the operator, do not implement it, and do not create a follow-up issue
+automatically.
 
 ## Adversarial debate (the design-stage check)
 
@@ -81,17 +91,28 @@ invents objections and can never return a clean pass on a sound design. "No
 finding" is a valid, reportable result. Reject an unsupported finding as firmly
 as an unsupported design claim.
 
-**Every finding carries a severity.** Posture says whether the finding holds;
-severity says what it costs. Every rule below turns on it, so a finding without
-one cannot be acted on:
+**Every finding carries a severity proposal.** Posture says whether the finding
+holds; severity says what it costs. A reviewer does not admit its own blocker:
+the author validates and classifies it against the frozen contract.
 
 - **P1** — the design is wrong, or rests on a claim that is wrong or unverified.
   Building it yields a defect, a rewrite, or a hole.
 - **P2** — a real weakness the design survives: a cost, a gap, or a risk worth
   taking knowingly.
+- **minor** — a non-structural improvement with no demonstrated wrong user or
+  system outcome. It is never promoted merely because a reviewer repeats it.
 
-An unlabelled finding is a P1 until someone labels it — the cheap error is
-debating a P2 twice, not shipping a P1 nobody graded.
+An unlabelled finding starts `UNTRIAGED`. It prevents a clean round until
+classified, but never authorizes a code or design change by itself. Admit P1 only
+after recording all five elements: the frozen issue contract or an invariant it
+violates; the reachable condition that triggers it; a failing check, executed
+trace, or complete causal path to the wrong consequence; why the current artifact
+cannot safely enter the next waterfall stage; and the minimal causal fix. Missing
+one keeps the proposal untriaged or classifies it P2, minor, or out-of-scope.
+For a load-bearing claim that cannot be verified, the demonstrated consequence
+is that the artifact explicitly depends on it, cannot verify it by any available
+safe means, and identifies the wrong-side outcome if the assumption fails. Mere
+absence of evidence is not enough.
 
 **Verify claims about external systems — by the cheapest SAFE means.** A design
 that asserts how a CLI behaves, what a permission model allows, what a command
@@ -115,12 +136,13 @@ confirms a finding by the cheapest safe means — preferably a failing test — 
 by repeating a destructive action, and never on the critic's authority alone.
 Repeating it in the same environment is not independent confirmation.
 
-**The round, and how the debate ends.** A round is: the critic reports — first
+**The round, and how the debate ends.** Assign every finding a stable ID. A round
+is: the critic reports — first
 the status of every finding still open from earlier rounds, each by name, then
 anything new — the author validates each finding independently, then resolves it.
 A supported P1 is always resolved by revising the design. A supported P2 is
-resolved one of two ways — revise, or accept it knowingly and record it in the
-ledger with its reason, design untouched. Accepting closes the finding; revising
+resolved one of two ways — revise, or mark it `Deferred` with its reason, design
+untouched. Deferring closes the finding without blocking the next stage; revising
 does not: a finding resolved by revision stays **open** until a later round
 revalidates the revised design against it, by name, and reports it resolved.
 Critics are stochastic and miss things, so silence about an open finding is not
@@ -133,25 +155,22 @@ closure — an omitted finding is unexamined, not resolved. Then one of:
   fixes are themselves claims nobody has checked yet. A supported P1 is not
   discharged by editing the doc — only by a round that revalidates it by name
   and reports it resolved.
-- **~3 rounds is the cap**, and reaching it is not an ending. See below.
 
-**Exit criteria — the cap bounds spend, not correctness.** Reaching the round cap
-is not a pass, and it does not lower the bar a clean round sets. The cap asks the
-same question every other round does: has the design in front of you had a clean
-round?
+**Exit criteria — evidence and progress, never a counter.** Ask only: has the
+design in front of you had a clean round? If yes, advance. If no — an untriaged
+finding or admitted P1 is open, a claim the design depends on remains unverified,
+or the design was revised after its last clean round — **do not start
+implementing**. Continue while a round closes an admitted P1, turns a check green,
+reduces a demonstrated shared root cause, or cleanly advances the waterfall.
 
-- **Yes** → implement. Same exit as any other round; the cap changes nothing.
-- **No** — a finding is still open, a claim the design depends on is unverified,
-  or it was revised after its last clean round — → **do not start implementing**.
-  Escalate to the operator, or to the external design gate if one is configured.
-  Never proceed past a P1 because the rounds ran out, and never implement a
-  revision the cap left unreviewed.
-
-The cap changes exactly one thing: a P2 you would have revised, you no longer
-can, because revising costs a round you do not have. Accept it knowingly instead
-— which by the definition above leaves the round clean — or escalate. A helper
-cannot accept a risk on the operator's behalf; what gets written is a decision
-you made and are accountable for.
+Two consecutive unfinished rounds without material progress trigger an automatic
+root-cause checkpoint: cluster the stable finding IDs, remove duplicates and
+unsupported scope, sweep the whole design against the contract, and make one
+minimal batch revision. A clean terminal round never counts as stalled. If the
+checkpoint still cannot progress, mark the issue `OUTSTANDING` and continue
+independent queued work. Escalate only if the task depends on scope expansion, an
+unavailable external capability, or a product choice with no safe default. Round
+count never requests operator permission.
 
 This is level 3 — doctrine, not a guarantee (AGENTS.md, "What this plugin can and
 cannot enforce"). Nothing stops a driver from implementing anyway. It stops if it
@@ -162,7 +181,7 @@ stays in the doc — but only where it links to what now prevents it: the correc
 decision, and the test or control that pins it. A refuted-claims list with no
 such link is a diary; either give it a consumer or leave it out.
 
-The ledger record — an accepted risk, or a P1 that stopped the run — is the only
+The ledger record — a deferred concern, or a P1 that stopped the run — is the only
 durable artifact here, and it is what the operator reads.
 
 ## Design-stage external gate (opt-in pilot)
@@ -193,22 +212,19 @@ never-scale-down-gates rule, which governs PR gates only.
   another model authored the design (a design relay) declare that model — do NOT
   pass the eventual code implementer, or a driver-authored design could be
   reviewed by the driver's own model, defeating this step.
-- **Exactly one gate, regardless of PR `gates` length or legacy `min-pass`.**
-  Those fields govern the PR gate;
-  one round is the whole point here. **One gate per design version, hard cap 2 per
-  issue** — a design-invalidating finding restarts the design step, and the
-  rewrite gets exactly one more gate.
-- **At the cap, the debate's P1/P2 rule applies** — not "record and proceed". A
-  still-open design **P1** escalates to the operator, exactly as the debate does;
-  only a **P2** may be accepted knowingly and recorded, design untouched.
+- **Exactly one gate per design evaluation, regardless of PR `gates` length or
+  legacy `min-pass`.** Those fields govern the PR gate; one independent role is
+  the whole point here. A design-invalidating finding restarts the design step;
+  later evaluations follow the debate's material-progress and automatic
+  root-cause checkpoint, with no invocation counter that requests permission.
 - **Findings close under the same vocabulary** the PR gate uses ("External gate":
-  fixed / refuted / accepted); no design-stage finding is closed by silence. A
+  fixed / refuted / deferred / suppressed / contested); no design-stage finding is closed by silence. A
   `fixed` whose fix is "a test the implementation must carry" is recorded in the
   design doc as a required test, which the tests-first step then consumes.
 - **A distinct `design-gate` ledger section.** Design-gate findings are recorded
   under their own section of `.afk/runs/<run-id>/ledger.md`, keyed by issue +
   design version, **separate from the PR-gate finding record**. The merge bar
-  ("External gate") reads the PR-gate section only, so a design-stage `accepted`
+  ("External gate") reads the PR-gate section only, so a design-stage `Deferred`
   never bars the PR merge — if that risk is still real in the shipped code, the PR
   gate raises it against the code, where the bar applies.
 - **Baseline before the gate.** Before the gate runs, the driver pre-registers the
@@ -292,8 +308,8 @@ model identity may still fail on first invocation.
   cannot enforce").
 - **Stickiness:** a provider is locked to its stable role for the PR and changes
   only for independence or availability. A substitution is recorded, resets the
-  incoming provider's baseline/consecutive counter, and keeps the role's PR-wide
-  finding archive and lifetime budget.
+  incoming provider's comparison baseline, and keeps the PR-wide finding archive
+  and no-progress streak.
 - **Classify the complete outcome.** Only a review message is a verdict.
   Stable-unavailable `SKIPPED` reasons (disabled/missing executable/credential;
   Claude-only quota/model-unavailable) trigger fallback. Independence refusal
@@ -301,78 +317,79 @@ model identity may still fail on first invocation.
   or bad target stops as a driver error. GLM transient `SKIPPED` and other gates'
   transient nonzero `ERROR` get one sticky retry per role per full sequence,
   then fallback. Unknown `ERROR` stops with its transcript. Skip/error attempts
-  consume no finding-verdict budget and never count as clean.
+  are not verdicts, do not increment the no-progress streak, and never count as
+  clean.
 
 Default assignments are Codex outer + Kimi final for a Claude/GLM implementer;
 Claude outer + Kimi final for a Codex implementer; and Codex outer + Claude final
 for a Kimi implementer. If two distinct eligible families cannot finish, the PR
 is not clean/ready—one pass is never presented as two.
 
-**A finding asserts two things; reading settles one.** Every structural finding
-claims both that the code is as described and that this shape produces a wrong
-outcome. Reading the cited `file:line` settles the first only. A fix lands once
-the second is demonstrated — a check that fails now and passes after, an
-executed trace, or a stated path from the shape to the outcome naming the
-condition that triggers it; restating the finding is not a demonstration.
-Failing to demonstrate the consequence is evidence against the finding, not
-licence to fix it anyway. An affirmative disproof records it Refuted; anything
-short of one carries it into the unverified handling below, which is what keeps
-a load-bearing finding on the escalation path instead of closing it. Either way,
-leave the code as it is. Fixing on an undemonstrated consequence is the more
-dangerous branch, because the finding's authorship carries the edit past the
-scrutiny the same edit would draw unprompted.
+**A finding asserts two things; reading settles one.** Every reported finding is
+an `UNTRIAGED` hypothesis. Admit P1 only after recording: the frozen issue
+contract or an invariant it violates; the reachable trigger; a failing check,
+executed trace, or complete causal path to the wrong outcome; why the current
+artifact cannot safely advance; and the minimal causal fix. Reading the cited
+`file:line` settles only the code shape. Restating the finding is not a
+demonstration. Failing to demonstrate the consequence is evidence against the
+finding, not licence to fix it anyway. An affirmative disproof records it
+Refuted. Until classified, leave the code as it is: an untriaged claim never
+authorizes a code change.
 
 **Account for the fix's reach before it lands.** The gate reads a diff and the
-next round reads that diff again, so consumers outside it are invisible to
-every reviewer in the loop. Before applying a fix that changes the behaviour of
-a symbol used outside the diff, enumerate those consumers and state what the
-change does to each. A consumer you cannot account for is not licence to
-proceed: narrow the fix to the caller inside the diff, or record the finding
-Accepted with a follow-up issue. The enumeration and the per-consumer statement
-go in the finding's record beside the fix, so a wide edit is auditable as one.
+next round reads that diff again, so consumers outside it are invisible to every
+reviewer in the loop. Before changing a symbol used outside the diff, enumerate
+those consumers and state the effect on each. A consumer you cannot account for
+is not licence to proceed: narrow the fix to the caller inside the diff, or
+record the finding Deferred as P2 or out-of-scope. That record does not create a
+follow-up issue automatically.
 
-**The loop, and what closes a finding.** Each round the gate reviews the
-current diff. Every structural finding it returns is named at triage — a short
-id in the run's record — and every later round's findings are judged against
-that named list — same, reopening, or new — with the judgment recorded. The
-reviewers are memoryless (the helpers accept a review target and flags such as
-`--implementer`, but no findings input), so identity lives in the driver's
-record or nowhere. A named finding holds at most one **current** recorded
-disposition — closing sets it, reopening supersedes it, and the record keeps
-the history:
+**The loop, and what closes a finding.** Every reported finding is named at
+triage with a stable ID, then classified against the frozen contract. Every later
+round is judged against that PR-wide list — same, reopening, or new — and a named
+finding holds at most one **current** recorded disposition. The record keeps its
+history:
 
-- **Fixed** — verified against the artifact, by the check that pins it where
-  one is expressible (a test that failed before the fix and passes after it),
-  otherwise by a recorded verification step; finding → fix → how verified goes
-  in the record.
-- **Refuted** — closed by its recorded disproof. A later round re-raising it
-  with new evidence reopens it; a second refutation of the same named finding
-  escalates to the operator rather than looping.
-- **Accepted** — real, but knowingly not fixed here: an accepted cost, or out
-  of the PR's scope (the record names the follow-up issue). It lands in the
-  ledger and the end-of-run report's deferred items.
+- **Fixed** — the record maps finding → minimal fix → verification. Use a test
+  that failed before and passes after when expressible, otherwise a recorded
+  verification step.
+- **Refuted** — an affirmative disproof closes it. Record the executable check or
+  reproducible verification artifact supporting that disproof. New evidence or a different observable
+  consequence may reopen it.
+- **Deferred** — a classified P2, minor, or out-of-scope observation remains
+  visible. None blocks the role stamp. A structural P2 bars auto-merge until the
+  operator owns it at the merge boundary; deferred minor and out-of-scope
+  findings do not bar auto-merge. A P1 cannot be deferred.
+- **Suppressed** — repeating a Refuted finding twice without new evidence may
+  close it for this PR only when the disproof is pinned by an executable check or
+  reproducible verification artifact and the repeats come from the same
+  role/provider. New
+  evidence still reopens it.
+- **Contested** — a different role/provider independently repeats a Refuted
+  finding, or the existing disproof is not pinned. It authorizes no edit, appears
+  in the end-of-run report, and bars the role stamp and auto-merge until a
+  root-cause pass resolves it. Close the contest only when that pass re-verifies
+  the pinned disproof against the current revision or admits the finding on new
+  evidence; otherwise leave the PR `OUTSTANDING`.
 
-A finding the driver can neither confirm nor refute is unverified: accept it
-with its risk stated when the PR does not depend on it; when the PR depends on
-it, escalate to the operator — the loop does not end around it.
+Rewording the same consequence is the same finding. Silence closes nothing: a
+later round omitting an open finding has not resolved it. The open-findings
+record is run-scoped and survives provider switches and sequence restarts. When
+the reviewed artifact is a design doc, a required future test closes only once
+recorded in that design; the record is the closure, not the future test.
 
-**Silence closes nothing.** As in the debate, a later round that does not
-mention a prior finding has not resolved it — rounds are stochastic. No critic
-revalidates by name here, so closure rests on the driver's own verification,
-with the next round's fresh review of the full diff as the independent
-backstop — weaker than the debate's closure, and named as such.
+A finding the driver can neither confirm nor refute remains untriaged. First
+narrow the change, choose a fail-safe default, or use a default-off guard.
+Escalate only when the task depends on the unresolved choice and there is no safe
+default.
 
-**The loop ends** when a round reports no new structural finding and every
-prior structural finding is closed. The open-findings record is run-scoped: it
-survives a mid-loop gate switch — the stickiness reset changes what counts as
-*new* for the incoming gate, never the dispositions already recorded. A
-finding that only rewords the driver's last fix — naming no behavior
-difference, or for a prose artifact no consequence difference (a different
-decision, invariant, or outcome) — is not a new structural finding; one that
-names such a difference is new, or a reopening, however small. When the diff
-under review is a design doc, a remainder the tests-first step will enforce
-counts as closed only once it is recorded in the design doc as a required
-test — the record is the closure, not the future test.
+**The loop ends** as soon as triage leaves no `UNTRIAGED`, `Contested`, or open
+admitted P1 finding, and every lower-severity item has a recorded non-blocking disposition. That
+same verdict earns the role's clean stamp only if that verdict requires no
+content change. A content fix invalidates that verdict; the role must re-review
+the fixed revision. No extra empty review is needed after a verdict whose only
+findings receive non-content dispositions. A final reviewer has no special power
+to expand the issue or upgrade a finding without the same evidence.
 
 ### Ordered-role revision and convergence rules
 
@@ -388,17 +405,21 @@ ordered sequence again at outer. Finding identity is PR-scoped. A role keeps the
 same provider across sequences unless availability/independence forces a
 recorded substitution.
 
-Cost convergence has separate hard counters:
+Convergence follows evidence and material progress, not a finding or sequence
+counter. A round makes material progress only when it closes an admitted P1,
+turns a failing check green, reduces a demonstrated shared root cause, or earns a
+clean stage stamp that advances the waterfall. A clean terminal round never
+counts as stalled. Each role still gets **one transient retry** per sequence;
+retries, skips, finding verdicts, and paid attempts remain visible in the ledger.
+During implementation, a contract-mapped RED test or implementation slice with
+a named next verification also counts as material progress; ordinary commits,
+pushes, and diff growth do not.
 
-- each stable role permits **four finding-bearing verdicts** over the PR;
-- the **full-sequence counter** increments on **every sequence start regardless of cause**
-  (initial, finding fix, changed HEAD/merge-base/profile, rebase,
-  final-suite repair, or operator edit). AFK **refuses to start a fourth
-  sequence**; only an operator may authorize a separately recorded fresh epoch
-  after the root cause is fixed;
-- each role gets **one transient retry** per sequence. Clean re-verification,
-  finding verdicts, retries, skips, and total paid attempts remain separately
-  visible in the ledger.
+The no-progress streak crosses debate rounds, paid role verdicts, role
+substitutions, and sequence restarts. A stage is unfinished only while it has an
+untriaged or contested finding, an open admitted P1, a failing required check, or
+an unstamped current role. The streak resets only on material progress; a role
+change or sequence restart never resets it by itself.
 
 After final is clean, run the full native suite once on the same commit. A test
 failure or content fix restarts ordered roles; a green suite with unchanged
@@ -406,26 +427,24 @@ stamps permits ready. Remote-CI exceptions are per-run only: name replacement
 local commands in the ledger/PR and report `remote CI not run`, never claim the
 pushed revision had deterministic remote-CI green.
 
-**Accepted findings and the merge bar.** A finding is *open* until it has a
-recorded disposition, so an Accepted finding does not hold the loop open. It
-does bar the merge: a PR whose record carries an Accepted structural finding
-is never auto-merged, whatever the merge policy — mark it ready and leave it
-open. This bar reads the **PR-gate** finding record only; design-stage findings
-live in their own `design-gate` ledger section ("Design-stage external gate") and
-never trip it. A driver can record a risk; only the operator owns one at the merge
-boundary. The cost, accepted knowingly: under `merge-to-unblock` this stalls
-work queued behind that PR until the operator returns — a stall, never a bad
-merge.
+**Merge bar.** An open admitted P1, an `UNTRIAGED` or `Contested` finding, a
+failing required check, or an unmet frozen-contract item bars merge. A deferred
+structural P2 does not block the role stamp or ready state, but it bars auto-merge
+until the operator explicitly owns the risk at the merge boundary. Deferred
+minor and out-of-scope findings do not bar auto-merge. A P1 cannot be accepted; only the
+operator may abandon or replan work that cannot resolve one. This bar reads the
+PR-gate record only; design-stage findings have their own section.
 
-Three or more consecutive rounds with new structural findings mean the
-internal pass was too weak: stop patching finding-by-finding and re-review the
-whole diff for the shared root before spending another round. In an afk run
-the disposition record lives in the run ledger; a standalone gate invocation
-records it where that review is tracked — the PR thread, the commit message,
-or, when neither exists (an uncommitted review with no PR), a standalone run
-directory allocated the collision-safe way `../afk-internal-review/SKILL.md`
-defines; untracked is not an option. All of this is level 3 — doctrine, not a
-guarantee (AGENTS.md, "What this plugin can and cannot enforce").
+Two consecutive unfinished rounds without material progress trigger an
+automatic root-cause checkpoint, never an operator permission prompt. Pause paid
+gates, cluster stable IDs, remove duplicates and unsupported scope, sweep the
+whole diff against the contract, apply one minimal batch fix, and run affected
+checks. If the checkpoint still cannot progress, leave the PR draft with
+`OUTSTANDING`, continue independent queued work, and report the blocker. If one
+decision changed A→B→A, pin the contract-and-test-backed choice; it changes again
+only on new evidence. The disposition record lives in the run ledger, PR thread,
+commit record, or a collision-safe standalone run directory; untracked is not an
+option. All of this is level 3 doctrine, not a guarantee.
 
 The gate skills (`afk-codex-review`, `afk-claude-review`, `afk-kimi-review`,
 `afk-glm-review`) carry the invocation, batching, and metering rules; they load
@@ -438,8 +457,10 @@ in-scope work. Risky changes ship safe-direction (behind a default-off flag,
 fail-safe, additive). Only stop for: out-of-scope work, a destructive or
 outward-facing action without authorization, or genuine ambiguity with no safe
 default. Never merge a PR that is not green or has an open finding — open
-meaning no recorded disposition, and an Accepted structural finding bars
-auto-merge outright ("External gate", the merge bar); never touch
+meaning `UNTRIAGED`, `Contested`, or an admitted P1 without a closing
+disposition. Deferred minor/out-of-scope notes do not bar merge; a structural P2
+uses the operator-owned auto-merge bar in "External gate".
+Never touch
 another session's branch; never deploy (merge ≠ deploy).
 
 ## Continuity and self-pause
@@ -521,12 +542,15 @@ would leave a finished run forever resumable and its scope never free again.
 - **State checks** (scoped, not global): view each scoped issue; list PRs for
   your branches; check the current branch and status; resume the first
   unfinished step. One branch per issue off the default branch; push early.
-- **Auto-pause:** track substantial new content per tick (a commit, a pushed
-  branch, an opened PR, a new design doc, a resolved CI failure or finding).
-  Two consecutive working ticks with none → stop the tick loop, post a status
-  report (blocking + remaining), and stop, leaving `state: active` so the run can
-  be resumed. Queue complete → stop with a final report and set `state: complete`
-  in the same breath, ending the tick and the claim on your scope together.
+- **Auto-pause:** use the External gate's one material-progress definition — an
+  admitted P1 closes, a failing check turns green, a demonstrated shared root
+  cause shrinks, a contract-mapped RED test or implementation slice lands with a
+  named next verification, or a clean stage stamp advances the waterfall.
+  Commits, pushes, and notes that do none of those are activity, not progress. Two consecutive
+  working ticks with none → run the automatic root-cause checkpoint; if it also
+  cannot progress, stop the tick loop, post a status report, and leave
+  `state: active` so the run can resume. Queue complete → stop with a final report
+  and set `state: complete` in the same breath, ending the tick and claim.
   Always tear down any scheduled tick on stop — never leave one running.
 
 ## End-of-run report

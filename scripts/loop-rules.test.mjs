@@ -26,9 +26,10 @@ const gates = {
 // stop rules did.
 const STOP_SENTENCE = [
   'Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")',
-  'holds: a round with no new structural finding and every prior structural',
-  'finding closed by a recorded disposition — a driver-verified fix, a',
-  'refutation, or an accepted risk.',
+  'holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every',
+  'lower-severity item has a recorded non-blocking disposition. That same verdict',
+  'earns the role stamp only if it requires no content change; a content fix',
+  'invalidates it and the role re-reviews the fixed revision.',
 ].join('\n');
 
 const countMatches = (text, re) => (text.match(new RegExp(re, 'g')) ?? []).length;
@@ -38,12 +39,12 @@ test('the driver defines finding closure once, as recorded dispositions', () => 
   // driver now owns the one definition: every structural finding is named at
   // triage and closed by exactly one recorded disposition.
   for (const phrase of [
-    /named at triage/,
+    /named at\s+triage/,
     /at most one \*\*current\*\* recorded\s+disposition/,
     /Silence closes nothing/,
     /run-scoped/,
     /the record is the closure, not the\s+future test/,
-    /never auto-merged, whatever the merge\s+policy/,
+    /deferred minor and\s+out-of-scope\s+findings do not bar auto-merge/,
   ]) {
     assert.equal(
       countMatches(afkSkill, phrase.source),
@@ -53,9 +54,10 @@ test('the driver defines finding closure once, as recorded dispositions', () => 
   }
 });
 
-test('an unverifiable load-bearing finding escalates instead of looping', () => {
+test('an unverifiable load-bearing finding narrows safely before escalation', () => {
   assert.match(afkSkill, /neither confirm nor refute/);
-  assert.match(afkSkill, /the loop does not end around it/);
+  assert.match(afkSkill, /fail-safe default|default-off guard/i);
+  assert.match(afkSkill, /task depends on the unresolved choice/i);
 });
 
 test('all four gate skills carry the identical stop sentence', () => {
@@ -66,6 +68,12 @@ test('all four gate skills carry the identical stop sentence', () => {
       `expected exactly one copy of the stop sentence in ${name} gate skill`,
     );
   }
+});
+
+test('a finding-bearing verdict cannot stamp a revision changed after it', () => {
+  assert.match(afkSkill, /only if that verdict requires no\s+content change/i);
+  assert.match(afkSkill, /content fix invalidates that verdict/i);
+  assert.match(afkSkill, /role (?:must )?re-review\s+the fixed revision/i);
 });
 
 test('the drifted stop-rule wordings do not return', () => {
@@ -90,7 +98,7 @@ test('every gate round ends in an affirmative report, in all four gates', () => 
 test('the pilot defines the clean round its stop condition counts', () => {
   // "Two consecutive rounds produce no new findings" counted rounds where
   // lenses were skipped or a prior fix was never re-verified.
-  assert.match(pilot, /A round is \*\*clean\*\* only if/);
+  assert.match(pilot, /A\s+round is \*\*clean\*\* only if/);
   assert.match(pilot, /skipped or silent lens voids the\s+round/);
   assert.match(pilot, /verifies\s+nothing/);
   assert.match(pilot, /bound the \*\*effort\*\*, not correctness/);
@@ -101,10 +109,14 @@ test('the pilot handoff records the lens results, not just round numbers', () =>
   assert.match(pilot, /lens-by-lens results/);
 });
 
-test('ordered external roles have separate bounded role and sequence counters', () => {
-  assert.match(afkSkill, /four finding-bearing verdicts/);
-  assert.match(afkSkill, /full-sequence counter/);
-  assert.match(afkSkill, /every sequence start regardless\s+of cause/);
+test('ordered external roles converge on evidence and progress, not round count', () => {
+  assert.match(afkSkill, /two consecutive unfinished rounds without material progress/i);
+  assert.match(afkSkill, /automatic root-cause checkpoint/i);
+  assert.match(afkSkill, /clean terminal round never counts as stalled/i);
+  assert.match(afkSkill, /contract-mapped (RED test|implementation slice)/i);
   assert.match(afkSkill, /one transient retry/);
-  assert.match(afkSkill, /refuses to start a fourth\s+sequence/);
+  assert.match(afkSkill, /crosses debate rounds, paid role verdicts, role\s+substitutions, and sequence restarts/i);
+  assert.match(afkSkill, /unfinished only while/i);
+  assert.match(afkSkill, /resets only on material progress/i);
+  assert.doesNotMatch(afkSkill, /four finding-bearing verdicts|refuses to start a fourth\s+sequence/i);
 });

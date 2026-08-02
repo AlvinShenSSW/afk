@@ -66,32 +66,34 @@ failed — read the transcript it names; never report an errored run as clean.
 
 ## Handle findings (batch — minimise calls)
 
-1. **Sort by kind.** Structural (architecture, correctness, security, missed
-   edge cases) — act on these. Minor (naming, cosmetics) — defer to one final
-   pass.
-2. **Verify before trusting.** Each finding is a hypothesis; the verification
-   standard is below. Push back with evidence on anything you can disprove.
-3. **Fix every confirmed structural finding in one batch**, and sweep for the
-   same pattern elsewhere; keep specs in sync in the same change.
+1. **Triage before editing.** Map each hypothesis to the frozen contract, apply
+   the P1 admission standard below, and identify duplicates or scope proposals.
+2. **Verify before trusting.** Push back with evidence on anything disproved or
+   unverified; severity proposed by the reviewer is not authority to edit.
+3. **Fix admitted P1 findings in one batch** and sweep the same demonstrated
+   pattern; record structural P2 for the merge boundary and defer minor or
+   out-of-scope items without expanding the PR.
 4. **Self-review once** over your fixes.
 5. **Re-run the gate once.** Repeat until the stop rule holds.
 6. **Deferred pass once, at the end** for the minor items — do not re-run the
    gate to confirm doc edits.
 
-A structural finding claims both that the code is as described and that it goes
-wrong; reading the cited `file:line` settles only the first. Demonstrate the
-consequence before fixing, and account for every consumer of what you change
-that lives outside the diff — `../afk/SKILL.md` ("External gate") holds both
-rules.
+Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to
+the frozen issue contract or an invariant, demonstrating a reachable trigger
+and wrong consequence, explaining why the current artifact cannot safely
+advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
+record structural P2 for the operator-owned merge boundary, and defer minor or
+out-of-scope items without expanding the PR.
 
 Apply any invariant in `.afk/config.md` as an extra must-check lens.
 
 ## Stop rule
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
-holds: a round with no new structural finding and every prior structural
-finding closed by a recorded disposition — a driver-verified fix, a
-refutation, or an accepted risk.
+holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
+lower-severity item has a recorded non-blocking disposition. That same verdict
+earns the role stamp only if it requires no content change; a content fix
+invalidates it and the role re-reviews the fixed revision.
 
 Report honestly: `CLEAN`, or `OUTSTANDING` with what remains. A clean pass is
 not authority to merge — hand back to the operator.

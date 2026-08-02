@@ -28,16 +28,13 @@ test('afk SKILL.md defines the design-stage gate step and its placement', () => 
   assert.match(afkSkill, /--design/, 'the selector the step uses must appear');
 });
 
-test('afk SKILL.md pins the one-round-per-version and cap-2 rule', () => {
-  // Whitespace-tolerant: these phrases legitimately wrap across a line.
-  assert.match(afkSkill, /one\s+(external\s+)?gate\s+per\s+design\s+version|one\s+round\s+per\s+design\s+version/i);
-  assert.match(afkSkill, /2\s+per\s+issue|two\s+per\s+issue|cap(?:ped)?\s+(?:at|of)\s+2/i);
+test('design-stage review uses progress convergence instead of a counter permission gate', () => {
+  assert.match(afkSkill, /later evaluations follow the debate's material-progress/i);
+  assert.doesNotMatch(afkSkill, /hard cap 2 per\s+issue|cap(?:ped)?\s+(?:at|of)\s+2/i);
 });
 
-test('afk SKILL.md pins P1-escalate-at-cap for the design gate', () => {
-  // At the cap a still-open design P1 escalates; only a P2 may be accept-recorded.
-  assert.match(afkSkill, /P1/);
-  assert.match(afkSkill, /escalate/i);
+test('a clean debate and clean design gate advance without a false no-progress stop', () => {
+  assert.match(afkSkill, /clean terminal round (advances the waterfall and )?never counts\s+as stalled/i);
 });
 
 test('afk SKILL.md pins the baseline-before-gate rule', () => {
@@ -80,4 +77,8 @@ test('every gate SKILL.md documents design mode and the --design selector', () =
   for (const [name, text] of Object.entries(gates)) {
     assert.match(text, /--design/, `${name} SKILL.md must document --design`);
   }
+});
+
+test('design-stage finding vocabulary includes contested', () => {
+  assert.match(afkSkill, /fixed \/ refuted \/ deferred \/ suppressed \/ contested/i);
 });

@@ -104,27 +104,29 @@ a verdict; that is not a clean round.
 
 Same discipline as the other gate skills:
 
-1. Sort structural findings from minor items.
-2. Verify each finding to the standard below.
-3. Fix confirmed structural findings in one batch and sweep for the same pattern.
+1. Map every hypothesis to the frozen contract and apply the P1 admission rule.
+2. Verify its trigger and consequence; a reviewer severity is only a proposal.
+3. Fix admitted P1 findings in one batch; defer lower-severity and scope items.
 4. Self-review once.
 5. Re-run the gate once if structural findings were fixed.
 6. Resolve minor items in a single final pass without another gate round.
 
-A structural finding claims both that the code is as described and that it goes
-wrong; reading the cited `file:line` settles only the first. Demonstrate the
-consequence before fixing, and account for every consumer of what you change
-that lives outside the diff — `../afk/SKILL.md` ("External gate") holds both
-rules.
+Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to
+the frozen issue contract or an invariant, demonstrating a reachable trigger
+and wrong consequence, explaining why the current artifact cannot safely
+advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
+record structural P2 for the operator-owned merge boundary, and defer minor or
+out-of-scope items without expanding the PR.
 
 Apply any invariant in `.afk/config.md` as an extra lens.
 
 ## Stop rule
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
-holds: a round with no new structural finding and every prior structural
-finding closed by a recorded disposition — a driver-verified fix, a
-refutation, or an accepted risk.
+holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
+lower-severity item has a recorded non-blocking disposition. That same verdict
+earns the role stamp only if it requires no content change; a content fix
+invalidates it and the role re-reviews the fixed revision.
 
 Report `CLEAN`, or `OUTSTANDING` with what remains. A clean pass is not
 authority to merge.

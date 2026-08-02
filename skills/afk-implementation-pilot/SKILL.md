@@ -17,8 +17,9 @@ re-derive the plan.
 ### 1 — Load the plan
 
 Confirm the acceptance criteria, files to change, key notes, test plan,
-out-of-scope items, and assumptions. If anything conflicts with what you observe
-in the code, surface it before coding — do not silently resolve conflicts.
+out-of-scope items, assumptions, and frozen issue contract. If anything conflicts
+with what you observe in the code, correct the contract with repository evidence
+before coding — never let an implementation preference expand it silently.
 
 ### 2 — Read before writing
 
@@ -30,7 +31,9 @@ commits or open PRs.
 
 Make the smallest change that satisfies the acceptance criteria. Follow existing
 conventions exactly. No unrelated refactors, no speculative abstractions. Add or
-update tests for every changed behaviour.
+update tests for every changed behaviour. Map every edit to a contract item or an
+admitted, demonstrated defect. Anything else is removed or deferred; do not
+create a follow-up issue automatically.
 
 ### 4 — Run checks
 
@@ -43,8 +46,11 @@ linked worktree reads a different `.afk/` than the one `afk-init` wrote.
 
 ### 5 — Self-review loop
 
-Self-review against the checklist, fix all findings, re-run affected checks, and
-repeat until **two consecutive clean rounds**. A round is **clean** only if
+Self-review against the checklist, triage every finding against the frozen
+contract, fix admitted defects, record structural P2 for the operator-owned
+merge boundary, defer minor or out-of-scope proposals,
+re-run affected checks, and repeat until **two consecutive clean rounds**. A
+round is **clean** only if
 every checklist lens below was applied to the full diff and reported a result —
 "lens applied, nothing found" is a statement; a skipped or silent lens voids the
 round — and every finding from an earlier round has its fix verified: by
@@ -65,6 +71,10 @@ the reason internal review and the ordered external roles still follow.
   correct for new actions.
 - **Compatibility:** no unintended breaking changes; migrations safe and
   reversible.
+
+Track decisions as well as findings. If the same decision changes A→B→A, stop
+editing, run a whole-diff root-cause pass, and pin the contract-and-test-backed
+choice. Change it again only on new evidence.
 
 Stop condition: two consecutive clean rounds. Record both round numbers in the
 handoff.

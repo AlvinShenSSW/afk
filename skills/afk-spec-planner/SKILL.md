@@ -37,6 +37,11 @@ Output, in this shape:
 - **Spec review** — restate the ask in your own words; name the core need and any
   ambiguity.
 - **Acceptance criteria** — a concrete checklist.
+- **Frozen issue contract** — restate the acceptance criteria together with the
+  product and engineering invariants, allowed user-visible behavior changes,
+  explicit non-goals, and the smallest causal boundary in which the fix may
+  operate. Repository evidence may correct this contract; a later reviewer's
+  preference may not expand it.
 - **Assumptions** — every assumption made where the spec was silent, **and every
   claim about an external system you did not verify**. How a CLI behaves, what a
   permission model allows, what a command returns, what a config does: if you did

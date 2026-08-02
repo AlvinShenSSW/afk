@@ -46,6 +46,23 @@ scope
 `afk` only runs against an explicit operator-provided scope. It does not browse a
 tracker and choose work by itself.
 
+## Evidence-Driven Convergence
+
+AFK does not ask for operator permission because a review counter was reached.
+The issue contract is frozen before implementation, every reported finding starts
+untriaged, and P1 is admitted only with a scope anchor, reachable trigger,
+demonstrated wrong consequence, stage-blocking impact, and minimal causal fix.
+P2, minor, and out-of-scope observations are recorded without expanding the PR.
+A structural P2 does not block a review stamp, but it leaves auto-merge for the
+operator to authorize; minor and out-of-scope notes remain non-blocking.
+
+Review rounds may continue while they close an admitted P1, turn a check green,
+reduce a demonstrated root cause, or advance a clean stage. Two unfinished
+no-progress rounds trigger an automatic whole-diff root-cause checkpoint rather
+than an operator prompt. Reworded or evidence-free repeated findings cannot
+reopen a closed decision, and an A→B→A edit is pinned by the contract and tests
+before review continues.
+
 ## Installation
 
 Install this repository through the host agent's plugin flow — it works with
