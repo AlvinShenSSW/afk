@@ -14,6 +14,7 @@ test('optional DeepSeek and MiMo gate entry points and skills are bundled', () =
 
 test('optional families are documented without changing built-in defaults', () => {
   const afk = readFileSync(new URL('skills/afk/SKILL.md', root), 'utf8');
+  const claude = readFileSync(new URL('skills/afk-claude-review/SKILL.md', root), 'utf8');
   const readme = readFileSync(new URL('README.md', root), 'utf8');
   const template = readFileSync(new URL('templates/afk-config.example.md', root), 'utf8');
   assert.match(afk, /valid role families[^\n]*deepseek[^\n]*mimo/i);
@@ -24,4 +25,5 @@ test('optional families are documented without changing built-in defaults', () =
     assert.match(readme, new RegExp(`export ${name}=`), `${name} needs copyable setup guidance`);
   }
   assert.match(readme, /git check-ignore -v \.env/);
+  assert.match(claude, /Known families:[^\n]*deepseek[^\n]*mimo/i);
 });
