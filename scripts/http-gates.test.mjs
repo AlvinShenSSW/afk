@@ -85,6 +85,20 @@ async function withRepo(fn) {
   }
 }
 
+test('a missing credential skips before non-design snapshot assembly', async () => {
+  await withRepo(async ({ dir }) => {
+    writeFileSync(join(dir, 'safe.txt'), 'changed\n');
+    const result = runGate('deepseek', {
+      args: ['--uncommitted'],
+      cwd: dir,
+      env: { DEEPSEEK_REVIEW_MAX_CTX_BYTES: '1' },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /SKIPPED: No API key/);
+    assert.doesNotMatch(result.stdout, /budget/i);
+  });
+});
+
 for (const [family, config] of Object.entries(CASES)) {
   test(`${family} missing credential emits a distinct skip`, () => {
     const result = runGate(family);
