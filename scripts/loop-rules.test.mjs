@@ -27,7 +27,7 @@ const gates = {
 const STOP_SENTENCE = [
   'Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")',
   'holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every',
-  'lower-severity item has a disposition that does not block the role stamp (a',
+  'lower-severity item has a recorded disposition that does not block the role stamp (a',
   'structural P2 may still bar auto-merge). That same verdict',
   'earns the role stamp only if it requires no content change; a content fix',
   'invalidates it and the role re-reviews the fixed revision.',
@@ -115,7 +115,7 @@ test('ordered external roles converge on evidence and progress, not round count'
   assert.match(afkSkill, /automatic root-cause checkpoint/i);
   assert.match(afkSkill, /clean terminal round never counts as stalled/i);
   assert.match(afkSkill, /contract-mapped (RED test|implementation slice)/i);
-  assert.match(afkSkill, /design version lands with its frozen contract/i);
+  assert.match(afkSkill, /design version lands with its\s+frozen\s+contract/i);
   assert.match(afkSkill, /one transient retry/);
   assert.match(afkSkill, /crosses debate rounds, paid role verdicts, role\s+substitutions, and sequence restarts/i);
   assert.match(afkSkill, /unfinished only while/i);
@@ -123,6 +123,27 @@ test('ordered external roles converge on evidence and progress, not round count'
   assert.doesNotMatch(afkSkill, /four finding-bearing verdicts|refuses to start a fourth\s+sequence/i);
 });
 
+test('design progress is part of the canonical and debate material-progress definitions', () => {
+  const debate = afkSkill.slice(
+    afkSkill.indexOf('**Exit criteria — evidence and progress, never a counter.**'),
+    afkSkill.indexOf('This is level 3 — doctrine'),
+  );
+  const external = afkSkill.slice(
+    afkSkill.indexOf('Convergence follows evidence and material progress'),
+    afkSkill.indexOf('The no-progress streak crosses debate rounds'),
+  );
+  const autoPause = afkSkill.slice(
+    afkSkill.indexOf('- **Auto-pause:**'),
+    afkSkill.indexOf('## End-of-run report'),
+  );
+
+  assert.match(debate, /design version lands with its\s+frozen\s+contract/i);
+  assert.match(external, /design version lands with its\s+frozen\s+contract/i);
+  assert.match(autoPause, /use the External gate's one material-progress definition above/i);
+  assert.doesNotMatch(autoPause, /admitted P1 closes/);
+});
+
 test('continuity counts barren ticks only while the current stage is unfinished', () => {
   assert.match(afkSkill, /Count a\s+barren tick only while the current stage is unfinished/i);
+  assert.doesNotMatch(afkSkill, /intentional external waits are not stalled construction/i);
 });

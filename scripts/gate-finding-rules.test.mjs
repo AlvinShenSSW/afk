@@ -152,9 +152,14 @@ test('implementation and internal review apply the same value boundary', () => {
 });
 
 test('suppression closes evidence-free repeats, not the already-refuted finding', () => {
-  assert.match(afkSkill, /evidence-free repeats of a pinned-Refuted finding/i);
+  assert.match(afkSkill, /Two evidence-free repeats of a pinned-Refuted finding/i);
   assert.match(afkSkill, /recorded `Suppressed` without reopening it/i);
+  assert.match(afkSkill, /for this PR only/i);
   assert.doesNotMatch(afkSkill, /repeating a Refuted finding twice without new evidence may\s+close it/i);
+});
+
+test('only an unfixed structural P2 remains operator-owned', () => {
+  assert.match(afkSkill, /structural P2 not admitted to the batch remains\s+operator-owned/i);
 });
 
 test('the retired shape-only verification standard does not return', () => {

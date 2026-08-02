@@ -87,7 +87,7 @@ Apply any invariant in `.afk/config.md` as an extra lens.
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
 holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
-lower-severity item has a disposition that does not block the role stamp (a
+lower-severity item has a recorded disposition that does not block the role stamp (a
 structural P2 may still bar auto-merge). That same verdict
 earns the role stamp only if it requires no content change; a content fix
 invalidates it and the role re-reviews the fixed revision.

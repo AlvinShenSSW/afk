@@ -30,8 +30,8 @@ merge disposition, and suppression appears to close an already-refuted finding.
    material progress. A tick is barren only while its current stage is
    unfinished.
 6. A structural P2 can permit a role stamp while still barring auto-merge.
-7. Suppression closes evidence-free repeats without re-closing the underlying
-   Refuted finding.
+7. Suppression closes two same-provider evidence-free repeats for this PR
+   without re-closing the underlying Refuted finding.
 8. A verified P1 that cannot be repaired inside the frozen contract remains an
    operator-owned abandon-or-replan decision.
 
