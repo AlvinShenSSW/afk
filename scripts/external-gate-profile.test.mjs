@@ -60,19 +60,20 @@ test('legacy and profileless config behavior is explicit and total', () => {
 
 test('ordered role convergence and final revision stamps are pinned', () => {
   for (const phrase of [
-    /full-sequence counter/,
-    /four finding-bearing verdicts/,
+    /material progress/,
+    /root-cause checkpoint/,
     /one transient retry/,
     /merge-base/,
     /external-gate-section hash/,
     /later-role content change/,
   ]) assert.match(afk, phrase);
+  assert.doesNotMatch(afk, /refuses to start a fourth\s+sequence|four finding-bearing verdicts/i);
   assert.match(internal, /all configured roles/i);
   assert.match(internal, /same `HEAD`[^\n]*merge-base/i);
 });
 
 test('design-stage review remains exactly one independent gate', () => {
-  assert.match(afk, /Exactly one gate, regardless of PR `gates` length or legacy `min-pass`/);
+  assert.match(afk, /Exactly one gate per design evaluation, regardless of PR `gates` length or\s+legacy `min-pass`/);
 });
 
 test('gate skills name stable default roles instead of interchangeability', () => {

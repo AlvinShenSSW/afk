@@ -59,25 +59,28 @@ as clean.
 
 ## Handle findings (batch — minimise calls)
 
-Identical discipline to `afk-codex-review`: sort structural vs minor; verify each
-finding to the standard below before trusting it; fix confirmed structural
-findings in one batch and sweep for the pattern; self-review once; re-run once;
-resolve minor items in a single final pass.
+Identical discipline to `afk-codex-review`: map every hypothesis to the frozen
+contract; admit P1 only on demonstrated evidence; batch-fix admitted P1 findings;
+record structural P2 for the merge boundary; defer minor or out-of-scope items;
+self-review once; re-run after content fixes; resolve minor items without another
+paid round.
 
-A structural finding claims both that the code is as described and that it goes
-wrong; reading the cited `file:line` settles only the first. Demonstrate the
-consequence before fixing, and account for every consumer of what you change
-that lives outside the diff — `../afk/SKILL.md` ("External gate") holds both
-rules.
+Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to
+the frozen issue contract or an invariant, demonstrating a reachable trigger
+and wrong consequence, explaining why the current artifact cannot safely
+advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
+record structural P2 for the operator-owned merge boundary, and defer minor or
+out-of-scope items without expanding the PR.
 
 Apply any invariant in `.afk/config.md` as an extra lens.
 
 ## Stop rule
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
-holds: a round with no new structural finding and every prior structural
-finding closed by a recorded disposition — a driver-verified fix, a
-refutation, or an accepted risk.
+holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
+lower-severity item has a recorded non-blocking disposition. That same verdict
+earns the role stamp only if it requires no content change; a content fix
+invalidates it and the role re-reviews the fixed revision.
 
 Report `CLEAN`, or `OUTSTANDING` with what remains. A clean pass is not
 authority to merge.

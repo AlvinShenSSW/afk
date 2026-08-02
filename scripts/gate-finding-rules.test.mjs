@@ -14,6 +14,7 @@ const read = (p) =>
   readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 const afkSkill = read('../skills/afk/SKILL.md');
+const internalReview = read('../skills/afk-internal-review/SKILL.md');
 const gates = {
   codex: read('../skills/afk-codex-review/SKILL.md'),
   claude: read('../skills/afk-claude-review/SKILL.md'),
@@ -25,11 +26,12 @@ const gates = {
 // full rules; a gate skill is loadable standalone, so the summary sits where
 // findings are handled and must not drift the way the old stop rules did.
 const TRIAGE_SENTENCE = [
-  'A structural finding claims both that the code is as described and that it goes',
-  'wrong; reading the cited `file:line` settles only the first. Demonstrate the',
-  'consequence before fixing, and account for every consumer of what you change',
-  'that lives outside the diff — `../afk/SKILL.md` ("External gate") holds both',
-  'rules.',
+  'Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to',
+  'the frozen issue contract or an invariant, demonstrating a reachable trigger',
+  'and wrong consequence, explaining why the current artifact cannot safely',
+  'advance, and naming the minimal causal fix. Do not edit for an untriaged claim;',
+  'record structural P2 for the operator-owned merge boundary, and defer minor or',
+  'out-of-scope items without expanding the PR.',
 ].join('\n');
 
 const countMatches = (text, re) => (text.match(new RegExp(re, 'g')) ?? []).length;
@@ -37,9 +39,9 @@ const countMatches = (text, re) => (text.match(new RegExp(re, 'g')) ?? []).lengt
 test('the driver states each triage rule exactly once', () => {
   for (const phrase of [
     /A finding asserts two things; reading settles one/,
-    /restating the finding is not a\s+demonstration/,
+    /Restating the finding is not a\s+demonstration/,
     /Account for the fix's reach before it lands/,
-    /consumers outside it are invisible to\s+every reviewer in the loop/,
+    /consumers outside it are invisible to\s+every\s+reviewer in the loop/,
   ]) {
     assert.equal(
       countMatches(afkSkill, phrase.source),
@@ -52,19 +54,53 @@ test('the driver states each triage rule exactly once', () => {
 test('an undemonstrated consequence is recorded, not fixed', () => {
   // The incident this rule answers: the shape was confirmed, the asserted
   // consequence never was, and the fix landed anyway.
-  assert.match(afkSkill, /evidence against the finding, not\s+licence to fix it anyway/);
+  assert.match(afkSkill, /evidence against the\s+finding, not licence to fix it anyway/);
   assert.match(afkSkill, /leave the code as it is/);
-  // Refuted is closed by a recorded disproof, so failing to demonstrate must
-  // not reach it — that exit would close a load-bearing finding without the
-  // operator escalation the unverified path carries.
-  assert.match(afkSkill, /An affirmative disproof records it Refuted/);
-  assert.match(afkSkill, /keeps\s+a load-bearing finding on the escalation path/);
+  assert.match(afkSkill, /An affirmative disproof records it\s+Refuted/);
+  assert.match(afkSkill, /untriaged claim never\s+authorizes a code change/);
 });
 
-test('an unaccountable consumer narrows or defers the fix, and never blocks', () => {
+test('an unaccountable consumer narrows or defers the fix without expanding scope', () => {
   assert.match(afkSkill, /not licence to\s+proceed/);
   assert.match(afkSkill, /narrow the fix to the caller inside the diff/);
-  assert.match(afkSkill, /record the finding\s+Accepted with a follow-up issue/);
+  assert.match(afkSkill, /record the finding\s+Deferred/i);
+  assert.match(afkSkill, /does not create a\s+follow-up issue automatically/i);
+});
+
+test('P1 admission is scope-anchored and evidence-complete', () => {
+  for (const phrase of [
+    /frozen issue contract or an invariant/,
+    /reachable (condition|trigger)/,
+    /wrong (outcome|consequence)/,
+    /cannot safely (enter|advance)/,
+    /minimal causal fix/,
+  ]) assert.match(afkSkill, phrase);
+  assert.match(afkSkill, /unlabelled finding (starts|is) `UNTRIAGED`/i);
+  assert.match(afkSkill, /never\s+authorizes a code change/i);
+});
+
+test('stable finding identity prevents evidence-free reopening and oscillation', () => {
+  assert.match(afkSkill, /stable ID/);
+  assert.match(afkSkill, /Rewording the same consequence is the same finding/i);
+  assert.match(afkSkill, /new evidence or a different\s+observable\s+consequence/i);
+  assert.match(afkSkill, /Suppressed/);
+  assert.match(afkSkill, /Contested/);
+  assert.match(afkSkill, /executable check|reproducible verification artifact/i);
+  assert.match(afkSkill, /different (role|provider)/i);
+  assert.match(afkSkill, /bars? (the role stamp and )?auto-merge/i);
+  assert.match(afkSkill, /re-verifies\s+the pinned disproof against the current revision/i);
+  assert.match(afkSkill, /admits\s+the finding on new\s+evidence/i);
+  assert.match(afkSkill, /A→B→A/);
+});
+
+test('structural P2 risk remains operator-owned at auto-merge', () => {
+  assert.match(afkSkill, /structural P2/i);
+  assert.match(afkSkill, /does not block the role stamp/i);
+  assert.match(afkSkill, /bars auto-merge/i);
+  assert.match(afkSkill, /operator[^.]*merge boundary/i);
+  assert.match(afkSkill, /minor[^.]*out-of-scope[^.]*do not bar auto-merge/i);
+  assert.match(internalReview, /operator merge decision pending/i);
+  assert.match(internalReview, /operator owns that risk at the merge boundary/i);
 });
 
 test('all four gate skills carry the identical triage sentence', () => {

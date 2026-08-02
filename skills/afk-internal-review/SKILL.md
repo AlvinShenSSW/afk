@@ -18,7 +18,7 @@ The long report is written only at the very end (see Output).
 ## 1 — Gather context
 
 Collect every signal before forming an opinion: PR metadata and linked
-issue/spec; the full diff; commit history; CI status; the surrounding code of
+issue/spec and its frozen issue contract; the full diff; commit history; CI status; the surrounding code of
 changed functions (not only the diff lines); existing tests and coverage; new
 dependencies; config, migrations, and flags; recent related merges.
 
@@ -68,14 +68,20 @@ no prose essay, no full checklist dump:
 ```text
 decision: APPROVE | APPROVE-WITH-COMMENTS | BLOCK
 blockers:
-  - file:line — problem — suggested fix
+  - id — file:line — contract/invariant — reachable evidence — consequence — minimal causal fix
+risks:
+  - id — P2 — file:line — demonstrated structural risk — operator merge decision pending
 suggestions:
   - file:line — improvement
 verify: targeted tests run and results, or "none needed"
 ```
 
 Hand this back to be fixed; re-review after fixes. Never emit APPROVE while a
-blocker is open.
+blocker is open. A reported concern begins `UNTRIAGED`; admit it as a blocker only
+after every blocker field above is demonstrated. Otherwise classify it P2,
+minor, or out-of-scope without changing scope. Put a demonstrated structural P2
+under risks so it cannot disappear into suggestions; minor and out-of-scope
+items go under suggestions.
 
 ### Final report — only when internal review AND all configured roles are clean
 
@@ -107,12 +113,18 @@ reviewed, residual risk, and the production-readiness checklist.
 
 ## Hard rules
 
-- Never approve with an open blocker; a blocker is anything that risks data loss,
-  a security breach, an outage, silent corruption, or a breaking change.
+- Never approve with an open admitted P1. Admission requires a frozen-contract or
+  invariant anchor, reachable trigger, demonstrated wrong consequence,
+  pre-merge necessity, and minimal causal fix. Severity from a reviewer is a
+  proposal, not an admission.
+- Never present a structural P2 as auto-merge-safe. It may coexist with an
+  approval stamp, but the operator owns that risk at the merge boundary.
 - Never merge, push, or deploy — the review ends at the verdict.
 - Always cite `file:line`; always read surrounding context, not only the diff.
 - Spec compliance is a first-class check: passing tests but not doing what the
   issue asks is a blocker.
+- Do not invent requirements, implement out-of-scope suggestions, or turn an
+  architectural preference into a blocker.
 - You are not the last gate — the ordered outer-to-final role sequence runs
   after your verdict. Note the handoff ("next: external outer role") so the
   operator knows the pass is not final.
