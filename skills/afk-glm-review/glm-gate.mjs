@@ -42,6 +42,8 @@ const maxCtx = positiveIntEnv('GLM_REVIEW_MAX_CTX_BYTES', 400000);
 const timeoutMs = reviewTimeoutMs('glm');
 
 const target = parseTarget(userArgs);
+const availableKey = readCredential(['ZAI_API_KEY', 'GLM_API_KEY']);
+const safeReason = (value) => redactCredential(value, availableKey).text;
 const isDesign = target.kind === 'design';
 let snapshot;
 
@@ -51,12 +53,12 @@ let snapshot;
 if (isDesign) {
   const valid = validateTarget(target);
   if (!valid.ok) {
-    emitError(`cannot review — ${valid.reason}`, 1);
+    emitError(`cannot review — ${safeReason(valid.reason)}`, 1);
   }
   snapshot = buildSnapshot({
     target, maxBytes: maxCtx, budgetName: 'GLM_REVIEW_MAX_CTX_BYTES',
   });
-  if (snapshot.error) emitError(`cannot review — ${snapshot.error}`, 1);
+  if (snapshot.error) emitError(`cannot review — ${safeReason(snapshot.error)}`, 1);
 }
 
 if (isGateDisabled('GLM_REVIEW_GATE')) {
@@ -71,15 +73,13 @@ if (!guard.run) {
 if (!isDesign) {
   const valid = validateTarget(target);
   if (!valid.ok) {
-    emitError(`cannot review — ${valid.reason}`, 1);
+    emitError(`cannot review — ${safeReason(valid.reason)}`, 1);
   }
   snapshot = buildSnapshot({
     target, maxBytes: maxCtx, budgetName: 'GLM_REVIEW_MAX_CTX_BYTES',
   });
-  if (snapshot.error) emitError(`cannot review — ${snapshot.error}`, 1);
+  if (snapshot.error) emitError(`cannot review — ${safeReason(snapshot.error)}`, 1);
 }
-
-const availableKey = readCredential(['ZAI_API_KEY', 'GLM_API_KEY']);
 
 if (printArgsOnly) {
   // Dry run: resolve the target, call nothing. Runs before every skip so a dry
@@ -121,8 +121,8 @@ for (const note of [...new Set(snapshot.notes)]) {
 }
 if (!snapshot.hasChanges) {
   const reason = snapshot.notes.length
-    ? `No reviewable changes found for ${target.label} after snapshot exclusions.`
-    : `No changes found for ${target.label}.`;
+    ? `No reviewable changes found for ${snapshot.reviewLabel} after snapshot exclusions.`
+    : `No changes found for ${snapshot.reviewLabel}.`;
   emitSkip(reason);
 }
 
@@ -226,4 +226,7 @@ if (safeReview.exactCount) {
     `[glm-gate] response: redacted ${safeReview.exactCount} occurrence(s) of the configured credential\n`,
   );
 }
-emitReview(safeReview.text);
+const coverageNote = snapshot.excludedCount
+  ? `SNAPSHOT_NOTE excluded_entries=${snapshot.excludedCount}\n`
+  : '';
+emitReview(`${coverageNote}${safeReview.text}`);

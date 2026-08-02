@@ -224,6 +224,19 @@ test('reviewer model mismatch discards the verdict', async () => {
   });
 });
 
+test('target validation errors redact secret-shaped path and ref text', () => {
+  const token = `tp-${'V8q'.repeat(12)}`;
+  for (const args of [
+    ['--design', join(tmpdir(), `missing-${token}.md`)],
+    ['--base', token],
+  ]) {
+    const result = runGate('deepseek', { args });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR:/);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /tp-/);
+  }
+});
+
 test('the request log cannot echo a credential reused as the configured model', async () => {
   const key = 'credential-reused-as-model-id';
   await withServer((_request, response) => {
@@ -346,6 +359,7 @@ test('the gate request excludes secret files, symlinks, and secret-shaped values
       assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /APPROVE/);
       assert.match(result.stderr, /configured credential/);
+      assert.match(result.stdout, /SNAPSHOT_NOTE excluded_entries=2/);
     });
 
     assert.doesNotMatch(requestBody, new RegExp(dotenvSecret));

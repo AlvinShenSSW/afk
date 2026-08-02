@@ -213,7 +213,12 @@ test('empty completion is an error, not silent success', async () => {
   const fetchImpl = async () => ({ ok: true, async json() { return { choices: [{ message: { content: '' } }], usage: {} }; } });
   await assert.rejects(
     () => p.complete({ system: 's', user: 'u', model: 'm', maxTokens: 1, env: { DEV_DEEPSEEK_API_KEY: 'k' }, fetchImpl }),
-    (e) => e.code === 'empty',
+    (error) => {
+      assert.equal(error.code, 'empty');
+      assert.equal(error.relay, true);
+      assert.match(error.message, /AGENT_RELAY_MAX_OUTPUT_TOKENS/);
+      return true;
+    },
   );
 });
 

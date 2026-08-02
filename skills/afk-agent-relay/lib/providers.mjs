@@ -12,9 +12,17 @@ import { makeOpenAiProvider, deepseekUsage } from '../../../lib/http/openai-prov
 import { makeCodexProvider } from './codex_provider.mjs';
 import { isOff, relayError } from './relay.mjs';
 
+function makeRelayOpenAiProvider(config) {
+  return makeOpenAiProvider({
+    ...config,
+    relayErrors: true,
+    emptyHint: 'raise AGENT_RELAY_MAX_OUTPUT_TOKENS or disable thinking',
+  });
+}
+
 export function buildRegistry() {
   return {
-    deepseek: makeOpenAiProvider({
+    deepseek: makeRelayOpenAiProvider({
       name: 'deepseek',
       keyEnv: 'DEV_DEEPSEEK_API_KEY',
       baseUrlEnv: 'DEV_DEEPSEEK_BASE_URL',
@@ -31,7 +39,7 @@ export function buildRegistry() {
       normalizeUsage: deepseekUsage,
     }),
 
-    mimo: makeOpenAiProvider({
+    mimo: makeRelayOpenAiProvider({
       name: 'mimo',
       keyEnv: 'DEV_MIMO_API_KEY',
       baseUrlEnv: 'DEV_MIMO_BASE_URL',
@@ -42,7 +50,7 @@ export function buildRegistry() {
       buildHeaders: (key) => ({ 'api-key': key }),
     }),
 
-    kimi: makeOpenAiProvider({
+    kimi: makeRelayOpenAiProvider({
       name: 'kimi',
       keyEnv: 'DEV_KIMI_API_KEY', // Moonshot (Kimi) — uses the --provider name
       baseUrlEnv: 'DEV_KIMI_BASE_URL',
@@ -54,7 +62,7 @@ export function buildRegistry() {
       tokenParam: 'max_tokens', // Moonshot/Kimi chat API uses max_tokens
     }),
 
-    openai: makeOpenAiProvider({
+    openai: makeRelayOpenAiProvider({
       name: 'openai',
       keyEnv: 'DEV_OPENAI_API_KEY',
       baseUrlEnv: 'DEV_OPENAI_BASE_URL',
