@@ -14,9 +14,14 @@ test('optional DeepSeek and MiMo gate entry points and skills are bundled', () =
 
 test('optional families are documented without changing built-in defaults', () => {
   const afk = readFileSync(new URL('skills/afk/SKILL.md', root), 'utf8');
+  const readme = readFileSync(new URL('README.md', root), 'utf8');
   const template = readFileSync(new URL('templates/afk-config.example.md', root), 'utf8');
   assert.match(afk, /valid role families[^\n]*deepseek[^\n]*mimo/i);
   assert.match(template, /^gates:\s+codex > kimi\s*$/m);
   assert.match(template, /^priority:\s+codex > claude > kimi > glm\b/m);
   assert.doesNotMatch(template, /^priority:.*(?:deepseek|mimo)/m);
+  for (const name of ['ZAI_API_KEY', 'DEEPSEEK_REVIEW_API_KEY', 'MIMO_REVIEW_API_KEY']) {
+    assert.match(readme, new RegExp(`export ${name}=`), `${name} needs copyable setup guidance`);
+  }
+  assert.match(readme, /git check-ignore -v \.env/);
 });

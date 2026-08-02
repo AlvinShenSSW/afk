@@ -206,6 +206,24 @@ gitignored `.env`. DeepSeek reads `DEEPSEEK_REVIEW_API_KEY` first and
 call the provider APIs directly and do not import credentials from Kilo Code or
 VS Code.
 
+For the current shell, export only the provider you intend to use:
+
+```bash
+export ZAI_API_KEY="<your-zai-key>" # GLM; GLM_API_KEY is also accepted
+export DEEPSEEK_REVIEW_API_KEY="<your-deepseek-key>"
+export MIMO_REVIEW_API_KEY="<your-mimo-token-plan-key>"
+```
+
+For a persistent per-repository setup, put the same assignment without
+`export` in the local `.env`. Before adding a real value, verify the ignore rule:
+
+```bash
+git check-ignore -v .env
+```
+
+If that command prints no matching rule, do not put a credential in the file;
+run `/afk-init` or add `.env` to a local Git exclude first.
+
 ## Common Invocations
 
 ```text
