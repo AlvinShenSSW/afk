@@ -27,5 +27,5 @@ export function gateTestEnv(overrides = {}, base = process.env) {
       delete clean[key];
     }
   }
-  return { ...clean, ...overrides };
+  return { ...clean, AFK_GATE_NO_DOTENV: '1', ...overrides };
 }

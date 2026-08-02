@@ -13,6 +13,8 @@ test('optional DeepSeek and MiMo gate entry points and skills are bundled', () =
     const prefix = family.toUpperCase();
     assert.match(skill, new RegExp(`${prefix}_REVIEW_MAX_OUTPUT_TOKENS`));
     assert.match(skill, new RegExp(`${prefix}_REVIEW_EXCLUDE_GLOBS`));
+    assert.match(skill, /--print-args/);
+    assert.match(skill, /--print-prompt/);
   }
 });
 

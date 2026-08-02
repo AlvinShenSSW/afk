@@ -22,7 +22,7 @@ test('gate test environment removes ambient gate configuration', () => {
     MIMO_REVIEW_API_KEY: 'ambient-key',
     ZAI_API_KEY: 'ambient-key',
   });
-  assert.deepEqual(result, { KEEP: 'yes' });
+  assert.deepEqual(result, { KEEP: 'yes', AFK_GATE_NO_DOTENV: '1' });
 });
 
 test('explicit test overrides are applied after ambient cleanup', () => {

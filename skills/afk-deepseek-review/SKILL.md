@@ -29,7 +29,8 @@ node "<helper-dir>/deepseek-gate.mjs"
 Run it in the background with a generous timeout and save stdout for the run
 record. Pass through `--base <branch>`, `--commit <sha>`, `--uncommitted`, or
 `--design <path>`, plus `--implementer <family>` when another model wrote the
-change. Do not poll in a sleep loop.
+change. Use `--print-args` for resolved metadata or `--print-prompt` for the
+redacted prompt without a provider call. Do not poll in a sleep loop.
 
 The bounded snapshot excludes secret-bearing paths, redacts secret-shaped
 values, and rejects unsafe design inputs before the request. A missing or
