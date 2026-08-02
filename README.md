@@ -55,6 +55,10 @@ demonstrated wrong consequence, stage-blocking impact, and minimal causal fix.
 P2, minor, and out-of-scope observations are recorded without expanding the PR.
 A structural P2 does not block a review stamp, but it leaves auto-merge for the
 operator to authorize; minor and out-of-scope notes remain non-blocking.
+When a P1 already forces a content pass and re-review, AFK may batch a verified,
+in-scope P2 or minor that shares its root cause or touched surface and adds no
+dependency, migration, public contract, product choice, or extra gate round. It
+does not reopen a clean revision for lower-severity work alone.
 
 Review rounds may continue while they close an admitted P1, turn a check green,
 reduce a demonstrated root cause, or advance a clean stage. Two unfinished

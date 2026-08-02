@@ -55,8 +55,9 @@ limited to the snapshot it was sent.
 
 ## Metering
 
-Metered like any external gate. Batch confirmed structural findings into one fix
-pass, self-review, then re-run once. Defer minor items to a single final pass.
+Metered like any external gate. Batch admitted P1 and eligible lower-severity
+fixes into one content pass, self-review, then re-run once. Record every other
+disposition together at the end without editing a clean revision.
 
 ## Run it
 
@@ -106,10 +107,12 @@ Same discipline as the other gate skills:
 
 1. Map every hypothesis to the frozen contract and apply the P1 admission rule.
 2. Verify its trigger and consequence; a reviewer severity is only a proposal.
-3. Fix admitted P1 findings in one batch; defer lower-severity and scope items.
+3. Fix admitted P1 findings in one batch and include only lower-severity work
+   eligible under the rule below.
 4. Self-review once.
 5. Re-run the gate once if structural findings were fixed.
-6. Resolve minor items in a single final pass without another gate round.
+6. Record remaining dispositions in one final pass without editing the clean
+   revision or running another gate round.
 
 Treat every reported finding as `UNTRIAGED`. Admit P1 only after mapping it to
 the frozen issue contract or an invariant, demonstrating a reachable trigger
@@ -118,13 +121,20 @@ advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
 record structural P2 for the operator-owned merge boundary, and defer minor or
 out-of-scope items without expanding the PR.
 
+When an admitted P1 already requires a content pass, batch-fix a verified
+lower-severity item only when it is in scope, shares that root cause or touched
+surface, adds no dependency, migration, public contract, or product choice, and
+needs no gate round beyond the P1 re-review. Otherwise record its disposition
+without editing; a lower-severity-only verdict never reopens a clean revision.
+
 Apply any invariant in `.afk/config.md` as an extra lens.
 
 ## Stop rule
 
 Stop when the loop-termination rule in `../afk/SKILL.md` ("External gate")
 holds: triage leaves no `UNTRIAGED`, `Contested`, or open admitted P1, and every
-lower-severity item has a recorded non-blocking disposition. That same verdict
+lower-severity item has a disposition that does not block the role stamp (a
+structural P2 may still bar auto-merge). That same verdict
 earns the role stamp only if it requires no content change; a content fix
 invalidates it and the role re-reviews the fixed revision.
 

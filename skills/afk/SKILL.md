@@ -53,7 +53,7 @@ design-stage external gate (opt-in pilot, default off; one role per evaluation �
 first (targeted) → implementation → adversarial sweep →
 commit → push early → open the PR as draft → deterministic CI green (fix red
 now) → **internal review** (`afk-internal-review`) → triage every finding and
-batch-fix admitted P1s →
+batch-fix admitted P1s plus eligible lower-severity work →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
 the final commit → mark ready → merge per policy. The design doc matters more
@@ -170,7 +170,9 @@ minimal batch revision. A clean terminal round never counts as stalled. If the
 checkpoint still cannot progress, mark the issue `OUTSTANDING` and continue
 independent queued work. Escalate only if the task depends on scope expansion, an
 unavailable external capability, or a product choice with no safe default. Round
-count never requests operator permission.
+count never requests operator permission. Abandoning or replanning a verified P1
+that cannot be fixed inside the frozen contract is also an operator authority
+decision, not a driver-owned deferral.
 
 This is level 3 — doctrine, not a guarantee (AGENTS.md, "What this plugin can and
 cannot enforce"). Nothing stops a driver from implementing anyway. It stops if it
@@ -360,10 +362,10 @@ history:
   visible. None blocks the role stamp. A structural P2 bars auto-merge until the
   operator owns it at the merge boundary; deferred minor and out-of-scope
   findings do not bar auto-merge. A P1 cannot be deferred.
-- **Suppressed** — repeating a Refuted finding twice without new evidence may
-  close it for this PR only when the disproof is pinned by an executable check or
-  reproducible verification artifact and the repeats come from the same
-  role/provider. New
+- **Suppressed** — evidence-free repeats of a pinned-Refuted finding may be
+  recorded `Suppressed` without reopening it only when the disproof is pinned by
+  an executable check or reproducible verification artifact and the repeats come
+  from the same role/provider. New
   evidence still reopens it.
 - **Contested** — a different role/provider independently repeats a Refuted
   finding, or the existing disproof is not pinned. It authorizes no edit, appears
@@ -383,11 +385,21 @@ narrow the change, choose a fail-safe default, or use a default-off guard.
 Escalate only when the task depends on the unresolved choice and there is no safe
 default.
 
+**Batch lower-severity work by value, not by label.** When an admitted P1 already
+requires a content pass, batch-fix a verified lower-severity item only when it is
+in scope, shares that root cause or touched surface, adds no dependency,
+migration, public contract, or product choice, and needs no gate round beyond the
+P1 re-review. Otherwise record its disposition without editing; a
+lower-severity-only verdict never reopens a clean revision. This is not authority
+to fix every P2 or minor: structural P2 remains operator-owned at the merge
+boundary, and unrelated polish remains deferred.
+
 **The loop ends** as soon as triage leaves no `UNTRIAGED`, `Contested`, or open
-admitted P1 finding, and every lower-severity item has a recorded non-blocking disposition. That
-same verdict earns the role's clean stamp only if that verdict requires no
-content change. A content fix invalidates that verdict; the role must re-review
-the fixed revision. No extra empty review is needed after a verdict whose only
+admitted P1 finding, and every lower-severity item has a disposition that does
+not block the role stamp (a structural P2 may still bar auto-merge). That same
+verdict earns the role's clean stamp only if that verdict requires no content
+change. A content fix invalidates that verdict; the role must re-review the fixed
+revision. No extra empty review is needed after a verdict whose only
 findings receive non-content dispositions. A final reviewer has no special power
 to expand the issue or upgrade a finding without the same evidence.
 
@@ -545,10 +557,13 @@ would leave a finished run forever resumable and its scope never free again.
 - **Auto-pause:** use the External gate's one material-progress definition — an
   admitted P1 closes, a failing check turns green, a demonstrated shared root
   cause shrinks, a contract-mapped RED test or implementation slice lands with a
-  named next verification, or a clean stage stamp advances the waterfall.
+  named next verification, a design version lands with its frozen contract and a
+  named next validation, or a clean stage stamp advances the waterfall.
   Commits, pushes, and notes that do none of those are activity, not progress. Two consecutive
-  working ticks with none → run the automatic root-cause checkpoint; if it also
-  cannot progress, stop the tick loop, post a status report, and leave
+  working ticks with none → run the automatic root-cause checkpoint. Count a
+  barren tick only while the current stage is unfinished; completed-stage waiting
+  and intentional external waits are not stalled construction. If the checkpoint
+  also cannot progress, stop the tick loop, post a status report, and leave
   `state: active` so the run can resume. Queue complete → stop with a final report
   and set `state: complete` in the same breath, ending the tick and claim.
   Always tear down any scheduled tick on stop — never leave one running.

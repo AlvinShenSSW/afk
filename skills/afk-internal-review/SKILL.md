@@ -81,7 +81,11 @@ blocker is open. A reported concern begins `UNTRIAGED`; admit it as a blocker on
 after every blocker field above is demonstrated. Otherwise classify it P2,
 minor, or out-of-scope without changing scope. Put a demonstrated structural P2
 under risks so it cannot disappear into suggestions; minor and out-of-scope
-items go under suggestions.
+items go under suggestions. If an admitted P1 already requires a content pass,
+recommend batching a verified lower-severity item only when it is in scope,
+shares the same root cause or touched surface, adds no dependency, migration,
+public contract, or product choice, and needs no review round beyond the P1
+re-review. A lower-severity-only verdict never reopens a clean revision.
 
 ### Final report — only when internal review AND all configured roles are clean
 
