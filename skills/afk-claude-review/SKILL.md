@@ -11,8 +11,8 @@ implementer. Run the ordered roles required by `.afk/config.md`, and never use a
 reviewer whose model matches the implementer or another role.
 
 **This gate exists for the case where Claude is not the implementer** — Codex,
-Kimi, Gemini or Copilot wrote the change and Claude reviews it. It refuses to run
-otherwise (see Independence below), so under a Claude Code driver it will
+Kimi, GLM, DeepSeek, MiMo, Gemini or Copilot wrote the change and Claude reviews
+it. It refuses to run otherwise (see Independence below), so under a Claude Code driver it will
 normally self-skip and the next gate in `priority` takes its place. That is the
 intended behaviour, not a fault.
 
@@ -34,8 +34,7 @@ An unrecognised implementer value fails **closed**: the gate skips rather than
 guess that it is independent.
 
 Pass `--implementer <family>` whenever the implementer is not the driver — most
-often when `afk-agent-relay` relayed the implementation to another model. Known
-families: `claude`, `codex`, `kimi`, `glm`, `gemini`, `copilot`.
+often when `afk-agent-relay` relayed the implementation to another model. Known families: `claude`, `codex`, `kimi`, `glm`, `deepseek`, `mimo`, `gemini`, `copilot`.
 
 **Known gap:** `CLAUDECODE` identifies the driver, not the model. A Claude
 implementer driven from Copilot, Cursor, CI, or a plain terminal leaves it

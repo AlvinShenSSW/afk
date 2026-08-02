@@ -24,6 +24,8 @@ gitignored `.afk/` directory.
 | `afk-claude-review` | Runs a Claude fallback role; declines to review Claude's own work. |
 | `afk-kimi-review` | Runs the default Kimi final role. |
 | `afk-glm-review` | Runs a GLM fallback role with bounded diff context. |
+| `afk-deepseek-review` | Runs an optional DeepSeek V4 Pro snapshot-backed role. |
+| `afk-mimo-review` | Runs an optional MiMo V2.5 Pro Token Plan snapshot-backed role. |
 | `afk-agent-relay` | Offloads large reads or scoping work to an external model. |
 
 ## Pipeline
@@ -93,17 +95,18 @@ It never overwrites developer-authored values.
 
 ## Review Timeouts
 
-Every external review is bounded. Claude, Codex, and GLM default to 15 minutes;
-Kimi defaults to 30 minutes because its agentic reviews commonly take longer.
+Every external review is bounded. Claude, Codex, GLM, DeepSeek, and MiMo default
+to 15 minutes; Kimi defaults to 30 minutes because its agentic reviews commonly take longer.
 CLI availability and authentication probes are capped at 30 seconds. A
 timed-out review produces no verdict and follows the existing transient-error
 retry and fallback rule.
 
 Set `AFK_REVIEW_TIMEOUT_MS` to change the shared limit, or override one provider
 with `CODEX_REVIEW_TIMEOUT_MS`, `CLAUDE_REVIEW_TIMEOUT_MS`,
-`KIMI_REVIEW_TIMEOUT_MS`, or `GLM_REVIEW_TIMEOUT_MS`. Values must be positive
-integer milliseconds; an unusable value retains a bounded limit and emits a
-warning.
+`KIMI_REVIEW_TIMEOUT_MS`, `GLM_REVIEW_TIMEOUT_MS`,
+`DEEPSEEK_REVIEW_TIMEOUT_MS`, or `MIMO_REVIEW_TIMEOUT_MS`. Values must be
+positive integer milliseconds; an unusable value retains a bounded limit and
+emits a warning.
 
 CLI timeouts use a hard kill so a process that ignores graceful termination
 cannot wedge the gate. On Windows, npm command shims run through a shell; the
@@ -193,8 +196,33 @@ auto-resume: notify   # off · notify (default) · auto
 fallback pool. Existing configs with legacy `priority`/`min-pass`/`mode` and no
 `gates` keep their prior behavior until the operator opts in.
 
+Explicit `gates:` and `priority:` profiles may also name `deepseek` or `mimo`.
+They remain opt-in and do not alter the built-in sequence or fallback pool.
+
 Secrets never belong in `.afk/config.md`; use environment variables or a
-gitignored `.env`.
+gitignored `.env`. DeepSeek reads `DEEPSEEK_REVIEW_API_KEY` first and
+`DEV_DEEPSEEK_API_KEY` second. MiMo reads `MIMO_REVIEW_API_KEY` first and
+`DEV_MIMO_API_KEY` second. GLM reads `ZAI_API_KEY` or `GLM_API_KEY`. These gates
+call the provider APIs directly and do not import credentials from Kilo Code or
+VS Code.
+
+For the current shell, export only the provider you intend to use:
+
+```bash
+export ZAI_API_KEY="<your-zai-key>" # GLM; GLM_API_KEY is also accepted
+export DEEPSEEK_REVIEW_API_KEY="<your-deepseek-key>"
+export MIMO_REVIEW_API_KEY="<your-mimo-token-plan-key>"
+```
+
+For a persistent per-repository setup, put the same assignment without
+`export` in the local `.env`. Before adding a real value, verify the ignore rule:
+
+```bash
+git check-ignore -v .env
+```
+
+If that command prints no matching rule, do not put a credential in the file;
+run `/afk-init` or add `.env` to a local Git exclude first.
 
 ## Common Invocations
 
@@ -208,6 +236,8 @@ gitignored `.env`.
 /afk-claude-review
 /afk-kimi-review
 /afk-glm-review
+/afk-deepseek-review
+/afk-mimo-review
 ```
 
 ## Merge Policies

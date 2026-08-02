@@ -202,8 +202,8 @@ never-scale-down-gates rule, which governs PR gates only.
 - **Invocation.** The same gate helpers, selected the same way (`priority`), with
   a design target: `--design <path>` in place of a diff selector. The gate reviews
   the document, not a diff. It is read-only **by construction** for `codex`
-  (`exec -s read-only`), `claude` (`Read,Grep,Glob` only), and `glm` (a tool-less
-  API call); `kimi` is the exception — its read-only is only *requested in the
+  (`exec -s read-only`), `claude` (`Read,Grep,Glob` only), and `glm`, `deepseek`,
+  and `mimo` (tool-less API calls); `kimi` is the exception — its read-only is only *requested in the
   prompt* (the same weaker guarantee it carries for diff reviews), so prefer
   another gate for design when one qualifies. A missing or unreadable `--design`
   path is operator error → the gate errors (nonzero), never a skip — skipping here
@@ -265,8 +265,8 @@ Resolve the `## external gate` section as one total function:
 1. A present `gates` key selects ordered roles. It uses `>` separators, ignores
    surrounding whitespace/case and a trailing comment, and must contain no empty
    segment. A present-but-empty `gates` key is a blocking config error, never a
-   fallback to one gate. Valid role families are `codex`, `claude`, `kimi`, and
-   `glm`; an unknown preference is recorded and uses fallback. A later duplicate
+   fallback to one gate. Valid role families are `codex`, `claude`, `kimi`, `glm`, `deepseek`, and `mimo`;
+   an unknown preference is recorded and uses fallback. A later duplicate
    preference is ineligible and also uses fallback. Legacy `min-pass` and `mode`
    beside a valid `gates` key are ignored for PR roles without rewriting the file.
 2. With no `gates`, any legacy external-gate field (`priority`, `min-pass`, or
@@ -294,9 +294,11 @@ unstamped roles immediately before review.
 
 Local presence is deliberately narrow: Codex requires its binary plus `codex
 login status`; Claude/Kimi require their binaries (and Claude rejects an alias in
-`CLAUDE_REVIEW_MODEL`); GLM requires `ZAI_API_KEY`/`GLM_API_KEY` from the
-environment or its existing `.env` locations. Remote auth, credit, network, and
-model identity may still fail on first invocation.
+`CLAUDE_REVIEW_MODEL`); GLM requires `ZAI_API_KEY`/`GLM_API_KEY`, DeepSeek
+requires `DEEPSEEK_REVIEW_API_KEY`/`DEV_DEEPSEEK_API_KEY`, and MiMo requires
+`MIMO_REVIEW_API_KEY`/`DEV_MIMO_API_KEY`, from the environment or ignored
+`.env` locations. Remote auth, credit, network, and model identity may still
+fail on first invocation.
 
 - **Declare the implementer when it is not the driver.** Pass
   `--implementer <family>` to the gate whenever another model wrote the change —
@@ -327,6 +329,8 @@ Default assignments are Codex outer + Kimi final for a Claude/GLM implementer;
 Claude outer + Kimi final for a Codex implementer; and Codex outer + Claude final
 for a Kimi implementer. If two distinct eligible families cannot finish, the PR
 is not clean/ready—one pass is never presented as two.
+DeepSeek/MiMo implementers retain Codex outer + Kimi final because neither
+optional family changes the built-in role sequence or fallback pool.
 
 **A finding asserts two things; reading settles one.** Every reported finding is
 an `UNTRIAGED` hypothesis. Admit P1 only after recording: the frozen issue
@@ -407,8 +411,8 @@ to expand the issue or upgrade a finding without the same evidence.
 ### Ordered-role revision and convergence rules
 
 Before/after every PR role, record a clean worktree, `HEAD`, merge-base, base-tip
-context, and the normalized external-gate-section hash. Claude/Kimi/GLM receive
-the immutable merge-base SHA; Codex receives its supported base ref and its
+context, and the normalized external-gate-section hash. Claude/Kimi/GLM/DeepSeek/MiMo
+receive the immutable merge-base SHA; Codex receives its supported base ref and its
 verdict is invalid if the before/after merge-base changed. All configured role
 verdicts must name the same `HEAD`, merge-base, and role-profile hash.
 
@@ -461,8 +465,8 @@ commit record, or a collision-safe standalone run directory; untracked is not an
 option. All of this is level 3 doctrine, not a guarantee.
 
 The gate skills (`afk-codex-review`, `afk-claude-review`, `afk-kimi-review`,
-`afk-glm-review`) carry the invocation, batching, and metering rules; they load
-when the gate runs.
+`afk-glm-review`, `afk-deepseek-review`, `afk-mimo-review`) carry the invocation,
+batching, and metering rules; they load when the gate runs.
 
 ## Autonomy
 

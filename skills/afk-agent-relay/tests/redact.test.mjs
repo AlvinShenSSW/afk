@@ -1,12 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { redactSecrets, isExcluded } from '../lib/redact.mjs';
+import { isExcluded, redactCredential, redactSecrets } from '../../../lib/secret.mjs';
 
 test('redacts an sk- API key', () => {
   const { text, count } = redactSecrets('key=sk-abcdef0123456789ABCDEF0123 end');
   assert.match(text, /\[REDACTED\]/);
   assert.ok(count >= 1);
   assert.doesNotMatch(text, /sk-abcdef/);
+});
+
+test('redacts a bare MiMo Token Plan credential', () => {
+  const token = `tp-${'Ab3'.repeat(12)}`;
+  const { text, count } = redactSecrets(`credential ${token} end`);
+  assert.equal(count, 1);
+  assert.doesNotMatch(text, /tp-/);
+  assert.match(text, /\[REDACTED\]/);
+});
+
+test('redacts the exact configured credential even without a known shape', () => {
+  const credential = 'provider-key-with-arbitrary-shape';
+  const result = redactCredential(`before ${credential} after`, credential);
+  assert.doesNotMatch(result.text, new RegExp(credential));
+  assert.match(result.text, /\[REDACTED\]/);
 });
 
 test('redacts a PEM private key block', () => {
