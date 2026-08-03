@@ -84,13 +84,23 @@ export function pathKey(env = process.env) {
  * That is precisely the reference machine (issue #12: "that machine had a
  * kimi.exe"), where the test would either fail or — worse — spawn the real,
  * metered CLI. Entries holding the executable are dropped; everything else
- * stays, because the gates still need `git` on PATH.
+ * stays, so the gates still find `git`.
+ *
+ * Accepted limit: the drop is per DIRECTORY, and no API hides one file inside
+ * one. A shared-shims layout (`~\scoop\shims`, `C:\ProgramData\chocolatey\bin`)
+ * holds `git` beside the reviewed CLI, so filtering takes git with it and these
+ * tests fail loudly on such a host — chosen over a test that silently spawns
+ * the metered CLI it exists to avoid.
  */
 export function stubPath(dir, name, env = process.env) {
   const key = pathKey(env);
+  // Normalize BEFORE the guard, not only inside the probe: `searchableDirs`
+  // decides on the normalized value, and a helper that disagreed with the
+  // resolver about which entries exist would silently unhermetic the tests.
   const inherited = (env[key] || '').split(delimiter)
+    .map(normalizePathEntry)
     .filter((entry) => entry && !EXECUTABLE_EXTS.some(
-      (ext) => existsSync(join(normalizePathEntry(entry), `${name}${ext}`)),
+      (ext) => existsSync(join(entry, `${name}${ext}`)),
     ));
   return { [key]: [dir, ...inherited].join(delimiter) };
 }
