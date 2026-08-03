@@ -1,14 +1,24 @@
 #!/usr/bin/env node
 // kimi-gate.mjs — cross-platform Kimi Code CLI external review wrapper.
 //
-// Drives the Kimi Code CLI (`kimi`) headlessly via `kimi -p "<prompt>"` and
-// prints ONLY Kimi's final review between markers (transcript -> log file).
+// Drives the Kimi Code CLI (`kimi`) headlessly with the review prompt ON STDIN
+// and prints ONLY Kimi's final review between markers (transcript -> log file).
 // External review gate; run ONE gate per round, whose model differs from the
 // implementer's.
 //
 // Kimi is a general agentic CLI with no built-in `review` subcommand, so this
-// passes a review PROMPT and lets Kimi drive git itself. `-p` is headless on its
-// own (kimi rejects combining it with -y/--auto).
+// passes a review PROMPT and lets Kimi drive git itself. `--quiet` is the CLI's
+// own alias for `--print --output-format text --final-message-only`, which is
+// exactly this gate's contract: headless, and stdout carries the final message
+// and nothing else. `--input-format text` is what makes it read stdin.
+//
+// The prompt goes on STDIN, never in argv (the rule this repo already applies to
+// claude-gate and to codex-gate's design payload). Node concatenates argv
+// UNESCAPED under `shell: true` — which is how every Windows spawn here has to
+// launch a `.cmd` shim — so a multi-word, multi-line prompt was split by cmd.exe
+// and Kimi parsed its second word as a subcommand ("No such command 'are'",
+// exit 2). Argv also caps at ~8191 chars on Windows, which a long scope line
+// could reach on its own.
 //
 // Read-only is asked for in the prompt, NOT enforced: kimi has no per-command
 // permission surface here. That is weaker than afk-claude-review, whose reviewer
@@ -81,8 +91,7 @@ if (!isDesign) {
 //
 // Design mode swaps the whole clause: the diff clause's `git show`/`git diff` is
 // meaningless for a design, and pointing kimi at the doc ON DISK (rather than
-// injecting its text) keeps a large doc off the argv — kimi passes its prompt as
-// a `-p` argument, which a diff-sized doc would overflow on Windows.
+// injecting its text) keeps a large doc out of the prompt entirely.
 let reviewPrompt;
 if (target.kind === 'design') {
   const context = `Review the design document at ${target.path} in this git repository. Read it in full first. Use git and read surrounding files to check any claim the design makes about the code. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
@@ -105,6 +114,10 @@ if (printPromptOnly) {
   process.exit(0);
 }
 
+// `--quiet` == `--print --output-format text --final-message-only`; the input
+// format is what tells the CLI to take the prompt from stdin.
+const KIMI_ARGS = ['--quiet', '--input-format', 'text'];
+
 if (printArgsOnly) {
   process.stdout.write(`${JSON.stringify({
     bin: kimi,
@@ -113,6 +126,10 @@ if (printArgsOnly) {
     commit: target.commit ?? null,
     label: target.label,
     command: target.command ?? null,
+    args: KIMI_ARGS,
+    // Observable on purpose: a prompt that drifts back into argv is a silent
+    // Windows-only breakage, so the invocation shape is asserted in the tests.
+    promptOnStdin: true,
     promptBytes: reviewPrompt.length,
     timeoutMs,
   }, null, 2)}\n`);
@@ -139,17 +156,32 @@ const logFile = join(work, 'kimi.log');
 // No context-leaning for Kimi (intentional): thinking effort stays at its
 // default (KIMI_MODEL_THINKING_EFFORT applies only when a synthesized provider
 // is set), and project-doc injection is session-level, not per-turn.
-process.stderr.write('[kimi-gate] kimi -p <structural review prompt>\n');
+process.stderr.write(
+  `[kimi-gate] ${kimi} ${KIMI_ARGS.join(' ')} (${reviewPrompt.length}B structural review prompt via stdin)\n`,
+);
 process.stderr.write(`[kimi-gate] timeout -> ${timeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
 
-const res = spawnSync(kimi, ['-p', reviewPrompt], {
+const spawnOpts = {
+  input: reviewPrompt,
   encoding: 'utf8',
-  shell: isWin,
   maxBuffer: 64 * 1024 * 1024, // reviews can be long
   timeout: timeoutMs,
   killSignal: 'SIGKILL',
-});
+};
+
+// No shell: it concatenates argv unescaped and imposes the command-line limit.
+// A native install (npm's .exe, an editor-bundled binary, homebrew) launches
+// directly.
+let res = spawnSync(kimi, KIMI_ARGS, spawnOpts);
+
+// A Windows `.cmd`/`.bat` shim cannot be launched without a shell (EINVAL since
+// Node 18.20/20.12). Retrying under one is safe HERE only because every argv
+// element left is a short single-word flag — the prompt stays on stdin.
+if (isWin && res.error && res.error.code === 'EINVAL') {
+  process.stderr.write('[kimi-gate] script shim detected; retrying via shell (prompt stays on stdin)\n');
+  res = spawnSync(kimi, KIMI_ARGS, { ...spawnOpts, shell: true });
+}
 
 const out = res.stdout || '';
 const err = res.stderr || '';

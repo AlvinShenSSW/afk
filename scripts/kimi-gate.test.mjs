@@ -195,6 +195,66 @@ test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
   }
 });
 
+test('the review prompt never rides in argv', () => {
+  // Node concatenates argv UNESCAPED under `shell: true` — the only way to launch
+  // a Windows `.cmd` shim — so a multi-word prompt was split by cmd.exe and Kimi
+  // parsed its second word as a subcommand (`No such command 'are'`, exit 2).
+  // Argv is also capped at ~8191 chars there. The invocation shape is therefore
+  // part of the contract, not an implementation detail.
+  const result = runGate({ args: ['--print-args'] });
+
+  const { args, promptOnStdin, promptBytes } = JSON.parse(result.stdout);
+  assert.equal(promptOnStdin, true);
+  assert.deepEqual(args, ['--quiet', '--input-format', 'text']);
+  // `--quiet` is the CLI's alias for `--print --output-format text
+  // --final-message-only`; `--input-format text` is what makes it read stdin.
+  assert.ok(promptBytes > 100, 'a real prompt is built, it is just not in argv');
+  for (const arg of args) {
+    assert.doesNotMatch(arg, /\s/, `argv element ${JSON.stringify(arg)} must stay shell-safe`);
+  }
+});
+
+test('the stub reviewer receives the prompt on stdin and only flags in argv', () => {
+  // The behavioural half of the test above, run against a recording stub. On
+  // Windows the stub is a `.cmd`, which also exercises the EINVAL shim retry —
+  // the one path where a shell is unavoidable.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-stdin-'));
+  try {
+    const record = join(dir, 'record.json');
+    const impl = join(dir, 'stub.mjs');
+    writeFileSync(impl, [
+      "import { readFileSync, writeFileSync } from 'node:fs';",
+      "const argv = process.argv.slice(2);",
+      "if (argv.includes('--version')) { process.stdout.write('stub 1.0'); process.exit(0); }",
+      "let stdin = '';",
+      "try { stdin = readFileSync(0, 'utf8'); } catch {}",
+      `writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv, stdin }));`,
+      "process.stdout.write('STUB REVIEW: no findings');",
+      '',
+    ].join('\n'));
+
+    let bin;
+    if (process.platform === 'win32') {
+      bin = join(dir, 'kimi-stub.cmd');
+      writeFileSync(bin, `@echo off\r\n"${process.execPath}" "${impl}" %*\r\n`);
+    } else {
+      bin = join(dir, 'kimi-stub');
+      writeFileSync(bin, `#!${process.execPath}\nprocess.argv.splice(1, 1, ${JSON.stringify(impl)});\nawait import(${JSON.stringify(impl)});\n`);
+      chmodSync(bin, 0o755);
+    }
+
+    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+
+    assert.match(result.stdout, /STUB REVIEW: no findings/, result.stderr);
+    const seen = JSON.parse(readFileSync(record, 'utf8'));
+    assert.deepEqual(seen.argv, ['--quiet', '--input-format', 'text']);
+    assert.match(seen.stdin, /review/i);
+    assert.ok(seen.stdin.length > 100, 'the whole prompt arrived, not a first word');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('kimi gate opt-out short-circuits before any target resolution', () => {
   // An unresolvable target must not turn a disabled gate into an error: the
   // opt-out is checked first, so the operator pays nothing.
