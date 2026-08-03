@@ -204,8 +204,8 @@ G1–G12. Two were admitted P1 and both are fixed by the same simplification:
 - **G4 (P2, fixed):** AC2 no longer claims to mirror cmd.exe; excluding the
   working directory is now a stated decision rather than an omission.
 - **G5 (minor), G6 (P2), G11 (P2) fixed:** quoted `PATH` entries stripped;
-  `path.win32.join` pinned so injected-platform tests exercise production
-  strings; `PATHEXT` dropped from the design entirely; the Windows test
+  the join module pinned to the HOST's (win32 where it matters) so
+  injected-platform tests build candidates that can exist; `PATHEXT` dropped from the design entirely; the Windows test
   overrides `PATH`/`Path` case-insensitively.
 - **G12 (P2, fixed):** AC1 gains a real end-to-end test (stub named `kimi.cmd`,
   reached through `PATH`, driven to a completed review), AC5 gains codex/claude

@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
+import { normalizePathEntry } from '../lib/gate/spawn.mjs';
+
 /** What libuv appends on Windows, plus the shims cmd.exe resolves. */
 const EXECUTABLE_EXTS = ['.com', '.exe', '.cmd', '.bat'];
 
@@ -88,7 +90,7 @@ export function stubPath(dir, name, env = process.env) {
   const key = pathKey(env);
   const inherited = (env[key] || '').split(delimiter)
     .filter((entry) => entry && !EXECUTABLE_EXTS.some(
-      (ext) => existsSync(join(entry.replace(/^"(.*)"$/, '$1').trim(), `${name}${ext}`)),
+      (ext) => existsSync(join(normalizePathEntry(entry), `${name}${ext}`)),
     ));
   return { [key]: [dir, ...inherited].join(delimiter) };
 }
