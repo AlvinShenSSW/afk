@@ -87,11 +87,12 @@ node --test                                  # unit tests
 
 Design (for anything non-trivial, a spec under `docs/designs/specs/`) → tests
 first → implement → self-review → open a PR. Before merge a PR passes the owner
-review and the configured ordered external roles — by default Codex is the outer
-reviewer and Kimi is the final reviewer, with independent fallbacks when either
-matches the implementer or is unavailable. Both roles differ from the
-implementer and each other. CI green is necessary but not sufficient; the
-owner's review is the merge gate.
+review and the configured external roles — by default a single Codex review; an
+ordered double (Codex outer → Kimi final) runs only when explicitly selected by
+handoff flags (`-codex -kimi`) or config `gates`, with independent fallbacks
+when a role matches the implementer or is unavailable. Every actual reviewer
+differs from the implementer and from every other role. CI green is necessary
+but not sufficient; the owner's review is the merge gate.
 
 ## What this plugin can and cannot enforce
 

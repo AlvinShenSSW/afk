@@ -39,8 +39,8 @@ scope
 -> pull request
 -> CI
 -> internal review
--> Codex outer external role (or independent fallback)
--> Kimi final external role (or independent fallback)
+-> Codex external role (or independent fallback; single by default)
+-> Kimi final external role (only when a double profile is selected)
 -> full final test suite
 -> owner approval or configured merge policy
 ```
@@ -179,7 +179,8 @@ lint:  <cmd>
 build: <cmd>
 
 ## external gate
-gates:    codex > kimi
+gates:    codex
+# gates:  codex > kimi   # opt-in: ordered double review (Codex outer → Kimi final)
 priority: codex > claude > kimi > glm
 # implementer:   # who writes the code, if not the driver; may only block a gate
 
@@ -193,8 +194,12 @@ auto-resume: notify   # off · notify (default) · auto
 ```
 
 `gates` defines ordered required roles and their count; `priority` is only the
-fallback pool. Existing configs with legacy `priority`/`min-pass`/`mode` and no
-`gates` keep their prior behavior until the operator opts in.
+fallback pool. The built-in default is a single Codex review; per handoff,
+explicit role flags (`-codex -kimi`) select that run's ordered roles and
+override `gates`. Existing configs with legacy `priority`/`min-pass`/`mode`
+and no `gates` keep their prior behavior until the operator opts in. A config
+bootstrapped before 0.4.0 carries a template-written `gates: codex > kimi`;
+delete the line (or set `gates: codex`) to adopt the single-gate default.
 
 Explicit `gates:` and `priority:` profiles may also name `deepseek` or `mimo`.
 They remain opt-in and do not alter the built-in sequence or fallback pool.

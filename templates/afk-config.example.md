@@ -6,8 +6,10 @@ lint:  <cmd>
 build: <cmd>
 
 ## external gate
-gates:    codex > kimi
-                         # ordered required roles: outer → ... → final
+gates:    codex
+                         # ordered required roles: outer → ... → final; one item = single gate
+# gates:  codex > kimi   # opt-in: ordered double review (Codex outer → Kimi final);
+                         #   or pass -codex -kimi on one handoff for that run only
 priority: codex > claude > kimi > glm # closed fallback pool for an ineligible preferred role
                          # explicit profiles may also name deepseek or mimo; neither is a built-in fallback
 design-gate: off         # opt-in pilot: one gate over the design doc before code

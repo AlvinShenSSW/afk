@@ -7,7 +7,7 @@ description: Part of the afk pipeline. The deep internal production-readiness re
 
 The final **internal** review before merge — a rigorous, high-stakes read whose
 job is to protect production. It runs **before** the ordered external roles:
-internal review first, outer through final afterward. Use the strongest available reasoning
+internal review first, outer through any later configured roles afterward. Use the strongest available reasoning
 model; if the session runs a lighter one, flag it before proceeding. If no PR or
 branch is given, ask for one.
 
@@ -129,6 +129,6 @@ reviewed, residual risk, and the production-readiness checklist.
   issue asks is a blocker.
 - Do not invent requirements, implement out-of-scope suggestions, or turn an
   architectural preference into a blocker.
-- You are not the last gate — the ordered outer-to-final role sequence runs
-  after your verdict. Note the handoff ("next: external outer role") so the
-  operator knows the pass is not final.
+- You are not the last gate — the ordered role sequence (outer through any
+  later configured roles) runs after your verdict. Note the handoff ("next:
+  external outer role") so the operator knows the pass is not final.

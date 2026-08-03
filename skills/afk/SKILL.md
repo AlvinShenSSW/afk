@@ -25,17 +25,22 @@ self-contained spec.
 3. **Update check.** Run the bundled update check; if the installed plugin is
    behind the canonical repo's latest version, surface a one-line notice. Never
    block on it (silent when offline).
-4. **Resolve the PR gate profile.** New/profileless configs use ordered
-   `gates: codex > kimi`; an existing config with `priority`, `min-pass`, or
-   `mode` but no `gates` keeps the legacy behavior. The bounded notice was
-   resolved by step 2. Resolve the implementer and a
+4. **Resolve the PR gate profile.** Explicit role flags in the handoff (e.g.
+   `-codex -kimi`) select this run's ordered roles; otherwise a config `gates`
+   key, else a legacy profile (`priority`, `min-pass`, or `mode` with no
+   `gates` keeps the legacy behavior), else built-in `gates: codex` — a single
+   external review ("External gate" below owns the full rules). The bounded
+   notice was resolved by step 2. Resolve the implementer and a
    complete locally plausible role assignment now. Missing reviewer capacity is
    an anticipated readiness blocker, not a reason to discard safe issue work.
 5. **Confirm the merge policy** (from `.afk/config.md`: `leave-open` default /
    `merge-to-unblock` / `merge-when-green`) and any constraints (branches not to
    touch, naming, safe-direction-only, deploy is the operator's job, summary
    language, explicit gate choice).
-6. **Restate the scope** in one line, then start.
+6. **Restate the scope and the effective gate profile with its source**
+   (`flags` / `config` / `legacy` / `built-in`) in one or two lines, then
+   start. The restatement is what makes a misread flag or a template-written
+   profile visible before any paid work.
 
 ## Per issue — the full waterfall (one at a time)
 
@@ -247,10 +252,12 @@ can and cannot enforce").
 ## External gate (the independent check)
 
 An external role sequence is **mandatory**. New/profileless configurations run
-Codex as the preferred **outer**, then Kimi as the preferred **final**, in order.
-Both clean results must cover the same final revision. Each actual reviewer is a
-current-generation mainstream frontier model, differs from the implementer, and
-differs from every other role in the sequence.
+a **single Codex review**; ordered multi-role sequences — e.g. Codex as
+**outer**, then Kimi as **final** — run only when explicitly selected by
+handoff role flags or a config `gates` value. Every required clean result must
+cover the same final revision. Each actual reviewer is a current-generation
+mainstream frontier model, differs from the implementer, and differs from
+every other role in the sequence.
 
 ### PR gate profile and compatibility
 
@@ -260,25 +267,57 @@ Its length is the required count. `priority` is the closed fallback pool for an
 ineligible/unavailable preferred role; it does not add roles. Roles are always
 waterfall—final is never parallelized.
 
-Resolve the `## external gate` section as one total function:
+Resolve the effective profile as one total function:
 
-1. A present `gates` key selects ordered roles. It uses `>` separators, ignores
+1. **Handoff role flags select ordered roles for this run.** A role flag is a
+   whitespace-delimited token of the form `-<family>` or `--<family>` —
+   one or two leading dashes, the family name matched case-insensitively (the
+   config grammar's case rule), surrounding punctuation stripped — where `<family>`
+   is `codex`, `claude`, `kimi`, `glm`, `deepseek`, or `mimo`. Flags are taken
+   in writing order (first = outer, last = final when two or more; length =
+   required count; `-codex -kimi` ⇒ Codex outer → Kimi final). A
+   repeated family collapses into its first occurrence — a handoff typo must
+   never silently add a paid role. A dash-led token plausibly intended as a role
+   flag but naming no family (`-gemini`, `-kim`) selects nothing and is
+   recorded in the ledger as an ignored lookalike; ordinary options like
+   `--implementer` are not lookalikes. Quoted or declined mentions ("skip
+   -kimi this time") are not selections — intent governs, and the step-6
+   restatement makes any misread visible before paid work. Flags never mutate
+   `.afk/config.md` and override a config `gates` value for this run only.
+2. Otherwise a present `gates` key selects ordered roles. It uses `>` separators, ignores
    surrounding whitespace/case and a trailing comment, and must contain no empty
-   segment. A present-but-empty `gates` key is a blocking config error, never a
-   fallback to one gate. Valid role families are `codex`, `claude`, `kimi`, `glm`, `deepseek`, and `mimo`;
+   segment. Valid role families are `codex`, `claude`, `kimi`, `glm`, `deepseek`, and `mimo`;
    an unknown preference is recorded and uses fallback. A later duplicate
    preference is ineligible and also uses fallback. Legacy `min-pass` and `mode`
    beside a valid `gates` key are ignored for PR roles without rewriting the file.
-2. With no `gates`, any legacy external-gate field (`priority`, `min-pass`, or
-   `mode`) preserves the complete legacy profile. Omitted legacy `min-pass`
-   retains the former one-gate default.
-3. Otherwise use built-in `gates: codex > kimi` and built-in priority
-   `codex > claude > kimi > glm`. `design-gate` and `implementer` do not select
-   PR role count/order.
+3. With no flags and no `gates`, any legacy external-gate field (`priority`,
+   `min-pass`, or `mode`) preserves the complete legacy profile. Omitted legacy
+   `min-pass` retains the former one-gate default.
+4. Otherwise use built-in `gates: codex` — a single external review — and
+   built-in priority `codex > claude > kimi > glm`.
+   `design-gate` and `implementer` do not select PR role count/order.
+
+**Fail-closed exception:** a present-but-empty `gates` key (or a malformed
+value) is a blocking config error at every step — flags select roles; they
+never mask a broken config, and it is never a fallback to one gate.
+
+**Effective-profile lifetime.** The profile is resolved at kickoff, recorded
+in the ledger with its source, and restated (step 6). A flag-derived profile
+is per-run and ledger-held: ticks and resumes read it from the ledger;
+flag absence in a later kickoff-bearing handoff is no statement, deferring to
+the recorded profile; a flag statement resolving to an identical role list is a
+ledger-recorded affirmation (no source switch, nothing stales). Only a
+*differing* resolved list is a profile edit — every stamp stales and
+assignment re-derives, announced by the step-6 restatement first. A config-,
+legacy-, or built-in-sourced profile keeps live-config behavior: editing the
+`## external gate` section stales stamps via the role-profile hash, as
+always. A mid-run message that mentions a flag token without re-entering
+kickoff is conversation, never a silent re-resolve.
 
 Do not rewrite an existing legacy config. Emit one bounded notice with the exact
-opt-in snippet. An existing no/profileless config gets a one-time cost notice;
-`gates: codex` is the explicit single-gate escape hatch. Hook, `afk-init`, and
+opt-in snippet. An existing no/profileless config gets a
+one-time default-change notice; `gates: codex > kimi` in config, or
+`-codex -kimi` on one handoff, is the explicit double opt-in. Hook, `afk-init`, and
 kickoff all call `scripts/gate-profile-notice.mjs`; that shared implementation
 owns the atomic at-least-once receipt keyed by plugin version plus recognized
 external-gate profile fields (`AFK_GATE_PROFILE_NOTICE=off` opts out).
@@ -325,12 +364,15 @@ fail on first invocation.
   are not verdicts, do not increment the no-progress streak, and never count as
   clean.
 
-Default assignments are Codex outer + Kimi final for a Claude/GLM implementer;
+Default assignment under built-in `gates: codex` is a
+single role: Codex for a Claude/GLM/Kimi/DeepSeek/MiMo implementer; Claude for a Codex
+implementer. When a two-role profile is selected (flags or config), the default
+assignments are Codex outer + Kimi final for a Claude/GLM implementer;
 Claude outer + Kimi final for a Codex implementer; and Codex outer + Claude final
-for a Kimi implementer. If two distinct eligible families cannot finish, the PR
-is not clean/ready—one pass is never presented as two.
-DeepSeek/MiMo implementers retain Codex outer + Kimi final because neither
-optional family changes the built-in role sequence or fallback pool.
+for a Kimi implementer. If the required roles cannot be filled by distinct
+eligible families, the PR is not clean/ready—one pass is never presented as two.
+Neither optional family (DeepSeek/MiMo) changes the built-in role sequence or
+fallback pool.
 
 **A finding asserts two things; reading settles one.** Every reported finding is
 an `UNTRIAGED` hypothesis. Admit P1 only after recording: the frozen issue
@@ -411,7 +453,11 @@ to expand the issue or upgrade a finding without the same evidence.
 ### Ordered-role revision and convergence rules
 
 Before/after every PR role, record a clean worktree, `HEAD`, merge-base, base-tip
-context, and the normalized external-gate-section hash. Claude/Kimi/GLM/DeepSeek/MiMo
+context, and the effective role-profile hash: when handoff flags are present,
+the flag-derived role list plus the normalized `## external gate` section
+minus its `gates` key — flags replace only what they override, so mid-run
+edits to `priority` or the `implementer` declaration still stale stamps —
+otherwise the normalized section (or its absent sentinel). Claude/Kimi/GLM/DeepSeek/MiMo
 receive the immutable merge-base SHA; Codex receives its supported base ref and its
 verdict is invalid if the before/after merge-base changed. All configured role
 verdicts must name the same `HEAD`, merge-base, and role-profile hash.
@@ -544,7 +590,8 @@ would leave a finished run forever resumable and its scope never free again.
   are normal; a shared ledger path is what makes them collide.
 - **If the host supports scheduled re-invocation** (a cron or wake-up), set up a
   recurring tick that re-invokes you; the tick prompt is static (scope, order,
-  merge policy, constraints, run directory) — never embed the ledger itself.
+  merge policy, constraints, effective gate profile, run directory) — never
+  embed the ledger itself.
   Otherwise run to completion in-session, checkpointing the ledger before any
   yield so a later session resumes the same issue at its next step.
 - **Overlap guard — first action each tick:** refresh a UTC heartbeat in your own

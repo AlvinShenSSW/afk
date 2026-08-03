@@ -6,7 +6,8 @@ description: Part of the afk pipeline. Runs Codex (OpenAI Codex CLI) as the defa
 # afk-codex-review
 
 An independent second-opinion review by Codex (a *different* model), used as the
-default **outer** role before later configured roles (Kimi is the default final).
+default **outer** role before later configured roles (Kimi is the default final
+when a final role is configured; the built-in default is a single Codex gate).
 Run the ordered `gates` profile from `.afk/config.md`, never use a reviewer whose
 model matches the implementer or another role, and run `afk-internal-review`
 before outer. Codex reviews the diff read-only; you triage and fix.

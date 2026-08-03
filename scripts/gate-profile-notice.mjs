@@ -64,11 +64,12 @@ export function prepareGateProfileNotice({
   const notice = legacy
     ? [
         `This AFK config uses a legacy gate profile (effective min-pass: ${values['min-pass'] || '1'}, mode: ${values.mode || 'waterfall'}).`,
-        'Add `gates: codex > kimi` to opt in to ordered Codex outer + Kimi final review.',
+        'Ordered roles are opt-in via a `gates:` profile at least as long as that effective min-pass:',
+        '`gates: codex` (single) or `gates: codex > kimi` (ordered double).',
       ].join(' ')
     : [
-        'This AFK config has no PR gate decision and now uses `gates: codex > kimi` (two sequential external reviews).',
-        'If reduced coverage is deliberate, a one-item profile such as `gates: codex` is the explicit escape hatch.',
+        'This AFK config has no PR gate decision and uses the default single external review (`gates: codex`).',
+        'For ordered double review (Codex outer + Kimi final), add `gates: codex > kimi` to .afk/config.md or pass -codex -kimi on one handoff.',
       ].join(' ');
 
   return {
