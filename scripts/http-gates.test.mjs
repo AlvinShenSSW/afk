@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import {
   mkdtempSync, rmSync, symlinkSync, writeFileSync,
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { gateTestEnv } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -32,7 +32,7 @@ const CASES = {
 };
 
 function runGate(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot } = {}) {
-  return spawnSync(process.execPath, [CASES[family].gate, ...args], {
+  return spawnGate([CASES[family].gate, ...args], {
     cwd,
     encoding: 'utf8',
     env: gateTestEnv(env),

@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { verifyReviewerIdentity } from '../lib/gate/model-identity.mjs';
-import { gateTestEnv } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-claude-review/claude-gate.mjs';
@@ -27,7 +27,7 @@ const gatePath = () => fileURLToPath(new URL(`../${GATE}`, import.meta.url));
 // The gate must never be blocked by THIS repo's own driver when a test means to
 // exercise a downstream path, so tests declare an implementer explicitly.
 function runGate({ args = [], env = {} } = {}) {
-  return spawnSync(process.execPath, [GATE, ...args], {
+  return spawnGate([GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: gateTestEnv(env),

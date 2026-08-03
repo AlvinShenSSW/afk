@@ -6,20 +6,19 @@
 // binary: that call is metered, and a test suite is not a place to spend it.
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-codex-review/codex-gate.mjs';
 
 function runGate({ args = [], env = {} } = {}) {
-  return spawnSync(process.execPath, [GATE, ...args], {
+  return spawnGate([GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: gateTestEnv(env),
