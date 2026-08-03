@@ -36,6 +36,7 @@ import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { spawnViaShell } from '../../lib/gate/spawn.mjs';
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -275,7 +276,11 @@ let res = spawnSync(bin, args, spawnOpts);
 // shell (EINVAL). Retry there, minus the flag that cannot survive a shell.
 if (isWin && res.error && res.error.code === 'EINVAL') {
   process.stderr.write('[claude-gate] script shim detected; retrying via shell without --setting-sources (the read-only boundary is --tools and is unaffected)\n');
-  res = spawnSync(bin, dropEmptyValued(args, '--setting-sources'), { ...spawnOpts, shell: true });
+  // spawnViaShell, not a bare `shell: true`, for two reasons it owns: `bin` is
+  // often an absolute path, and an account named "First Last" puts a space in it
+  // that cmd.exe would split; and the prompt must reach stdin on an inherited
+  // descriptor, because `input` under a shell deadlocks this gate on timeout.
+  res = spawnViaShell(bin, dropEmptyValued(args, '--setting-sources'), spawnOpts);
 }
 
 const out = res.stdout || '';

@@ -53,6 +53,7 @@ import {
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { spawnCli, spawnViaShell } from '../../lib/gate/spawn.mjs';
 import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -159,10 +160,11 @@ if (printArgsOnly) {
   process.exit(0);
 }
 
-// Availability pre-check (local, no model call).
-const ver = spawnSync(kimi, ['--version'], {
+// Availability pre-check (local, no model call). spawnCli, not a bare shell:
+// KIMI_GATE_BIN is commonly an absolute path, and an account named "First Last"
+// puts a space in it.
+const ver = spawnCli(kimi, ['--version'], {
   encoding: 'utf8',
-  shell: isWin,
   timeout: preflightTimeoutMs(timeoutMs),
   killSignal: 'SIGKILL',
 });
@@ -199,7 +201,7 @@ const spawnOpts = {
 // directly, the prompt survives verbatim, non-ASCII included, and the ~8191-char
 // Windows command-line limit is not in reach (this gate sends instructions, and
 // lets Kimi fetch the diff itself).
-let res = spawnSync(kimi, promptArgs, spawnOpts);
+let res = spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
 
 // A Windows `.cmd`/`.bat` shim cannot be launched without a shell (EINVAL since
 // Node 18.20/20.12) — the one install shape where the payload must leave argv.
@@ -219,7 +221,7 @@ if (isWin && res.error && res.error.code === 'EINVAL') {
     );
   }
   process.stderr.write('[kimi-gate] script shim detected; retrying with the prompt on stdin (ASCII-folded)\n');
-  res = spawnSync(kimi, stdinArgs, { ...spawnOpts, input: folded, shell: true });
+  res = spawnViaShell(kimi, stdinArgs, { ...spawnOpts, input: folded });
 }
 
 const out = res.stdout || '';

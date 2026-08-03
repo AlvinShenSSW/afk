@@ -15,6 +15,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnViaShell } from '../../../lib/gate/spawn.mjs';
 import { relayError } from './relay.mjs';
 
 function resolveCodex(env, isWin) {
@@ -34,7 +35,11 @@ export function makeCodexProvider() {
     available(env, spawnImpl, isWin = process.platform === 'win32') {
       const sp = spawnImpl || spawnSync;
       const codex = resolveCodex(env, isWin);
-      const a = sp(codex, ['login', 'status'], { encoding: 'utf8', shell: isWin });
+      // resolveCodex returns %APPDATA%\npm\codex.cmd, which for an account named
+      // "First Last" holds a space cmd.exe would split the path on.
+      const a = isWin
+        ? spawnViaShell(codex, ['login', 'status'], { encoding: 'utf8', spawnImpl: sp })
+        : sp(codex, ['login', 'status'], { encoding: 'utf8', shell: false });
       if (a.error && a.error.code === 'ENOENT') {
         return {
           ok: false,
@@ -82,13 +87,20 @@ export function makeCodexProvider() {
       if (isWin) args.push('--dangerously-bypass-approvals-and-sandbox');
       else args.push('--sandbox', 'read-only');
 
-      const res = sp(codex, args, {
-        input: `${system}\n\n${user}`,
+      // The prompt is on stdin (above); what remains in argv is fixed flags plus
+      // the resolved codex path, which on Windows is absolute and, for an account
+      // named "First Last", contains a space cmd.exe would split. spawnViaShell
+      // quotes it, and moves the prompt off Node's `input` onto an inherited
+      // descriptor — under a shell, `input` never returns when the timeout fires.
+      const prompt = `${system}\n\n${user}`;
+      const spawnOpts = {
         encoding: 'utf8',
-        shell: isWin,
         timeout: timeoutMs,
         maxBuffer: 32 * 1024 * 1024,
-      });
+      };
+      const res = isWin
+        ? spawnViaShell(codex, args, { ...spawnOpts, input: prompt, spawnImpl: sp })
+        : sp(codex, args, { ...spawnOpts, input: prompt, shell: false });
 
       if (res.error) {
         if (res.error.code === 'ETIMEDOUT') {
