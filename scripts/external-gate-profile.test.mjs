@@ -23,14 +23,36 @@ const gates = {
   mimo: read('../skills/afk-mimo-review/SKILL.md'),
 };
 
-test('new configs choose ordered Codex outer then Kimi final', () => {
-  assert.match(template, /^gates:\s+codex > kimi\s*$/m);
+test('new configs choose a single Codex gate; ordered doubles are explicit opt-in', () => {
+  assert.match(template, /^gates:\s+codex\s*$/m);
+  assert.match(template, /^# gates:\s+codex > kimi\b/m, 'the double profile stays visible as a commented opt-in');
+  assert.doesNotMatch(template, /^gates:\s+codex > kimi\s*$/m);
   assert.doesNotMatch(template, /^min-pass:/m);
   assert.doesNotMatch(template, /^mode:/m);
+  assert.match(afk, /built-in `gates: codex`/);
+  assert.match(afk, /-codex -kimi/);
   for (const text of [afk, readme, agents, contributing]) {
+    assert.match(text, /single[^\n]*Codex|Codex[^\n]*single/i, 'each active doc names the single default');
     assert.match(text, /Codex[^\n]*(?:outer|外门)/i);
     assert.match(text, /Kimi[\s\S]{0,80}?(?:final|终审)/i);
   }
+});
+
+test('handoff role flags are a defined, bounded per-run channel', () => {
+  // The grammar and lifetime rules from the 2026-08-03 design (F10, F13, F4,
+  // F5, F17, F19, F22): affirmative form, collapse, lookalike recording,
+  // ledger-held lifetime, and the fail-closed config exception.
+  assert.match(afk, /one or two (?:leading )?dashes/i);
+  assert.match(afk, /case-insensitively/);
+  assert.match(afk, /repeated family collapses/i);
+  assert.match(afk, /ignored lookalike/i);
+  assert.match(afk, /Flags never mutate/);
+  assert.match(afk, /flag absence[^\n.]*no statement/i);
+  assert.match(afk, /affirmation/i);
+  assert.match(afk, /never mask a broken config/i);
+  // Visibility control: kickoff restates the effective profile and its source.
+  assert.match(afk, /Restate the scope and the effective gate profile/i);
+  assert.match(afk, /`flags` \/ `config` \/ `legacy` \/ `built-in`/);
 });
 
 test('the driver doctrine distinguishes ordered roles from fallback priority', () => {
@@ -43,6 +65,10 @@ test('the driver doctrine distinguishes ordered roles from fallback priority', (
 });
 
 test('the implementer and unavailable-provider matrix stays role-safe', () => {
+  assert.match(
+    afk,
+    /single role: Codex for a Claude\/GLM\/Kimi\/DeepSeek\/MiMo implementer; Claude for a Codex\s+implementer/,
+  );
   for (const row of [
     /Codex outer \+ Kimi final for a Claude\/GLM implementer/,
     /Claude outer \+ Kimi final for a Codex implementer/,
@@ -56,7 +82,7 @@ test('legacy and profileless config behavior is explicit and total', () => {
   assert.match(afk, /legacy external-gate field/i);
   assert.match(afk, /`design-gate`[^\n]*`implementer`[^\n]*do not select/i);
   assert.match(afk, /present-but-empty `gates`/i);
-  assert.match(afk, /one-time cost notice/i);
+  assert.match(afk, /one-time default-change notice/i);
   assert.match(afk, /Legacy `min-pass` and `mode`[\s\S]{0,120}?ignored for PR roles/i);
 });
 
@@ -66,7 +92,8 @@ test('ordered role convergence and final revision stamps are pinned', () => {
     /root-cause checkpoint/,
     /one transient retry/,
     /merge-base/,
-    /external-gate-section hash/,
+    /effective role-profile hash/,
+    /minus its `gates` key/,
     /later-role content change/,
   ]) assert.match(afk, phrase);
   assert.doesNotMatch(afk, /refuses to start a fourth\s+sequence|four finding-bearing verdicts/i);

@@ -162,13 +162,14 @@ test('legacy external-gate config receives one bounded opt-in notice', () => {
   }
 });
 
-test('profileless config receives the two-review cost notice once', () => {
+test('profileless config receives the default-change notice once', () => {
   const root = initRepo();
   try {
     writeRawConfig(root, '## external gate\ndesign-gate: risky\n# implementer: codex\n');
     const first = parseOut(runHook({ cwd: root, env: GATE_NOTICE_ON }).stdout);
-    assert.match(first.hookSpecificOutput.additionalContext, /two sequential external reviews/i);
+    assert.match(first.hookSpecificOutput.additionalContext, /default single external review/i);
     assert.match(first.hookSpecificOutput.additionalContext, /gates: codex/);
+    assert.match(first.hookSpecificOutput.additionalContext, /-codex -kimi/);
     assert.equal(runHook({ cwd: root, env: GATE_NOTICE_ON }).stdout.trim(), '');
   } finally {
     cleanup(root);

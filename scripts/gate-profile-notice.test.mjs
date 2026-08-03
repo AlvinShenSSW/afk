@@ -44,7 +44,10 @@ test('CLI and imported resolver honor the same receipt', () => {
       env: { ...process.env, AFK_GATE_PROFILE_NOTICE: '' },
     });
     assert.equal(run.status, 0, run.stderr);
-    assert.match(run.stdout, /two sequential external reviews/i);
+    assert.match(run.stdout, /default single external review/i);
+    assert.match(run.stdout, /`gates: codex`/);
+    assert.match(run.stdout, /-codex -kimi/, 'the notice names the per-handoff opt-in channel');
+    assert.doesNotMatch(run.stdout, /two sequential external reviews/i);
     assert.equal(prepareGateProfileNotice({ afkDir, pluginRoot: ROOT, env: {} }).notice, '');
   });
 });
