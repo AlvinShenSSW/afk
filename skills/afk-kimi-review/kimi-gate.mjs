@@ -53,7 +53,7 @@ import {
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
-import { spawnCli, spawnViaShell } from '../../lib/gate/spawn.mjs';
+import { spawnCli, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -232,6 +232,18 @@ try {
   closeSync(fd);
 } catch {
   // The transcript is a convenience; losing it must not fail the review.
+}
+
+if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
+  // Operator input this gate cannot carry, not a reviewer that is unavailable:
+  // ERROR, so the round is unclean and the target gets fixed, rather than SKIP,
+  // which would hand the review to the next family and hide the bad ref.
+  emitError(
+    `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
+    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
+    + 'native binary so its arguments never pass through cmd.exe.',
+    1,
+  );
 }
 
 if (res.error && res.error.code === 'ENOENT') {

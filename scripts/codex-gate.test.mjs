@@ -351,3 +351,41 @@ test('codex gate opt-out is checked before the lock selftest', () => {
     assert.doesNotMatch(result.stderr, /selftest: acquired/);
   });
 });
+
+test('an argument no shell can carry ends as a parseable gate ERROR, not a stack trace', {
+  skip: process.platform === 'win32' ? false : 'only a Windows script shim forces the shell path',
+}, () => {
+  // A ref like `feature/%TEAM%-fix` is valid to git and unusable under cmd.exe.
+  // Refusing it is right; refusing it by throwing was not — the exception left
+  // the gate with no protocol block at all, and afk classifies a round by
+  // reading that block. "No output" is indistinguishable from a crashed gate.
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-unsafe-'));
+  try {
+    // A `.cmd` shim is the install shape that forces the shell path (EINVAL).
+    // It must satisfy the auth preflight, or the gate skips as unauthenticated
+    // and never reaches the review spawn this test is about.
+    const bin = join(dir, 'codex.cmd');
+    writeFileSync(bin, '@echo off\r\necho Logged in as test@example.com\r\nexit /b 0\r\n');
+
+    const result = runGate({
+      args: ['--commit', 'HEAD', '--implementer', 'claude', '--some-pass-through', '%USERNAME%'],
+      // This is the first codex-gate test to reach the review spawn, so it is
+      // also the first to reach the machine-wide review lock. A test must not
+      // queue behind a real review someone is running on the same box — that
+      // turns a unit test into a 20-minute wait whose failure names the wrong
+      // thing entirely.
+      env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+    });
+
+    assert.match(result.stdout, /===== CODEX REVIEW/, 'the protocol block must still be emitted');
+    assert.match(result.stdout, /ERROR: cannot review this target/);
+    assert.match(result.stdout, /variable expansion/);
+    assert.match(result.stdout, /===== END CODEX REVIEW =====/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/, 'operator input, not an unavailable reviewer');
+    // The tell of the old behaviour: an uncaught throw prints a stack to stderr.
+    assert.doesNotMatch(result.stderr, /at quoteForShell|Error: cannot pass an argument/);
+    assert.notEqual(result.status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
