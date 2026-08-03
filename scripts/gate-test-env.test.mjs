@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { gateTestEnv } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
 test('gate test environment removes ambient gate configuration', () => {
   const result = gateTestEnv({}, {
@@ -31,4 +31,20 @@ test('explicit test overrides are applied after ambient cleanup', () => {
     { KIMI_REVIEW_TIMEOUT_MS: '9999' },
   );
   assert.equal(result.KIMI_REVIEW_TIMEOUT_MS, '1234');
+});
+
+test('spawnGate names a gate that never exits instead of returning empty output', () => {
+  // The failure this converts: a hung gate returned status null and stdout '',
+  // every assertion then read as "the gate printed nothing", and the run itself
+  // never finished so nothing was reported at all.
+  assert.throws(
+    () => spawnGate(['-e', 'setInterval(() => {}, 60000);'], { encoding: 'utf8', timeout: 300 }),
+    /did not exit within 300ms/,
+  );
+});
+
+test('spawnGate passes a normal gate result straight through', () => {
+  const res = spawnGate(['-e', 'process.stdout.write("verdict");'], { encoding: 'utf8' });
+  assert.equal(res.status, 0);
+  assert.equal(res.stdout, 'verdict');
 });

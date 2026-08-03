@@ -35,7 +35,6 @@
 //
 // Exit code mirrors codex; 127 if the codex binary cannot be found.
 
-import { spawnSync } from 'node:child_process';
 import {
   closeSync, existsSync, mkdtempSync, openSync,
   readFileSync, statSync, unlinkSync, writeSync,
@@ -50,6 +49,7 @@ import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { optVal, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -337,9 +337,8 @@ if (printArgsOnly) {
 
 // Availability + auth pre-check (local only, no model call / no metered cost).
 // Skip cleanly if Codex is missing or not logged in.
-const auth = spawnSync(codex, ['login', 'status'], {
+const auth = spawnCli(codex, ['login', 'status'], {
   encoding: 'utf8',
-  shell: isWin,
   timeout: preflightTimeoutMs(timeoutMs),
   killSignal: 'SIGKILL',
 });
@@ -365,14 +364,17 @@ const codexLock = acquireCodexLock();
 // Design mode pipes the brief+doc to stdin (positional `-`): if stdin stayed
 // 'ignore', `input` would be discarded and codex would read EOF on `-` and
 // review an empty prompt — a silent no-review. Diff mode has no stdin payload.
+// argv carries `-o <path>`: under a shell that path is torn apart at its first
+// space (a Windows account named "First Last" puts one in every temp path), so
+// spawnCli spawns directly and quotes only when a script shim forces a shell.
 const fd = openSync(logFile, 'w');
-const res = spawnSync(codex, reviewArgs, isDesign
+const res = spawnCli(codex, reviewArgs, isDesign
   ? {
-    input: designPayload, stdio: ['pipe', fd, fd], shell: isWin,
+    input: designPayload, stdio: ['pipe', fd, fd],
     timeout: timeoutMs, killSignal: 'SIGKILL',
   }
   : {
-    stdio: ['ignore', fd, fd], shell: isWin,
+    stdio: ['ignore', fd, fd],
     timeout: timeoutMs, killSignal: 'SIGKILL',
   });
 closeSync(fd);
@@ -382,6 +384,18 @@ if (isSpawnTimeout(res)) {
   emitError(
     `codex review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
     + `Raise CODEX_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    1,
+  );
+}
+
+if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
+  // Operator input this gate cannot carry, not a reviewer that is unavailable:
+  // ERROR, so the round is unclean and the target gets fixed, rather than SKIP,
+  // which would hand the review to the next family and hide the bad ref.
+  emitError(
+    `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
+    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
+    + 'native binary so its arguments never pass through cmd.exe.',
     1,
   );
 }

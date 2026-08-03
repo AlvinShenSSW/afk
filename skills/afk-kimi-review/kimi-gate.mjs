@@ -1,14 +1,30 @@
 #!/usr/bin/env node
 // kimi-gate.mjs — cross-platform Kimi Code CLI external review wrapper.
 //
-// Drives the Kimi Code CLI (`kimi`) headlessly via `kimi -p "<prompt>"` and
-// prints ONLY Kimi's final review between markers (transcript -> log file).
-// External review gate; run ONE gate per round, whose model differs from the
-// implementer's.
+// Drives the Kimi Code CLI (`kimi`) headlessly via `kimi --quiet -p "<prompt>"`,
+// spawned WITHOUT a shell, and prints ONLY Kimi's final review between markers
+// (transcript -> log file). External review gate; run ONE gate per round, whose
+// model differs from the implementer's.
 //
 // Kimi is a general agentic CLI with no built-in `review` subcommand, so this
-// passes a review PROMPT and lets Kimi drive git itself. `-p` is headless on its
-// own (kimi rejects combining it with -y/--auto).
+// passes a review PROMPT and lets Kimi drive git itself. `--quiet` is the CLI's
+// own alias for `--print --output-format text --final-message-only`: headless,
+// with stdout carrying the final message and nothing else.
+//
+// Two Windows-only constraints shape the invocation; both are verified against
+// the real CLI, and each one silently killed the gate before:
+//
+//   1. NEVER put the prompt in argv under a shell. Node concatenates argv
+//      unescaped there (DEP0190), so cmd.exe split the multi-word, multi-line
+//      prompt and Kimi read its second word as a subcommand — "No such command
+//      'are'", exit 2, on every single review.
+//   2. NEVER send non-ASCII on stdin. The CLI decodes stdin with surrogateescape
+//      and then dies serializing it: "UnicodeEncodeError: 'utf-8' codec can't
+//      encode character '\udc94' … surrogates not allowed".
+//
+// Spawning directly (no shell) with the prompt in argv satisfies both. A `.cmd`
+// shim is the one install that cannot start without a shell; there, and only
+// there, the prompt moves to stdin ASCII-folded.
 //
 // Read-only is asked for in the prompt, NOT enforced: kimi has no per-command
 // permission surface here. That is weaker than afk-claude-review, whose reviewer
@@ -37,6 +53,7 @@ import {
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { spawnCli, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -81,8 +98,7 @@ if (!isDesign) {
 //
 // Design mode swaps the whole clause: the diff clause's `git show`/`git diff` is
 // meaningless for a design, and pointing kimi at the doc ON DISK (rather than
-// injecting its text) keeps a large doc off the argv — kimi passes its prompt as
-// a `-p` argument, which a diff-sized doc would overflow on Windows.
+// injecting its text) keeps a large doc out of the prompt entirely.
 let reviewPrompt;
 if (target.kind === 'design') {
   const context = `Review the design document at ${target.path} in this git repository. Read it in full first. Use git and read surrounding files to check any claim the design makes about the code. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
@@ -105,6 +121,25 @@ if (printPromptOnly) {
   process.exit(0);
 }
 
+// `--quiet` is the CLI's own alias for `--print --output-format text
+// --final-message-only`: headless, and stdout carries the final message and
+// nothing else — exactly this gate's contract, instead of relying on what bare
+// `-p` happens to print.
+const QUIET = '--quiet';
+// Primary transport: the prompt as one argv element, spawned WITHOUT a shell.
+const promptArgs = [QUIET, '-p', reviewPrompt];
+// Shim fallback only (see below): the prompt on stdin, argv reduced to flags.
+const stdinArgs = [QUIET, '--input-format', 'text'];
+
+// Fold the typographic characters this repo's prompt templates use down to
+// ASCII. Only the stdin fallback needs it (the CLI mangles any non-ASCII byte
+// there); it never touches the primary path, and it changes no meaning.
+const ASCII_FOLD = [
+  [/[—–‒‑]/g, '-'], [/[‘’]/g, "'"],
+  [/[“”]/g, '"'], [/…/g, '...'], [/·/g, '*'], [/→/g, '->'],
+];
+const foldToAscii = (text) => ASCII_FOLD.reduce((acc, [re, to]) => acc.replace(re, to), text);
+
 if (printArgsOnly) {
   process.stdout.write(`${JSON.stringify({
     bin: kimi,
@@ -113,16 +148,23 @@ if (printArgsOnly) {
     commit: target.commit ?? null,
     label: target.label,
     command: target.command ?? null,
+    // The invocation SHAPE is part of the contract, not an implementation
+    // detail: each Windows failure below is silent, model-call-expensive to
+    // discover, and looks like an unavailable reviewer. Keep it observable.
+    transport: 'argv',
+    shell: false,
+    fallback: { transport: 'stdin', shell: true, args: stdinArgs },
     promptBytes: reviewPrompt.length,
     timeoutMs,
   }, null, 2)}\n`);
   process.exit(0);
 }
 
-// Availability pre-check (local, no model call).
-const ver = spawnSync(kimi, ['--version'], {
+// Availability pre-check (local, no model call). spawnCli, not a bare shell:
+// KIMI_GATE_BIN is commonly an absolute path, and an account named "First Last"
+// puts a space in it.
+const ver = spawnCli(kimi, ['--version'], {
   encoding: 'utf8',
-  shell: isWin,
   timeout: preflightTimeoutMs(timeoutMs),
   killSignal: 'SIGKILL',
 });
@@ -139,17 +181,48 @@ const logFile = join(work, 'kimi.log');
 // No context-leaning for Kimi (intentional): thinking effort stays at its
 // default (KIMI_MODEL_THINKING_EFFORT applies only when a synthesized provider
 // is set), and project-doc injection is session-level, not per-turn.
-process.stderr.write('[kimi-gate] kimi -p <structural review prompt>\n');
+process.stderr.write(
+  `[kimi-gate] ${kimi} ${QUIET} -p <${reviewPrompt.length}B structural review prompt> (no shell)\n`,
+);
 process.stderr.write(`[kimi-gate] timeout -> ${timeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
 
-const res = spawnSync(kimi, ['-p', reviewPrompt], {
+const spawnOpts = {
   encoding: 'utf8',
-  shell: isWin,
   maxBuffer: 64 * 1024 * 1024, // reviews can be long
   timeout: timeoutMs,
   killSignal: 'SIGKILL',
-});
+};
+
+// NO SHELL, and that is the whole point: Node concatenates argv UNESCAPED under
+// a shell (it warns about this, DEP0190), so cmd.exe split the multi-word,
+// multi-line prompt and Kimi parsed its second word as a subcommand
+// ("No such command 'are'", exit 2) — every Windows review died there. Spawned
+// directly, the prompt survives verbatim, non-ASCII included, and the ~8191-char
+// Windows command-line limit is not in reach (this gate sends instructions, and
+// lets Kimi fetch the diff itself).
+let res = spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
+
+// A Windows `.cmd`/`.bat` shim cannot be launched without a shell (EINVAL since
+// Node 18.20/20.12) — the one install shape where the payload must leave argv.
+// It moves to stdin, ASCII-folded: the CLI's stdin reader decodes with
+// surrogateescape and then dies serializing ("UnicodeEncodeError: … surrogates
+// not allowed") on any non-ASCII byte. Both constraints are Windows-only and
+// verified against the real CLI.
+if (isWin && res.error && res.error.code === 'EINVAL') {
+  const folded = foldToAscii(reviewPrompt);
+  if (/[^\x20-\x7E\t\r\n]/.test(folded)) {
+    emitError(
+      'kimi is installed as a script shim, so its prompt must go on stdin — but this CLI '
+      + 'cannot read non-ASCII from stdin (UnicodeEncodeError: surrogates not allowed), and this '
+      + 'review prompt still holds non-ASCII after folding (most likely a non-ASCII path or branch '
+      + 'name). Install kimi as a native binary, or point KIMI_GATE_BIN at the executable directly.',
+      1,
+    );
+  }
+  process.stderr.write('[kimi-gate] script shim detected; retrying with the prompt on stdin (ASCII-folded)\n');
+  res = spawnViaShell(kimi, stdinArgs, { ...spawnOpts, input: folded });
+}
 
 const out = res.stdout || '';
 const err = res.stderr || '';
@@ -159,6 +232,18 @@ try {
   closeSync(fd);
 } catch {
   // The transcript is a convenience; losing it must not fail the review.
+}
+
+if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
+  // Operator input this gate cannot carry, not a reviewer that is unavailable:
+  // ERROR, so the round is unclean and the target gets fixed, rather than SKIP,
+  // which would hand the review to the next family and hide the bad ref.
+  emitError(
+    `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
+    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
+    + 'native binary so its arguments never pass through cmd.exe.',
+    1,
+  );
 }
 
 if (res.error && res.error.code === 'ENOENT') {

@@ -1,3 +1,13 @@
+import { spawnSync } from 'node:child_process';
+
+// Every gate test spawns its gate SYNCHRONOUSLY, so a gate that hangs takes the
+// whole `node --test` run down with it — and because spawnSync blocks the event
+// loop, the runner's own per-test timeout can never fire. A hung suite reports
+// nothing and has to be bisected by hand. Bound every gate spawn instead: these
+// tests run against stubs and --print-* paths that finish in well under a
+// second, so anything approaching this bound is a hang, not a slow machine.
+export const GATE_SPAWN_TIMEOUT_MS = 120000;
+
 const GATE_PREFIXES = [
   'AFK_REVIEW_',
   'CLAUDE_GATE_',
@@ -28,4 +38,21 @@ export function gateTestEnv(overrides = {}, base = process.env) {
     }
   }
   return { ...clean, AFK_GATE_NO_DOTENV: '1', ...overrides };
+}
+
+/**
+ * Spawn a gate under the bound above, and turn the bound being hit into a named
+ * failure. Without this the caller sees an empty stdout and asserts against '',
+ * which reads like a gate that printed nothing rather than one that never
+ * returned.
+ */
+export function spawnGate(argv, options = {}) {
+  const spawnOpts = { timeout: GATE_SPAWN_TIMEOUT_MS, ...options };
+  const res = spawnSync(process.execPath, argv, spawnOpts);
+  if (res.error && res.error.code === 'ETIMEDOUT') {
+    throw new Error(
+      `the gate did not exit within ${spawnOpts.timeout}ms and was killed: ${argv.join(' ')}`,
+    );
+  }
+  return res;
 }

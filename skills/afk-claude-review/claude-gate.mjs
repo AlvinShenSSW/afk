@@ -36,6 +36,7 @@ import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -275,7 +276,11 @@ let res = spawnSync(bin, args, spawnOpts);
 // shell (EINVAL). Retry there, minus the flag that cannot survive a shell.
 if (isWin && res.error && res.error.code === 'EINVAL') {
   process.stderr.write('[claude-gate] script shim detected; retrying via shell without --setting-sources (the read-only boundary is --tools and is unaffected)\n');
-  res = spawnSync(bin, dropEmptyValued(args, '--setting-sources'), { ...spawnOpts, shell: true });
+  // spawnViaShell, not a bare `shell: true`, for two reasons it owns: `bin` is
+  // often an absolute path, and an account named "First Last" puts a space in it
+  // that cmd.exe would split; and the prompt must reach stdin on an inherited
+  // descriptor, because `input` under a shell deadlocks this gate on timeout.
+  res = spawnViaShell(bin, dropEmptyValued(args, '--setting-sources'), spawnOpts);
 }
 
 const out = res.stdout || '';
@@ -292,6 +297,18 @@ if (isSpawnTimeout(res)) {
   emitError(
     `Claude review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
     + `Raise CLAUDE_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    1,
+  );
+}
+
+if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
+  // Operator input this gate cannot carry, not a reviewer that is unavailable:
+  // ERROR, so the round is unclean and the target gets fixed, rather than SKIP,
+  // which would hand the review to the next family and hide the bad ref.
+  emitError(
+    `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
+    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
+    + 'native binary so its arguments never pass through cmd.exe.',
     1,
   );
 }

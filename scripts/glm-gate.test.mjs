@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,13 +8,13 @@ import { createServer } from 'node:http';
 
 import { test } from 'node:test';
 
-import { gateTestEnv } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-glm-review/glm-gate.mjs';
 
 function runGate({ args = [], env = {} } = {}) {
-  return spawnSync(process.execPath, [GATE, ...args], {
+  return spawnGate([GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: gateTestEnv(env),

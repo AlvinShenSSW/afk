@@ -5,20 +5,19 @@
 // Every test terminates at a local check; none may reach the real `kimi` binary.
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-kimi-review/kimi-gate.mjs';
 
 function runGate({ args = [], env = {} } = {}) {
-  return spawnSync(process.execPath, [GATE, ...args], {
+  return spawnGate([GATE, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: gateTestEnv(env),
@@ -190,6 +189,83 @@ test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
     assert.match(result.stdout, /ERROR: .*timed out after 2s/);
     assert.match(result.stdout, /KIMI_REVIEW_TIMEOUT_MS/);
     assert.doesNotMatch(result.stdout, /SKIPPED/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the prompt never rides in argv under a shell', () => {
+  // The invariant behind two Windows-only deaths, both verified against the real
+  // CLI: (1) Node concatenates argv UNESCAPED under a shell (DEP0190), so cmd.exe
+  // split the multi-word prompt and Kimi read its second word as a subcommand
+  // (`No such command 'are'`, exit 2); (2) the CLI cannot read non-ASCII from
+  // stdin at all (`UnicodeEncodeError: … surrogates not allowed`). Spawning
+  // directly with the prompt in argv is the one shape that satisfies both, so the
+  // shape is contract, not detail.
+  const result = runGate({ args: ['--print-args'] });
+
+  const { transport, shell, fallback, promptBytes } = JSON.parse(result.stdout);
+  assert.equal(transport, 'argv');
+  assert.equal(shell, false, 'a shell with a payload in argv is the bug itself');
+  assert.ok(promptBytes > 100);
+
+  // The shim fallback is the only shelled path, so its argv must carry flags only.
+  assert.equal(fallback.transport, 'stdin');
+  assert.deepEqual(fallback.args, ['--quiet', '--input-format', 'text']);
+  for (const arg of fallback.args) {
+    assert.doesNotMatch(arg, /\s/, `shelled argv element ${JSON.stringify(arg)} must stay shell-safe`);
+  }
+});
+
+test('the stub reviewer receives the whole prompt, verbatim', () => {
+  // The behavioural half of the test above, against a recording stub. On Windows
+  // the stub is a `.cmd`, so it also drives the EINVAL shim retry — the one path
+  // where a shell is unavoidable and the prompt has to move to stdin.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-transport-'));
+  try {
+    const record = join(dir, 'record.json');
+    const impl = join(dir, 'stub.mjs');
+    writeFileSync(impl, [
+      "import { readFileSync, writeFileSync } from 'node:fs';",
+      "const argv = process.argv.slice(2);",
+      "if (argv.includes('--version')) { process.stdout.write('stub 1.0'); process.exit(0); }",
+      "let stdin = '';",
+      "try { stdin = readFileSync(0, 'utf8'); } catch {}",
+      `writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv, stdin }));`,
+      "process.stdout.write('STUB REVIEW: no findings');",
+      '',
+    ].join('\n'));
+
+    let bin;
+    let shimmed;
+    if (process.platform === 'win32') {
+      // Node refuses to spawn a .cmd without a shell (EINVAL), which is exactly
+      // the install shape the fallback exists for.
+      bin = join(dir, 'kimi-stub.cmd');
+      writeFileSync(bin, `@echo off\r\n"${process.execPath}" "${impl}" %*\r\n`);
+      shimmed = true;
+    } else {
+      bin = join(dir, 'kimi-stub');
+      writeFileSync(bin, `#!${process.execPath}\nprocess.argv.splice(1, 1, ${JSON.stringify(impl)});\nawait import(${JSON.stringify(impl)});\n`);
+      chmodSync(bin, 0o755);
+      shimmed = false;
+    }
+
+    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+
+    assert.match(result.stdout, /STUB REVIEW: no findings/, result.stderr);
+    const seen = JSON.parse(readFileSync(record, 'utf8'));
+    const payload = shimmed ? seen.stdin : seen.argv.at(-1);
+
+    assert.match(payload, /review/i);
+    assert.ok(payload.length > 100, 'the whole prompt arrived, not its first word');
+    if (shimmed) {
+      assert.deepEqual(seen.argv, ['--quiet', '--input-format', 'text']);
+      // eslint-disable-next-line no-control-regex
+      assert.doesNotMatch(payload, /[^\x20-\x7E\t\r\n]/, 'the stdin fallback must be ASCII-folded');
+    } else {
+      assert.deepEqual(seen.argv.slice(0, 2), ['--quiet', '-p']);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
