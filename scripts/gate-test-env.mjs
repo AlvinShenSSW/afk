@@ -56,3 +56,14 @@ export function spawnGate(argv, options = {}) {
   }
   return res;
 }
+
+/**
+ * Windows inherits `Path`, not `PATH`, and `gateTestEnv` merges overrides by
+ * EXACT key — so a plain `{ PATH: ... }` override adds a second key beside the
+ * inherited one and the child may well read the wrong one. A PATH-dependent
+ * test that silently keeps the inherited value passes vacuously on the only
+ * platform it runs on, which is worse than failing.
+ */
+export function pathKey(env = process.env) {
+  return Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+}

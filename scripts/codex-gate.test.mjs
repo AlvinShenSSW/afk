@@ -8,11 +8,11 @@
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, pathKey, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-codex-review/codex-gate.mjs';
@@ -387,5 +387,32 @@ test('an argument no shell can carry ends as a parseable gate ERROR, not a stack
     assert.notEqual(result.status, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a bare-name codex.cmd on PATH is resolved without disturbing the APPDATA probe', {
+  skip: process.platform === 'win32' ? false : 'the bare-name PATHEXT gap is Windows-only',
+}, () => {
+  // Issue #12 at this gate's call site. APPDATA is pointed at an empty temp
+  // tree on purpose: the existing `%APPDATA%\npm\codex.cmd` probe still runs
+  // FIRST and must keep winning where it hits, so this test has to remove that
+  // variable to observe the new PATH step at all.
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-path-'));
+  const emptyAppData = mkdtempSync(join(tmpdir(), 'codex-gate-appdata-'));
+  try {
+    writeFileSync(join(dir, 'codex.cmd'), '@echo off\r\nexit /b 0\r\n');
+    const inherited = pathKey();
+    const result = runGate({
+      args: ['--commit', 'HEAD', '--implementer', 'claude', '--print-args'],
+      env: {
+        APPDATA: emptyAppData,
+        [inherited]: `${dir}${delimiter}${process.env[inherited] || ''}`,
+      },
+    });
+
+    assert.equal(JSON.parse(result.stdout).bin, join(dir, 'codex.cmd'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(emptyAppData, { recursive: true, force: true });
   }
 });

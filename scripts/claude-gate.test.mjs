@@ -11,12 +11,12 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import { test } from 'node:test';
 
 import { verifyReviewerIdentity } from '../lib/gate/model-identity.mjs';
-import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, pathKey, spawnGate } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-claude-review/claude-gate.mjs';
@@ -710,6 +710,27 @@ test('the prompt warns when read context is a different revision than the diff',
     });
     assert.equal(atHead.status, 0, atHead.stderr);
     assert.doesNotMatch(atHead.stdout, /CAUTION: the files you can Read/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a bare-name claude.cmd on PATH is resolved', {
+  skip: process.platform === 'win32' ? false : 'the bare-name PATHEXT gap is Windows-only',
+}, () => {
+  // Issue #12 at this gate's call site. Pre-existing rather than a #10
+  // regression here — the first spawn was always shell-less — but the same
+  // false "not installed" skip, and the same one-line fix.
+  const dir = mkdtempSync(join(tmpdir(), 'claude-gate-path-'));
+  try {
+    writeFileSync(join(dir, 'claude.cmd'), '@echo off\r\nexit /b 0\r\n');
+    const inherited = pathKey();
+    const result = runGate({
+      args: ['--commit', 'HEAD', '--implementer', 'codex', '--print-args'],
+      env: { [inherited]: `${dir}${delimiter}${process.env[inherited] || ''}` },
+    });
+
+    assert.equal(JSON.parse(result.stdout).bin, join(dir, 'claude.cmd'));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

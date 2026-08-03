@@ -53,7 +53,9 @@ import {
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
-import { spawnCli, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
+import {
+  resolveCliBin, spawnCli, spawnViaShell, UNSAFE_SHELL_ARG,
+} from '../../lib/gate/spawn.mjs';
 import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -108,7 +110,12 @@ if (target.kind === 'design') {
   reviewPrompt = buildReviewPrompt({ scope: target.label, context });
 }
 
-const kimi = (process.env.KIMI_GATE_BIN || 'kimi').trim();
+// resolveCliBin, not the bare name: `npm i -g @moonshot-ai/kimi-code` — the
+// install this gate's own skip message recommends — creates `kimi.cmd` with no
+// `.exe`, and libuv's Windows PATH search appends only `.com`/`.exe`. Without
+// this the preflight below ENOENTs and the gate reports a working CLI as "not
+// installed". A no-op off Windows and whenever libuv can find the name itself.
+const kimi = resolveCliBin((process.env.KIMI_GATE_BIN || 'kimi').trim());
 
 // Kimi is a general agentic CLI: `-p` bounds neither the turn nor the tool
 // calls inside it, so a review that stops converging blocks the driver for as
