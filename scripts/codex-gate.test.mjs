@@ -8,11 +8,11 @@
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, pathKey, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-codex-review/codex-gate.mjs';
@@ -401,13 +401,11 @@ test('a bare-name codex.cmd on PATH is resolved without disturbing the APPDATA p
   const emptyAppData = mkdtempSync(join(tmpdir(), 'codex-gate-appdata-'));
   try {
     writeFileSync(join(dir, 'codex.cmd'), '@echo off\r\nexit /b 0\r\n');
-    const inherited = pathKey();
     const result = runGate({
       args: ['--commit', 'HEAD', '--implementer', 'claude', '--print-args'],
-      env: {
-        APPDATA: emptyAppData,
-        [inherited]: `${dir}${delimiter}${process.env[inherited] || ''}`,
-      },
+      // stubPath: a real `codex.exe` later on PATH would keep pass 1 from ever
+      // reaching the stub shim this test is about.
+      env: { APPDATA: emptyAppData, ...stubPath(dir, 'codex') },
     });
 
     assert.equal(JSON.parse(result.stdout).bin, join(dir, 'codex.cmd'));

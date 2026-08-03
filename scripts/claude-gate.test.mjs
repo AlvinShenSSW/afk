@@ -11,12 +11,12 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 
 import { test } from 'node:test';
 
 import { verifyReviewerIdentity } from '../lib/gate/model-identity.mjs';
-import { gateTestEnv, pathKey, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-claude-review/claude-gate.mjs';
@@ -724,10 +724,11 @@ test('a bare-name claude.cmd on PATH is resolved', {
   const dir = mkdtempSync(join(tmpdir(), 'claude-gate-path-'));
   try {
     writeFileSync(join(dir, 'claude.cmd'), '@echo off\r\nexit /b 0\r\n');
-    const inherited = pathKey();
     const result = runGate({
       args: ['--commit', 'HEAD', '--implementer', 'codex', '--print-args'],
-      env: { [inherited]: `${dir}${delimiter}${process.env[inherited] || ''}` },
+      // stubPath: the native installer's `claude.exe` masks the shim shape for
+      // most users, and pass 1 would then correctly return the bare name.
+      env: stubPath(dir, 'claude'),
     });
 
     assert.equal(JSON.parse(result.stdout).bin, join(dir, 'claude.cmd'));

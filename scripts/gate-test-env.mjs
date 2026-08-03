@@ -1,4 +1,9 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
+
+/** What libuv appends on Windows, plus the shims cmd.exe resolves. */
+const EXECUTABLE_EXTS = ['.com', '.exe', '.cmd', '.bat'];
 
 // Every gate test spawns its gate SYNCHRONOUSLY, so a gate that hangs takes the
 // whole `node --test` run down with it — and because spawnSync blocks the event
@@ -66,4 +71,24 @@ export function spawnGate(argv, options = {}) {
  */
 export function pathKey(env = process.env) {
   return Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+}
+
+/**
+ * A child `PATH` that puts `dir` first AND cannot resolve `name` any other way.
+ *
+ * Prepending to the inherited PATH is not enough for a shim-resolution test:
+ * `resolveCliBin` is extension-major, so a real `<name>.exe` ANYWHERE later on
+ * PATH correctly returns the bare name and the test's stub is never reached.
+ * That is precisely the reference machine (issue #12: "that machine had a
+ * kimi.exe"), where the test would either fail or — worse — spawn the real,
+ * metered CLI. Entries holding the executable are dropped; everything else
+ * stays, because the gates still need `git` on PATH.
+ */
+export function stubPath(dir, name, env = process.env) {
+  const key = pathKey(env);
+  const inherited = (env[key] || '').split(delimiter)
+    .filter((entry) => entry && !EXECUTABLE_EXTS.some(
+      (ext) => existsSync(join(entry.replace(/^"(.*)"$/, '$1').trim(), `${name}${ext}`)),
+    ));
+  return { [key]: [dir, ...inherited].join(delimiter) };
 }

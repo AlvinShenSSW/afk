@@ -7,11 +7,11 @@
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, pathKey, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-kimi-review/kimi-gate.mjs';
@@ -303,11 +303,10 @@ test('a bare-name .cmd shim on PATH is resolved and drives a completed review', 
     ].join('\n'));
     writeFileSync(join(dir, 'kimi.cmd'), `@echo off\r\n"${process.execPath}" "${impl}" %*\r\n`);
 
-    const inherited = pathKey();
-    const result = runGate({
-      args: ['--commit', 'HEAD'],
-      env: { [inherited]: `${dir}${delimiter}${process.env[inherited] || ''}` },
-    });
+    // stubPath, not a prepend: a real `kimi.exe` later on PATH would make
+    // pass 1 return the bare name, and this gate would then spawn the REAL,
+    // metered CLI instead of the stub.
+    const result = runGate({ args: ['--commit', 'HEAD'], env: stubPath(dir, 'kimi') });
 
     assert.match(result.stdout, /STUB REVIEW: resolved via PATH/, result.stderr);
     assert.doesNotMatch(result.stdout, /SKIPPED/, 'a resolvable shim is not "not installed"');
