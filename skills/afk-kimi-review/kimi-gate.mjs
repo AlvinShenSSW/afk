@@ -145,6 +145,19 @@ if (printPromptOnly) {
   process.exit(0);
 }
 
+// Built here, before any paid spawn, and escaped: these words come from another
+// module now (that is the point — a copy drifts), so a vocabulary carrying a
+// regex metacharacter must fail loudly and early rather than after a review has
+// been paid for, or silently match something else.
+let VERDICT_WORDS;
+try {
+  const escaped = [...DIFF_VERDICTS, ...DESIGN_VERDICTS]
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  VERDICT_WORDS = new RegExp(`\\b(${escaped.join('|')})\\b`);
+} catch (err) {
+  emitError(`cannot review — the verdict vocabulary is not usable as a pattern: ${err.message}`, 1);
+}
+
 // The documented headless surface, transcribed from `kimi --help` (0.29.1,
 // 2026-08-04) — and nothing beyond it. `--output-format text` is passed rather
 // than relied on as a default, so a changed default cannot silently turn a
@@ -248,7 +261,13 @@ let res = forceShim
 let briefPath = null;
 if (forceShim || (isWin && res.error && res.error.code === 'EINVAL')) {
   briefPath = join(work, 'review-brief.md');
-  writeFileSync(briefPath, reviewPrompt, 'utf8');
+  try {
+    writeFileSync(briefPath, reviewPrompt, 'utf8');
+  } catch (err) {
+    // This CLI has no other transport under a shell, so a brief that cannot be
+    // written is an unreviewable environment — reported, never a stack trace.
+    emitError(`cannot hand the review brief to kimi: ${err.message}. This install is a Windows script shim, whose only transport is a file reference; point TMP at a writable directory or use a native executable.`, 1);
+  }
   process.stderr.write(`[kimi-gate] ${forceShim ? 'shim transport forced (KIMI_GATE_FORCE_SHIM)' : 'script shim detected'}; brief on disk -> ${briefPath}\n`);
   sentArgs = shimArgs(briefPath);
   try {
@@ -342,7 +361,6 @@ if (!review) {
 // never read the file still exits 0 with fluent text, and that text would be
 // emitted as a verdict. The prompt mandates a verdict line, so its absence
 // means the brief did not arrive — an ERROR naming the path, never a review.
-const VERDICT_WORDS = new RegExp(`\\b(${[...DIFF_VERDICTS, ...DESIGN_VERDICTS].join('|')})\\b`);
 if (briefPath && !VERDICT_WORDS.test(review)) {
   emitError(
     'kimi answered without the verdict line its brief requires, so the brief handed to it '

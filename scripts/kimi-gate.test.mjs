@@ -451,7 +451,9 @@ test('a rejected flag is reported as CLI drift, not as an empty review', {
   }
 });
 
-test('the forced shim transport replaces the primary spawn, never doubles it', () => {
+test('the forced shim transport replaces the primary spawn, never doubles it', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
   // A seam that ran the primary spawn first and the shim second bought TWO
   // complete paid reviews and twice the documented bound, and discarded the
   // first outcome — a verdict, or a timeout — with no trace. Stubs made it
@@ -465,9 +467,15 @@ test('the forced shim transport replaces the primary spawn, never doubles it', (
         + "process.stdout.write('APPROVE\\nSTUB REVIEW: no findings');",
     }));
 
-    runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' } });
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' },
+    });
 
-    assert.equal(readFileSync(counter, 'utf8').trim().split('\n').length, 1,
+    // Assert the review happened too: counting alone cannot tell one spawn from
+    // none, and a gate that skipped would satisfy the count.
+    assert.match(result.stdout, /STUB REVIEW: no findings/, `${result.stdout}\n${result.stderr}`);
+    assert.equal(readFileSync(counter, 'utf8').split('\n').filter(Boolean).length, 1,
       'the forced transport must REPLACE the primary spawn, not follow it');
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -496,4 +504,19 @@ test('a no-output failure names the version and the argv, whatever the CLI said'
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the forced transport is observable, not silent', () => {
+  // The gate's own comment calls the invocation shape "part of the contract":
+  // a seam that reported the primary shape while running the indirect one would
+  // make every diagnosis of that path a guess.
+  const result = runGate({ args: ['--print-args'], env: { KIMI_GATE_FORCE_SHIM: '1' } });
+
+  const { transport, shell, args } = JSON.parse(result.stdout);
+  assert.equal(transport, 'brief-file');
+  assert.equal(shell, true);
+  const instruction = args[args.indexOf('-p') + 1];
+  assert.match(instruction, /review only/i);
+  // eslint-disable-next-line no-control-regex
+  assert.doesNotMatch(instruction, /[^\x00-\x7F]/, 'a shelled argv element stays ASCII');
 });
