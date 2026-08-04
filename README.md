@@ -96,7 +96,8 @@ It never overwrites developer-authored values.
 ## Review Timeouts
 
 Every external review is bounded. Claude, Codex, GLM, DeepSeek, and MiMo default
-to 15 minutes; Kimi defaults to 30 minutes because its agentic reviews commonly take longer.
+to 15 minutes; Kimi defaults to 45 minutes because it drives git itself rather than
+receiving a pre-injected diff, so its reviews commonly take longer.
 CLI availability and authentication probes are capped at 30 seconds. A
 timed-out review produces no verdict and follows the existing transient-error
 retry and fallback rule.

@@ -26,8 +26,7 @@
 // Claude.
 
 import { spawnSync } from 'node:child_process';
-import { closeSync, mkdtempSync, openSync, writeSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { closeSync, openSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isGateDisabled, isSpawnTimeout, reviewTimeoutMs } from '../../lib/gate/env.mjs';
@@ -36,6 +35,7 @@ import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
@@ -250,7 +250,9 @@ if (!hasChanges) {
   emitSkip(`No changes found for ${target.label}.`);
 }
 
-const work = mkdtempSync(join(tmpdir(), 'claude-gate-'));
+const workDir = gateWorkDir('claude-gate-');
+if (workDir.error) emitError(workDir.error, 1);
+const work = workDir.path;
 const logFile = join(work, 'claude.log');
 
 process.stderr.write(`[claude-gate] ${bin} -p --model ${model} --effort ${effort} (${changedFiles.length} files, ${prompt.length}B prompt via stdin)\n`);

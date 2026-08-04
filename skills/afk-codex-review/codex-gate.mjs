@@ -36,10 +36,10 @@
 // Exit code mirrors codex; 127 if the codex binary cannot be found.
 
 import {
-  closeSync, existsSync, mkdtempSync, openSync,
+  closeSync, existsSync, openSync,
   readFileSync, statSync, unlinkSync, writeSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -49,6 +49,7 @@ import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { optVal, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
@@ -270,7 +271,9 @@ if (reviewModel) leanConfig.push('-c', `model=${reviewModel}`);
 leanConfig.push('-c', `model_reasoning_effort=${reasoning}`);
 leanConfig.push('-c', `project_doc_max_bytes=${projectDocMaxBytes}`);
 
-const work = mkdtempSync(join(tmpdir(), 'codex-gate-'));
+const workDir = gateWorkDir('codex-gate-');
+if (workDir.error) emitError(workDir.error, 1);
+const work = workDir.path;
 const finalFile = join(work, 'review.txt');
 const logFile = join(work, 'codex.log');
 
@@ -372,7 +375,20 @@ const codexLock = acquireCodexLock();
 // argv carries `-o <path>`: under a shell that path is torn apart at its first
 // space (a Windows account named "First Last" puts one in every temp path), so
 // spawnCli spawns directly and quotes only when a script shim forces a shell.
-const fd = openSync(logFile, 'w');
+// Not a convenience like the other gates' transcripts: this fd IS the child's
+// stdout and stderr, so a throw here exits with a stack and no marker block —
+// the same defect the work-dir guard above closes, two lines apart.
+let fd;
+try {
+  fd = openSync(logFile, 'w');
+} catch (err) {
+  // The machine-wide lock is already held here, and emitError exits — without
+  // this the lockfile survives with a dead pid and the next codex review waits
+  // for it. Bounded (a dead owner is stolen) but pointless.
+  releaseCodexLock(codexLock);
+  emitError(`cannot open this review's transcript at ${logFile}: ${err.message}. `
+    + 'Point TMPDIR (POSIX) or TEMP/TMP (Windows) at a directory that exists and is writable.', 1);
+}
 const res = spawnCli(codex, reviewArgs, isDesign
   ? {
     input: designPayload, stdio: ['pipe', fd, fd],

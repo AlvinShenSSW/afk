@@ -72,7 +72,22 @@ export function spawnGate(argv, options = {}) {
  * platform it runs on, which is worse than failing.
  */
 export function pathKey(env = process.env) {
-  return Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+  return envKey('PATH', env);
+}
+
+/** The inherited spelling of `name`, or `name` itself when it is not set. */
+export function envKey(name, env = process.env) {
+  return Object.keys(env).find((key) => key.toLowerCase() === name.toLowerCase()) || name;
+}
+
+/**
+ * Point every variable `os.tmpdir()` consults at `dir`, using each one's
+ * INHERITED spelling: POSIX reads TMPDIR then TMP then TEMP, Windows reads TEMP
+ * then TMP — and Windows customarily spells them `Temp`, so an exact-key
+ * override would sit beside the inherited value instead of replacing it.
+ */
+export function tempEnv(dir, env = process.env) {
+  return Object.fromEntries(['TMPDIR', 'TMP', 'TEMP'].map((name) => [envKey(name, env), dir]));
 }
 
 /**

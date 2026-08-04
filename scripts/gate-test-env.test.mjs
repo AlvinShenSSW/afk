@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { test } from 'node:test';
 
-import { gateTestEnv, pathKey, spawnGate, stubPath } from './gate-test-env.mjs';
+import {
+  gateTestEnv, pathKey, spawnGate, stubPath, tempEnv,
+} from './gate-test-env.mjs';
 
 test('gate test environment removes ambient gate configuration', () => {
   const result = gateTestEnv({}, {
@@ -76,5 +78,53 @@ test('stubPath removes any directory that could resolve the CLI ahead of the stu
     assert.ok(entries.includes(other), 'unrelated entries stay — the gates still need git');
   } finally {
     for (const dir of [stub, real, other]) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── every outcome is a parseable block, including a broken environment ───────
+
+test('a gate whose temp root does not exist still emits a marker block', () => {
+  // A stale TMPDIR export, a cleaned-up per-session temp dir, a locked-down CI
+  // image: `mkdtempSync` throws ENOENT at module top level and the gate exits
+  // with a raw stack. A driver parsing stdout gets silence, which it cannot
+  // classify as a verdict, a skip, or an error — the one thing the marker
+  // protocol exists to prevent.
+  // Derived, never a fixed name: a leftover directory from an earlier probe
+  // would make mkdtemp SUCCEED and the whole test measure nothing. Creating one
+  // and removing it yields a path this run knows is absent.
+  const missing = mkdtempSync(join(tmpdir(), 'afk-absent-temp-root-'));
+  rmSync(missing, { recursive: true, force: true });
+  // Every gate spawn in this suite must be unable to reach a metered review.
+  // Here the ONLY thing standing between the test and three paid reviews would
+  // be mkdtemp failing, so the bins are pinned too: a path that cannot exist
+  // for the two gates that reach mkdtemp before any preflight, and node itself
+  // for kimi, whose availability probe runs FIRST and would otherwise skip out
+  // on a machine with no CLI installed — which is every CI runner.
+  const unusable = join(missing, 'not-a-cli');
+  const cases = [
+    ['KIMI', 'skills/afk-kimi-review/kimi-gate.mjs', { KIMI_GATE_BIN: process.execPath }],
+    ['CLAUDE', 'skills/afk-claude-review/claude-gate.mjs', { CLAUDE_GATE_BIN: unusable }],
+    ['CODEX', 'skills/afk-codex-review/codex-gate.mjs', { CODEX_GATE_BIN: unusable }],
+  ];
+  for (const [label, gate, bin] of cases) {
+    const res = spawnGate([gate, '--commit', 'HEAD', '--implementer', 'glm'], {
+      cwd: new URL('..', import.meta.url),
+      encoding: 'utf8',
+      // tempEnv, not literal keys: Windows spells these `Temp`, and gateTestEnv
+      // merges by EXACT key, so an override would sit beside the inherited value
+      // rather than replacing it — the hazard pathKey() already exists for.
+      env: gateTestEnv({ ...tempEnv(missing), ...bin }),
+    });
+
+    // A SKIPPED block satisfies the marker assertions, so the ERROR is what
+    // actually carries this test — a skip here would mean the gate never
+    // reached the work directory at all.
+    assert.match(res.stdout, new RegExp(`===== ${label} REVIEW`), `${label}: ${res.stderr}`);
+    assert.match(res.stdout, /ERROR: /, `${label} must report, not throw`);
+    assert.doesNotMatch(res.stdout, /SKIPPED/, `${label} must reach the work directory`);
+    assert.match(res.stdout, /TMPDIR/, `${label} must name the variable to fix`);
+    assert.match(res.stdout, new RegExp(`===== END ${label} REVIEW =====`), label);
+    assert.doesNotMatch(res.stderr, /at mkdtempSync|node:fs:/, `${label} must not print a stack`);
+    assert.notEqual(res.status, 0, label);
   }
 });
