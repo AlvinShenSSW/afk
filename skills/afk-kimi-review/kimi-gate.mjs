@@ -60,7 +60,9 @@ import {
   isGateDisabled, isSpawnTimeout, preflightTimeoutMs, reviewTimeoutMs,
 } from '../../lib/gate/env.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
-import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
+import {
+  buildDesignReviewPrompt, buildReviewPrompt, DESIGN_VERDICTS, DIFF_VERDICTS,
+} from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
 import {
   resolveCliBin, spawnCli, spawnViaShell, UNSAFE_SHELL_ARG,
@@ -132,6 +134,12 @@ const kimi = resolveCliBin((process.env.KIMI_GATE_BIN || 'kimi').trim());
 // the other gates because Kimi commonly takes longer while still progressing.
 const timeoutMs = reviewTimeoutMs('kimi');
 
+// KIMI_GATE_FORCE_SHIM exists because the shim branch is otherwise unreachable
+// off Windows, and the last two Windows-only paths in this file shipped broken
+// for exactly that reason. It forces the TRANSPORT, never the platform.
+const forceShim = ['1', 'true', 'yes', 'on'].includes(
+  (process.env.KIMI_GATE_FORCE_SHIM || '').trim().toLowerCase());
+
 if (printPromptOnly) {
   process.stdout.write(`${reviewPrompt}\n`);
   process.exit(0);
@@ -150,7 +158,7 @@ const promptArgs = ['-p', reviewPrompt, ...OUTPUT_FORMAT];
 // prohibition is the one line guaranteed to reach the model even if the file is
 // never read, and an agentic CLI with write tools must not receive "follow it
 // exactly" with no constraint attached.
-const briefInstruction = (path) => `Read the review brief at ${path} in full; it is your task. Follow it exactly. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
+const briefInstruction = (path) => `Read the review brief at ${path} in full; it is your task. Follow it exactly. Do NOT modify, stage, commit, write, or delete ANY file - review only.`;
 const shimArgs = (path) => ['-p', briefInstruction(path), ...OUTPUT_FORMAT];
 
 if (printArgsOnly) {
@@ -164,9 +172,9 @@ if (printArgsOnly) {
     // The invocation SHAPE is part of the contract, not an implementation
     // detail: each Windows failure below is silent, model-call-expensive to
     // discover, and looks like an unavailable reviewer. Keep it observable.
-    transport: 'argv',
-    shell: false,
-    args: promptArgs,
+    transport: forceShim ? 'brief-file' : 'argv',
+    shell: forceShim,
+    args: forceShim ? shimArgs('<brief>') : promptArgs,
     // The shim path's argv, with the brief's path standing in for the temp file
     // that only exists during the call. This CLI has no stdin transport at all,
     // so a payload that cannot ride argv has nowhere else to go but disk.
@@ -202,7 +210,8 @@ const logFile = join(work, 'kimi.log');
 // default (KIMI_MODEL_THINKING_EFFORT applies only when a synthesized provider
 // is set), and project-doc injection is session-level, not per-turn.
 process.stderr.write(
-  `[kimi-gate] ${kimi} -p <${reviewPrompt.length}B structural review prompt> --output-format text (no shell)\n`,
+  `[kimi-gate] ${kimi} -p <${reviewPrompt.length}B structural review prompt> --output-format text`
+  + `${forceShim ? ' (brief on disk, via shell)' : ' (no shell)'}\n`,
 );
 process.stderr.write(`[kimi-gate] timeout -> ${timeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
@@ -222,7 +231,12 @@ const spawnOpts = {
 // Windows command-line limit is not in reach (this gate sends instructions, and
 // lets Kimi fetch the diff itself).
 let sentArgs = promptArgs;
-let res = spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
+// Forced, the seam SKIPS this spawn rather than running before it: leaving it in
+// bought two complete paid reviews and twice the documented bound, and silently
+// discarded the first one's outcome — including a verdict or a timeout.
+let res = forceShim
+  ? { error: { code: 'EINVAL' } }
+  : spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
 
 // A Windows `.cmd`/`.bat` shim cannot be launched without a shell (EINVAL since
 // Node 18.20/20.12) — the one install shape where the payload must leave argv,
@@ -231,16 +245,11 @@ let res = spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
 // brief goes to a private file and argv carries only flags and its quotable
 // path. Same shape design mode already uses for a document.
 //
-// KIMI_GATE_FORCE_SHIM exists because this branch is otherwise unreachable off
-// Windows, and the last two Windows-only paths in this file shipped broken for
-// exactly that reason. It forces the transport, never the platform.
 let briefPath = null;
-const forceShim = ['1', 'true', 'yes', 'on'].includes(
-  (process.env.KIMI_GATE_FORCE_SHIM || '').trim().toLowerCase());
 if (forceShim || (isWin && res.error && res.error.code === 'EINVAL')) {
   briefPath = join(work, 'review-brief.md');
   writeFileSync(briefPath, reviewPrompt, 'utf8');
-  process.stderr.write(`[kimi-gate] script shim detected; retrying with the brief on disk -> ${briefPath}\n`);
+  process.stderr.write(`[kimi-gate] ${forceShim ? 'shim transport forced (KIMI_GATE_FORCE_SHIM)' : 'script shim detected'}; brief on disk -> ${briefPath}\n`);
   sentArgs = shimArgs(briefPath);
   try {
     res = spawnViaShell(kimi, sentArgs, spawnOpts);
@@ -333,10 +342,12 @@ if (!review) {
 // never read the file still exits 0 with fluent text, and that text would be
 // emitted as a verdict. The prompt mandates a verdict line, so its absence
 // means the brief did not arrive — an ERROR naming the path, never a review.
-if (briefPath && !/\b(APPROVE|APPROVE WITH COMMENTS|REQUEST CHANGES|SOUND|SOUND WITH CONCERNS|RETHINK)\b/.test(review)) {
+const VERDICT_WORDS = new RegExp(`\\b(${[...DIFF_VERDICTS, ...DESIGN_VERDICTS].join('|')})\\b`);
+if (briefPath && !VERDICT_WORDS.test(review)) {
   emitError(
-    'kimi answered without the verdict line its brief requires, so the brief at '
-    + `${briefPath} was most likely never read. This install is a Windows script shim, whose only `
+    'kimi answered without the verdict line its brief requires, so the brief handed to it '
+    + `(written to ${work} for the duration of the call, then removed) was most likely never read. `
+    + 'This install is a Windows script shim, whose only '
     + 'transport is a file reference. Point KIMI_GATE_BIN at a native executable. '
     + `Transcript: ${logFile}`,
     1,

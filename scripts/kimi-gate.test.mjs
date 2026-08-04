@@ -374,7 +374,7 @@ function strictStub(dir, { record, body = "process.stdout.write('STUB REVIEW: no
     "import { readFileSync, writeFileSync } from 'node:fs';",
     "const argv = process.argv.slice(2);",
     "if (argv.includes('--version')) { process.stdout.write('0.29.1'); process.exit(0); }",
-    "const TAKES_VALUE = new Set(['-p', '--prompt', '--output-format', '-m', '--model']);",
+    "const TAKES_VALUE = new Set(['-p', '--prompt', '--output-format']);",
     "for (let i = 0; i < argv.length; i += 1) {",
     "  const arg = argv[i];",
     "  if (!arg.startsWith('-')) continue;",
@@ -433,7 +433,7 @@ test('a rejected flag is reported as CLI drift, not as an empty review', {
     const impl = strictStub(dir, {});
     // A stub that refuses the very flag the gate is expected to send.
     writeFileSync(impl, readFileSync(impl, 'utf8').replace(
-      "const TAKES_VALUE = new Set(['-p', '--prompt', '--output-format', '-m', '--model']);",
+      "const TAKES_VALUE = new Set(['-p', '--prompt', '--output-format']);",
       "const TAKES_VALUE = new Set(['-p', '--prompt', '-m', '--model']);",
     ));
     const bin = posixStub(dir, impl);
@@ -446,6 +446,53 @@ test('a rejected flag is reported as CLI drift, not as an empty review', {
     assert.match(result.stdout, /0\.29\.1/, 'the CLI version must be named');
     assert.doesNotMatch(result.stdout, /produced no final message/);
     assert.doesNotMatch(result.stdout, /SKIPPED/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the forced shim transport replaces the primary spawn, never doubles it', () => {
+  // A seam that ran the primary spawn first and the shim second bought TWO
+  // complete paid reviews and twice the documented bound, and discarded the
+  // first outcome — a verdict, or a timeout — with no trace. Stubs made it
+  // invisible: both spawns "succeed".
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-count-'));
+  try {
+    const counter = join(dir, 'spawns.log');
+    const bin = posixStub(dir, strictStub(dir, {
+      body: `import { appendFileSync } from 'node:fs';\n`
+        + `appendFileSync(${JSON.stringify(counter)}, 'spawn\\n');\n`
+        + "process.stdout.write('APPROVE\\nSTUB REVIEW: no findings');",
+    }));
+
+    runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' } });
+
+    assert.equal(readFileSync(counter, 'utf8').trim().split('\n').length, 1,
+      'the forced transport must REPLACE the primary spawn, not follow it');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a no-output failure names the version and the argv, whatever the CLI said', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // The mechanism behind the drift diagnosis, and the part that must not depend
+  // on recognizing a dialect: this CLI has already emitted wording the pattern
+  // would miss ("No such command 'are'"), so every empty-stdout failure carries
+  // the version and the exact argv rather than only the ones a regex knows.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-mystery-'));
+  try {
+    const bin = posixStub(dir, strictStub(dir, {
+      body: "process.stderr.write('Segmentation fault: 11'); process.exit(139);",
+    }));
+
+    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /produced no final message/);
+    assert.match(result.stdout, /0\.29\.1/, 'the CLI that answered must be named');
+    assert.match(result.stdout, /--output-format/, 'the argv sent must be named');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

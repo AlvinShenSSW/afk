@@ -169,7 +169,7 @@ addition without anyone having predicted it.
 
 | File | Change |
 |---|---|
-| `skills/afk-kimi-review/kimi-gate.mjs` | D1–D3; delete `QUIET`, `stdinArgs`, `ASCII_FOLD`, `foldToAscii`, and the fold branch — **plus** the header comment carrying #10's false claim, the `${QUIET}` stderr banner (a `ReferenceError` otherwise), and the `--print-args` `fallback` descriptor (K1). |
+| `skills/afk-kimi-review/kimi-gate.mjs` | D1–D3; delete `QUIET`, `stdinArgs`, `ASCII_FOLD`, `foldToAscii`, and the fold branch — **plus** the header comment carrying #10's false claim, the `${QUIET}` stderr banner (a `ReferenceError` otherwise), and **rewrite** the `--print-args` `fallback` descriptor, which must also tell the truth under the seam (K1). |
 | `skills/afk-kimi-review/SKILL.md` | The flag-drift `ERROR` is stop-the-round, never transient-retryable (K2). |
 | `scripts/kimi-gate.test.mjs` | Flag-rejecting stubs, argv-shape assertion, drift-diagnosis test, brief-on-disk fallback assertions. |
 | `package.json` + manifests | Patch bump via `scripts/sync-marketplace.mjs`. |
