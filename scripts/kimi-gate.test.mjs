@@ -141,7 +141,7 @@ test('kimi gate bounds a review by default', () => {
   const result = runGate({ args: ['--print-args'] });
 
   const { timeoutMs } = JSON.parse(result.stdout);
-  assert.equal(timeoutMs, 30 * 60 * 1000);
+  assert.equal(timeoutMs, 45 * 60 * 1000);
 });
 
 test('kimi gate honours KIMI_REVIEW_TIMEOUT_MS', () => {
@@ -163,7 +163,7 @@ test('kimi gate keeps the default bound when the override is unusable', () => {
   for (const value of ['0', '-1', 'abc']) {
     const result = runGate({ args: ['--print-args'], env: { KIMI_REVIEW_TIMEOUT_MS: value } });
     const { timeoutMs } = JSON.parse(result.stdout);
-    assert.equal(timeoutMs, 30 * 60 * 1000, JSON.stringify(value));
+    assert.equal(timeoutMs, 45 * 60 * 1000, JSON.stringify(value));
     assert.match(result.stderr, /KIMI_REVIEW_TIMEOUT_MS/, JSON.stringify(value));
   }
 });

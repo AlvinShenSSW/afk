@@ -46,12 +46,12 @@
 //   node kimi-gate.mjs --print-args    # resolve and print the target; no model call
 //
 // Opt out with KIMI_REVIEW_GATE=off. Skips cleanly (exit 0) if kimi is missing
-// or not logged in. Bounded by KIMI_REVIEW_TIMEOUT_MS (default 30 min); a review
+// or not logged in. Bounded by KIMI_REVIEW_TIMEOUT_MS (default 45 min); a review
 // that outlives it ends as a non-zero ERROR, not a skip.
 
 import { spawnSync } from 'node:child_process';
 import {
-  closeSync, mkdtempSync, openSync, unlinkSync, writeFileSync, writeSync,
+  closeSync, openSync, unlinkSync, writeFileSync, writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -64,6 +64,7 @@ import {
   buildDesignReviewPrompt, buildReviewPrompt, DESIGN_VERDICTS, DIFF_VERDICTS,
 } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import {
   resolveCliBin, spawnCli, spawnViaShell, UNSAFE_SHELL_ARG,
 } from '../../lib/gate/spawn.mjs';
@@ -130,8 +131,10 @@ const kimi = resolveCliBin((process.env.KIMI_GATE_BIN || 'kimi').trim());
 
 // Kimi is a general agentic CLI: `-p` bounds neither the turn nor the tool
 // calls inside it, so a review that stops converging blocks the driver for as
-// long as the process lives. The 30-minute default is deliberately larger than
-// the other gates because Kimi commonly takes longer while still progressing.
+// long as the process lives. The 45-minute default is deliberately larger than
+// the other gates: Kimi drives git itself rather than receiving a pre-injected
+// diff, so it does real work before answering, and a bound that kills a review
+// still making progress wastes the whole paid call and the role's sticky retry.
 const timeoutMs = reviewTimeoutMs('kimi');
 
 // KIMI_GATE_FORCE_SHIM exists because the shim branch is otherwise unreachable
@@ -218,7 +221,9 @@ if (ver.error && ver.error.code === 'ENOENT') {
 // flag are only diagnosable if the error names which CLI answered.
 const cliVersion = (ver.stdout || '').trim().split('\n')[0] || '';
 
-const work = mkdtempSync(join(tmpdir(), 'kimi-gate-'));
+const workDir = gateWorkDir('kimi-gate-');
+if (workDir.error) emitError(workDir.error, 1);
+const work = workDir.path;
 const logFile = join(work, 'kimi.log');
 
 // No context-leaning for Kimi (intentional): thinking effort stays at its
