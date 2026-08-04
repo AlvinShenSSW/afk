@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { test } from 'node:test';
 
-import { gateTestEnv, pathKey, spawnGate, stubPath } from './gate-test-env.mjs';
+import {
+  gateTestEnv, pathKey, spawnGate, stubPath, tempEnv,
+} from './gate-test-env.mjs';
 
 test('gate test environment removes ambient gate configuration', () => {
   const result = gateTestEnv({}, {
@@ -87,7 +89,11 @@ test('a gate whose temp root does not exist still emits a marker block', () => {
   // with a raw stack. A driver parsing stdout gets silence, which it cannot
   // classify as a verdict, a skip, or an error — the one thing the marker
   // protocol exists to prevent.
-  const missing = join(tmpdir(), 'afk-no-such-temp-root-xyz');
+  // Derived, never a fixed name: a leftover directory from an earlier probe
+  // would make mkdtemp SUCCEED and the whole test measure nothing. Creating one
+  // and removing it yields a path this run knows is absent.
+  const missing = mkdtempSync(join(tmpdir(), 'afk-absent-temp-root-'));
+  rmSync(missing, { recursive: true, force: true });
   // Every gate spawn in this suite must be unable to reach a metered review.
   // Here the ONLY thing standing between the test and three paid reviews would
   // be mkdtemp failing, so the bins are pinned too: a path that cannot exist
@@ -104,8 +110,10 @@ test('a gate whose temp root does not exist still emits a marker block', () => {
     const res = spawnGate([gate, '--commit', 'HEAD', '--implementer', 'glm'], {
       cwd: new URL('..', import.meta.url),
       encoding: 'utf8',
-      // TMPDIR is POSIX; TMP/TEMP are what os.tmpdir() reads on Windows.
-      env: gateTestEnv({ TMPDIR: missing, TMP: missing, TEMP: missing, ...bin }),
+      // tempEnv, not literal keys: Windows spells these `Temp`, and gateTestEnv
+      // merges by EXACT key, so an override would sit beside the inherited value
+      // rather than replacing it — the hazard pathKey() already exists for.
+      env: gateTestEnv({ ...tempEnv(missing), ...bin }),
     });
 
     // A SKIPPED block satisfies the marker assertions, so the ERROR is what

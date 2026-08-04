@@ -27,7 +27,6 @@
 
 import { spawnSync } from 'node:child_process';
 import { closeSync, openSync, writeSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { isGateDisabled, isSpawnTimeout, reviewTimeoutMs } from '../../lib/gate/env.mjs';

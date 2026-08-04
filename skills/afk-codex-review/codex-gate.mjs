@@ -39,7 +39,7 @@ import {
   closeSync, existsSync, openSync,
   readFileSync, statSync, unlinkSync, writeSync,
 } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import {
@@ -382,6 +382,10 @@ let fd;
 try {
   fd = openSync(logFile, 'w');
 } catch (err) {
+  // The machine-wide lock is already held here, and emitError exits — without
+  // this the lockfile survives with a dead pid and the next codex review waits
+  // for it. Bounded (a dead owner is stolen) but pointless.
+  releaseCodexLock(codexLock);
   emitError(`cannot open this review's transcript at ${logFile}: ${err.message}. `
     + 'Point TMPDIR (POSIX) or TEMP/TMP (Windows) at a directory that exists and is writable.', 1);
 }

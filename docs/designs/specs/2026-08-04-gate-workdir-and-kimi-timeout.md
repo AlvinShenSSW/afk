@@ -3,13 +3,19 @@
 - **Issues:** [#16 — gates exit with a stack trace and no marker block when TMPDIR is
   missing](https://github.com/AlvinShenSSW/afk/issues/16),
   [#17 — raise the Kimi review timeout default to 45 minutes](https://github.com/AlvinShenSSW/afk/issues/17)
-- **Status:** Revision 2 — after adversarial round 1 (W1–W10)
+- **Status:** Revision 3 — after adversarial round 1 (W1–W10) and internal review (R1–R3)
 - **Author:** Claude (Opus 5)
 - **Date:** 2026-08-04
 
-Two small, unrelated changes batched into one PR because both are one-surface
-edits in the gate layer with no shared root cause and no interaction. They are
-kept separable: either could be reverted without touching the other.
+Two small, unrelated changes in one PR. **This deviates from a stated repo rule**
+— `AGENTS.md`: "one topic per branch; squash-merge" — and the adversarial round
+asserted no such rule existed, which was simply wrong (the same
+unverified-claim failure this repo keeps finding). The deviation is declared
+rather than quietly kept, and squash-merge means the "independently revertible"
+claim an earlier revision made is false of the merged history: one revert takes
+both. It is the operator's call at the merge boundary; splitting costs a second
+review and gate cycle for two edits that touch disjoint lines
+(`kimi-gate.mjs:49,130-136` for #17 vs `:224` for #16).
 
 ## Problem — #16
 
@@ -70,8 +76,10 @@ if (workDir.error) emitError(workDir.error, 1);
 const work = workDir.path;
 ```
 
-A **returned result**, not an injected reporter (W1): `process.exit` appears in
-`lib/` only inside `protocol.mjs`, and every other helper here hands back a
+A **returned result**, not an injected reporter (W1): no `lib/gate` helper
+exits — `process.exit` there lives only in `protocol.mjs` (and, outside
+`lib/gate`, in `plugin-root.mjs`'s CLI-entry guard) — and every other helper
+here hands back a
 value for the gate to route — `validateTarget` → `{ok, reason}`, `readDesign` →
 `{text, error}`, `spawnViaShell` → `res.error`. A callback that exits would make
 this the one exception, and would make its message assertable only by spawning a
@@ -112,9 +120,15 @@ behavioural edit; the rest is documentation that currently states 30 minutes:
 - A hermetic unit test on the helper itself: a missing temp root returns an
   error naming the root and both variable spellings, and a good root returns a
   real directory.
-- The existing timeout pins move to 45 minutes; `lib/gate/gate.test.mjs` keeps
-  asserting against the exported constant, so it cannot drift from the docs
-  silently.
+- The existing timeout pins move to 45 minutes. The protection is the two
+  **literal** pins in `scripts/kimi-gate.test.mjs`; `lib/gate/gate.test.mjs`
+  asserts `reviewTimeoutMs('kimi') === DEFAULT_KIMI_REVIEW_TIMEOUT_MS`, which is
+  self-referential and cannot detect a value change — an earlier revision
+  credited the wrong test. Nothing mechanically ties the prose in README/SKILL
+  to the constant; that gap pre-dates this change.
+- The absent temp root is **derived per run** (create a temp dir, remove it),
+  never a fixed name: a leftover directory from an earlier probe makes
+  `mkdtemp` succeed and the test measure nothing. That happened during review.
 
 ## Risks
 
@@ -122,7 +136,8 @@ behavioural edit; the rest is documentation that currently states 30 minutes:
 |---|---|---|
 | The work-dir failure is rare, so the new path is rarely exercised | A wrong error message ships | The test drives the real failure through each gate's real entry point with its binary pinned to something unpayable, so the assertion is real and the cost is not (W9). |
 | A longer Kimi bound hides a hung reviewer for 15 more minutes | Wall-clock only | The bound still exists and still ERRORs; the operator can narrow it per run, and a hang was never mistaken for a verdict. |
-| Batching two issues in one PR | A reviewer must hold both | They touch disjoint lines; each is independently revertible, and the PR says so. |
+| Batching two issues in one PR, against `AGENTS.md`'s "one topic per branch" | A single squashed revert takes both; the rule says do not | Declared in the PR and above rather than defended; operator owns it at the merge boundary. |
+| `codex-gate.mjs`'s new transcript guard ships untested (R2) | A refactor could drop it unnoticed | Reverting it leaves the suite green — recorded, deferred: forcing an `openSync` failure *after* a successful `mkdtemp` needs an injection seam this script has no honest place for, and inventing a production env knob for one test is the defect the previous run's `KIMI_GATE_FORCE_SHIM` shipped. |
 
 ## Adversarial review outcome
 
