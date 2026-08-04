@@ -1,15 +1,22 @@
 #!/usr/bin/env node
 // kimi-gate.mjs — cross-platform Kimi Code CLI external review wrapper.
 //
-// Drives the Kimi Code CLI (`kimi`) headlessly via `kimi --quiet -p "<prompt>"`,
-// spawned WITHOUT a shell, and prints ONLY Kimi's final review between markers
-// (transcript -> log file). External review gate; run ONE gate per round, whose
-// model differs from the implementer's.
+// Drives the Kimi Code CLI (`kimi`) headlessly via
+// `kimi -p "<prompt>" --output-format text`, spawned WITHOUT a shell, and prints
+// ONLY Kimi's final review between markers (transcript -> log file). External
+// review gate; run ONE gate per round, whose model differs from the
+// implementer's.
 //
 // Kimi is a general agentic CLI with no built-in `review` subcommand, so this
-// passes a review PROMPT and lets Kimi drive git itself. `--quiet` is the CLI's
-// own alias for `--print --output-format text --final-message-only`: headless,
-// with stdout carrying the final message and nothing else.
+// passes a review PROMPT and lets Kimi drive git itself.
+//
+// USE ONLY FLAGS `kimi --help` DOCUMENTS. This gate shipped `--quiet` and
+// `--input-format` on the strength of a newer build's help text; CLI 0.29.1
+// rejects both ("error: unknown option '--quiet'"), so every review exited 1
+// with empty stdout and the gate reported "produced no final message" — a
+// broken-reviewer story for what was a helper/CLI disagreement. The documented
+// headless surface is `-p/--prompt` plus `--output-format <text|stream-json>`,
+// and a rejection is now diagnosed as drift rather than as an empty review.
 //
 // Two Windows-only constraints shape the invocation; both are verified against
 // the real CLI, and each one silently killed the gate before:
@@ -18,13 +25,13 @@
 //      unescaped there (DEP0190), so cmd.exe split the multi-word, multi-line
 //      prompt and Kimi read its second word as a subcommand — "No such command
 //      'are'", exit 2, on every single review.
-//   2. NEVER send non-ASCII on stdin. The CLI decodes stdin with surrogateescape
-//      and then dies serializing it: "UnicodeEncodeError: 'utf-8' codec can't
-//      encode character '\udc94' … surrogates not allowed".
+//   2. There is NO stdin transport. `--input-format` does not exist on this CLI,
+//      and an earlier attempt to use one also hit a stdin decoder that dies on
+//      non-ASCII ("UnicodeEncodeError: … surrogates not allowed").
 //
 // Spawning directly (no shell) with the prompt in argv satisfies both. A `.cmd`
 // shim is the one install that cannot start without a shell; there, and only
-// there, the prompt moves to stdin ASCII-folded.
+// there, the brief goes to a private file and argv carries its quotable path.
 //
 // Read-only is asked for in the prompt, NOT enforced: kimi has no per-command
 // permission surface here. That is weaker than afk-claude-review, whose reviewer
@@ -43,7 +50,9 @@
 // that outlives it ends as a non-zero ERROR, not a skip.
 
 import { spawnSync } from 'node:child_process';
-import { closeSync, mkdtempSync, openSync, writeSync } from 'node:fs';
+import {
+  closeSync, mkdtempSync, openSync, unlinkSync, writeFileSync, writeSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -128,24 +137,21 @@ if (printPromptOnly) {
   process.exit(0);
 }
 
-// `--quiet` is the CLI's own alias for `--print --output-format text
-// --final-message-only`: headless, and stdout carries the final message and
-// nothing else — exactly this gate's contract, instead of relying on what bare
-// `-p` happens to print.
-const QUIET = '--quiet';
+// The documented headless surface, transcribed from `kimi --help` (0.29.1,
+// 2026-08-04) — and nothing beyond it. `--output-format text` is passed rather
+// than relied on as a default, so a changed default cannot silently turn a
+// review into stream-json.
+const OUTPUT_FORMAT = ['--output-format', 'text'];
 // Primary transport: the prompt as one argv element, spawned WITHOUT a shell.
-const promptArgs = [QUIET, '-p', reviewPrompt];
-// Shim fallback only (see below): the prompt on stdin, argv reduced to flags.
-const stdinArgs = [QUIET, '--input-format', 'text'];
+const promptArgs = ['-p', reviewPrompt, ...OUTPUT_FORMAT];
 
-// Fold the typographic characters this repo's prompt templates use down to
-// ASCII. Only the stdin fallback needs it (the CLI mangles any non-ASCII byte
-// there); it never touches the primary path, and it changes no meaning.
-const ASCII_FOLD = [
-  [/[—–‒‑]/g, '-'], [/[‘’]/g, "'"],
-  [/[“”]/g, '"'], [/…/g, '...'], [/·/g, '*'], [/→/g, '->'],
-];
-const foldToAscii = (text) => ASCII_FOLD.reduce((acc, [re, to]) => acc.replace(re, to), text);
+// The shim fallback's instruction (see below). It repeats the read-only
+// prohibition rather than leaving it to the brief alone: on this path the
+// prohibition is the one line guaranteed to reach the model even if the file is
+// never read, and an agentic CLI with write tools must not receive "follow it
+// exactly" with no constraint attached.
+const briefInstruction = (path) => `Read the review brief at ${path} in full; it is your task. Follow it exactly. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
+const shimArgs = (path) => ['-p', briefInstruction(path), ...OUTPUT_FORMAT];
 
 if (printArgsOnly) {
   process.stdout.write(`${JSON.stringify({
@@ -160,7 +166,11 @@ if (printArgsOnly) {
     // discover, and looks like an unavailable reviewer. Keep it observable.
     transport: 'argv',
     shell: false,
-    fallback: { transport: 'stdin', shell: true, args: stdinArgs },
+    args: promptArgs,
+    // The shim path's argv, with the brief's path standing in for the temp file
+    // that only exists during the call. This CLI has no stdin transport at all,
+    // so a payload that cannot ride argv has nowhere else to go but disk.
+    fallback: { transport: 'brief-file', shell: true, args: shimArgs('<brief>') },
     promptBytes: reviewPrompt.length,
     timeoutMs,
   }, null, 2)}\n`);
@@ -181,6 +191,9 @@ if (isSpawnTimeout(ver)) {
 if (ver.error && ver.error.code === 'ENOENT') {
   emitSkip('Kimi CLI not installed (run: npm i -g @moonshot-ai/kimi-code && kimi login).');
 }
+// Kept for the drift diagnosis below: a helper and a CLI that disagree about a
+// flag are only diagnosable if the error names which CLI answered.
+const cliVersion = (ver.stdout || '').trim().split('\n')[0] || '';
 
 const work = mkdtempSync(join(tmpdir(), 'kimi-gate-'));
 const logFile = join(work, 'kimi.log');
@@ -189,7 +202,7 @@ const logFile = join(work, 'kimi.log');
 // default (KIMI_MODEL_THINKING_EFFORT applies only when a synthesized provider
 // is set), and project-doc injection is session-level, not per-turn.
 process.stderr.write(
-  `[kimi-gate] ${kimi} ${QUIET} -p <${reviewPrompt.length}B structural review prompt> (no shell)\n`,
+  `[kimi-gate] ${kimi} -p <${reviewPrompt.length}B structural review prompt> --output-format text (no shell)\n`,
 );
 process.stderr.write(`[kimi-gate] timeout -> ${timeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
@@ -208,27 +221,34 @@ const spawnOpts = {
 // directly, the prompt survives verbatim, non-ASCII included, and the ~8191-char
 // Windows command-line limit is not in reach (this gate sends instructions, and
 // lets Kimi fetch the diff itself).
+let sentArgs = promptArgs;
 let res = spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
 
 // A Windows `.cmd`/`.bat` shim cannot be launched without a shell (EINVAL since
-// Node 18.20/20.12) — the one install shape where the payload must leave argv.
-// It moves to stdin, ASCII-folded: the CLI's stdin reader decodes with
-// surrogateescape and then dies serializing ("UnicodeEncodeError: … surrogates
-// not allowed") on any non-ASCII byte. Both constraints are Windows-only and
-// verified against the real CLI.
-if (isWin && res.error && res.error.code === 'EINVAL') {
-  const folded = foldToAscii(reviewPrompt);
-  if (/[^\x20-\x7E\t\r\n]/.test(folded)) {
-    emitError(
-      'kimi is installed as a script shim, so its prompt must go on stdin — but this CLI '
-      + 'cannot read non-ASCII from stdin (UnicodeEncodeError: surrogates not allowed), and this '
-      + 'review prompt still holds non-ASCII after folding (most likely a non-ASCII path or branch '
-      + 'name). Install kimi as a native binary, or point KIMI_GATE_BIN at the executable directly.',
-      1,
-    );
+// Node 18.20/20.12) — the one install shape where the payload must leave argv,
+// and the shape `npm i -g` produces, which resolveCliBin now makes reachable.
+// This CLI has NO stdin transport (`--input-format` does not exist), so the
+// brief goes to a private file and argv carries only flags and its quotable
+// path. Same shape design mode already uses for a document.
+//
+// KIMI_GATE_FORCE_SHIM exists because this branch is otherwise unreachable off
+// Windows, and the last two Windows-only paths in this file shipped broken for
+// exactly that reason. It forces the transport, never the platform.
+let briefPath = null;
+const forceShim = ['1', 'true', 'yes', 'on'].includes(
+  (process.env.KIMI_GATE_FORCE_SHIM || '').trim().toLowerCase());
+if (forceShim || (isWin && res.error && res.error.code === 'EINVAL')) {
+  briefPath = join(work, 'review-brief.md');
+  writeFileSync(briefPath, reviewPrompt, 'utf8');
+  process.stderr.write(`[kimi-gate] script shim detected; retrying with the brief on disk -> ${briefPath}\n`);
+  sentArgs = shimArgs(briefPath);
+  try {
+    res = spawnViaShell(kimi, sentArgs, spawnOpts);
+  } finally {
+    // The brief carries the same content as the transcript beside it, but it
+    // exists only to be read during the call.
+    try { unlinkSync(briefPath); } catch { /* already gone */ }
   }
-  process.stderr.write('[kimi-gate] script shim detected; retrying with the prompt on stdin (ASCII-folded)\n');
-  res = spawnViaShell(kimi, stdinArgs, { ...spawnOpts, input: folded });
 }
 
 const out = res.stdout || '';
@@ -247,8 +267,9 @@ if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
   // which would hand the review to the next family and hide the bad ref.
   emitError(
     `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
-    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
-    + 'native binary so its arguments never pass through cmd.exe.',
+    + 'script shim, which forces a shell; rename the ref or path — or, if the refused value is '
+    + "this gate's own brief path, point TMP at a directory whose name cmd.exe can carry — or "
+    + 'install the CLI as a native binary so its arguments never pass through cmd.exe.',
     1,
   );
 }
@@ -280,10 +301,46 @@ if (!review && /no model configured|use \/login|\bkimi login\b|not (logged in|au
 }
 
 if (!review) {
-  // Previously this wrote to stderr and exited with NO marker block, leaving a
-  // caller that parses stdout with silence to interpret. Every outcome is a
-  // parseable block.
-  emitError(`kimi produced no final message (exit ${res.status}). Transcript: ${logFile}`, res.status || 1);
+  // A rejected flag is the failure this gate actually shipped: `--quiet` and
+  // `--input-format`, asserted from a newer build's help text, do not exist in
+  // 0.29.1, so every review exited 1 with empty stdout and reported "no final
+  // message" — a broken-reviewer story for a helper/CLI disagreement. The
+  // pattern below recognizes the dialects these CLIs use, but it is an
+  // optimization, NOT the mechanism: the version and the exact argv go into
+  // every no-output error, so a dialect nobody predicted is still diagnosable
+  // from one transcript line.
+  const argvShown = JSON.stringify(sentArgs.map(
+    (a) => (a === reviewPrompt ? `<${reviewPrompt.length}B prompt>` : a)));
+  const drifted = /unknown (option|command)|unrecognized (option|argument)|no such (option|command)|is not a recognized|invalid option/i.exec(err);
+  if (drifted) {
+    // Never transient: the same flags are rejected on every retry, so a retry
+    // spends a paid call to relearn this. The round stops here.
+    emitError(
+      `kimi rejected an argument this gate sent (${drifted[0]}) — the helper and the installed `
+      + `CLI disagree about the flag list. Installed version: ${cliVersion || 'unknown'}. Sent: ${argvShown}. `
+      + `Update this gate's flags to what \`${kimi} --help\` documents. Transcript: ${logFile}`,
+      res.status || 1,
+    );
+  }
+  emitError(
+    `kimi produced no final message (exit ${res.status}) with version ${cliVersion || 'unknown'} `
+    + `and argv ${argvShown}. Transcript: ${logFile}`,
+    res.status || 1,
+  );
+}
+
+// The shim path is the one where the brief travels by reference: a CLI that
+// never read the file still exits 0 with fluent text, and that text would be
+// emitted as a verdict. The prompt mandates a verdict line, so its absence
+// means the brief did not arrive — an ERROR naming the path, never a review.
+if (briefPath && !/\b(APPROVE|APPROVE WITH COMMENTS|REQUEST CHANGES|SOUND|SOUND WITH CONCERNS|RETHINK)\b/.test(review)) {
+  emitError(
+    'kimi answered without the verdict line its brief requires, so the brief at '
+    + `${briefPath} was most likely never read. This install is a Windows script shim, whose only `
+    + 'transport is a file reference. Point KIMI_GATE_BIN at a native executable. '
+    + `Transcript: ${logFile}`,
+    1,
+  );
 }
 
 emitReview(review);

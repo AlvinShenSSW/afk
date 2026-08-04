@@ -58,6 +58,13 @@ is not a failure — report it and continue. `ERROR: …` means the review itsel
 failed or timed out — read the transcript it names; never report an errored run
 as clean.
 
+One `ERROR` is **not** transient and must not be retried: `kimi rejected an
+argument this gate sent …`. The helper and the installed CLI disagree about the
+flag list, so every retry rejects the same flags and every fallback hides the
+defect — the failure mode that kept this gate reporting "produced no final
+message" on every review. Stop the round, report it, and fix the flag list
+against `kimi --help`.
+
 ## Handle findings (batch — minimise calls)
 
 Identical discipline to `afk-codex-review`: map every hypothesis to the frozen
