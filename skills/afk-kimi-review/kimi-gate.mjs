@@ -146,9 +146,11 @@ if (printPromptOnly) {
 }
 
 // Built here, before any paid spawn, and escaped: these words come from another
-// module now (that is the point — a copy drifts), so a vocabulary carrying a
-// regex metacharacter must fail loudly and early rather than after a review has
-// been paid for, or silently match something else.
+// module now (that is the point — a copy drifts). Escaping means a vocabulary
+// carrying a regex metacharacter matches literally instead of silently matching
+// something else; the guard below catches a vocabulary that is malformed as a
+// value (a non-string entry, a non-iterable export), which would otherwise exit
+// with a stack trace and no marker block.
 let VERDICT_WORDS;
 try {
   const escaped = [...DIFF_VERDICTS, ...DESIGN_VERDICTS]

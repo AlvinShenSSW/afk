@@ -517,6 +517,5 @@ test('the forced transport is observable, not silent', () => {
   assert.equal(shell, true);
   const instruction = args[args.indexOf('-p') + 1];
   assert.match(instruction, /review only/i);
-  // eslint-disable-next-line no-control-regex
   assert.doesNotMatch(instruction, /[^\x00-\x7F]/, 'a shelled argv element stays ASCII');
 });
