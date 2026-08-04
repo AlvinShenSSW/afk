@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-kimi-review/kimi-gate.mjs';
@@ -281,4 +281,36 @@ test('kimi gate opt-out short-circuits before any target resolution', () => {
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /SKIPPED: Kimi gate disabled/);
+});
+
+test('a bare-name .cmd shim on PATH is resolved and drives a completed review', {
+  skip: process.platform === 'win32' ? false : 'the bare-name PATHEXT gap is Windows-only',
+}, () => {
+  // The end-to-end proof for issue #12, and the only test that exercises the
+  // whole chain the gap broke: PATH resolution -> a concrete `.cmd` path ->
+  // EINVAL -> spawnViaShell -> a review on stdout. Deliberately does NOT set
+  // KIMI_GATE_BIN: an absolute override skips resolution entirely, which is
+  // exactly how #10 shipped a gate that reported "not installed" on every
+  // npm-installed Windows box.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-path-'));
+  try {
+    const impl = join(dir, 'stub.mjs');
+    writeFileSync(impl, [
+      "const argv = process.argv.slice(2);",
+      "if (argv.includes('--version')) { process.stdout.write('stub 1.0'); process.exit(0); }",
+      "process.stdout.write('STUB REVIEW: resolved via PATH');",
+      '',
+    ].join('\n'));
+    writeFileSync(join(dir, 'kimi.cmd'), `@echo off\r\n"${process.execPath}" "${impl}" %*\r\n`);
+
+    // stubPath, not a prepend: a real `kimi.exe` later on PATH would make
+    // pass 1 return the bare name, and this gate would then spawn the REAL,
+    // metered CLI instead of the stub.
+    const result = runGate({ args: ['--commit', 'HEAD'], env: stubPath(dir, 'kimi') });
+
+    assert.match(result.stdout, /STUB REVIEW: resolved via PATH/, result.stderr);
+    assert.doesNotMatch(result.stdout, /SKIPPED/, 'a resolvable shim is not "not installed"');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

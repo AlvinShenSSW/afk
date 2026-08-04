@@ -36,7 +36,7 @@ import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
-import { spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
+import { resolveCliBin, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -213,7 +213,11 @@ const args = [
   '--no-session-persistence',
 ];
 
-const bin = (process.env.CLAUDE_GATE_BIN || 'claude').trim();
+// resolveCliBin: an npm-installed `claude.cmd` with no `.exe` is invisible to
+// libuv's Windows PATH search, so the shell-less spawn below ENOENTs and this
+// gate reports an installed CLI as missing. A no-op off Windows and whenever
+// libuv can find the name itself.
+const bin = resolveCliBin((process.env.CLAUDE_GATE_BIN || 'claude').trim());
 
 if (printPromptOnly) {
   process.stdout.write(`${prompt}\n`);

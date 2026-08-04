@@ -1,4 +1,11 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
+
+import { normalizePathEntry } from '../lib/gate/spawn.mjs';
+
+/** What libuv appends on Windows, plus the shims cmd.exe resolves. */
+const EXECUTABLE_EXTS = ['.com', '.exe', '.cmd', '.bat'];
 
 // Every gate test spawns its gate SYNCHRONOUSLY, so a gate that hangs takes the
 // whole `node --test` run down with it — and because spawnSync blocks the event
@@ -55,4 +62,45 @@ export function spawnGate(argv, options = {}) {
     );
   }
   return res;
+}
+
+/**
+ * Windows inherits `Path`, not `PATH`, and `gateTestEnv` merges overrides by
+ * EXACT key — so a plain `{ PATH: ... }` override adds a second key beside the
+ * inherited one and the child may well read the wrong one. A PATH-dependent
+ * test that silently keeps the inherited value passes vacuously on the only
+ * platform it runs on, which is worse than failing.
+ */
+export function pathKey(env = process.env) {
+  return Object.keys(env).find((key) => key.toLowerCase() === 'path') || 'PATH';
+}
+
+/**
+ * A child `PATH` that puts `dir` first AND cannot resolve `name` any other way.
+ *
+ * Prepending to the inherited PATH is not enough for a shim-resolution test:
+ * `resolveCliBin` is extension-major, so a real `<name>.exe` ANYWHERE later on
+ * PATH correctly returns the bare name and the test's stub is never reached.
+ * That is precisely the reference machine (issue #12: "that machine had a
+ * kimi.exe"), where the test would either fail or — worse — spawn the real,
+ * metered CLI. Entries holding the executable are dropped; everything else
+ * stays, so the gates still find `git`.
+ *
+ * Accepted limit: the drop is per DIRECTORY, and no API hides one file inside
+ * one. A shared-shims layout (`~\scoop\shims`, `C:\ProgramData\chocolatey\bin`)
+ * holds `git` beside the reviewed CLI, so filtering takes git with it and these
+ * tests fail loudly on such a host — chosen over a test that silently spawns
+ * the metered CLI it exists to avoid.
+ */
+export function stubPath(dir, name, env = process.env) {
+  const key = pathKey(env);
+  // Normalize BEFORE the guard, not only inside the probe: `searchableDirs`
+  // decides on the normalized value, and a helper that disagreed with the
+  // resolver about which entries exist would silently unhermetic the tests.
+  const inherited = (env[key] || '').split(delimiter)
+    .map(normalizePathEntry)
+    .filter((entry) => entry && !EXECUTABLE_EXTS.some(
+      (ext) => existsSync(join(entry, `${name}${ext}`)),
+    ));
+  return { [key]: [dir, ...inherited].join(delimiter) };
 }

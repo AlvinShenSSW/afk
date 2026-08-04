@@ -49,7 +49,7 @@ import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
-import { spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
+import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { optVal, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
@@ -163,14 +163,19 @@ if (isGateDisabled('CODEX_REVIEW_GATE')) {
 }
 
 function resolveCodex() {
-  if (process.env.CODEX_GATE_BIN) return process.env.CODEX_GATE_BIN.trim();
+  if (process.env.CODEX_GATE_BIN) return resolveCliBin(process.env.CODEX_GATE_BIN.trim());
   // Prefer PATH (works on macOS/Linux and Windows-with-PATH). On Windows also
   // fall back to the npm global shim, which isn't always on a child's PATH.
+  // This probe keeps its precedence deliberately: reordering it below the PATH
+  // resolution would change which codex binary reviews on a machine holding
+  // both, and this gate's bug is only about machines where nothing resolves.
   if (isWin && process.env.APPDATA) {
     const shim = join(process.env.APPDATA, 'npm', 'codex.cmd');
     if (existsSync(shim)) return shim;
   }
-  return 'codex';
+  // A bare `codex` installed as a `.cmd` shim elsewhere on PATH (nvm-windows,
+  // pnpm, yarn) is invisible to libuv, which appends only `.com`/`.exe`.
+  return resolveCliBin('codex');
 }
 
 const userArgs = process.argv.slice(2);
