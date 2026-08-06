@@ -48,7 +48,7 @@ export function evaluate(baseVersion, headVersion, changedPaths) {
     return { ok: true, reason: 'no base version found (first PR) — skipping bump check' };
   }
   if (!requiresBump(changedPaths)) {
-    return { ok: true, reason: 'no skills/scripts/manifest paths changed — bump not required' };
+    return { ok: true, reason: 'no shipped paths (skills/scripts/lib/hooks/templates/manifests) changed — bump not required' };
   }
   if (typeof headVersion !== 'string' || !VERSION_RE.test(headVersion)) {
     return {
@@ -124,8 +124,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   // Catch-all: every unhandled throw fails closed with its message — a check
   // that dies silently or "skips" on an unreadable input is no check at all.
   try {
-    const changedPaths = getChangedPaths(repoRoot, base);
+    // Base read first: an unresolvable ref gets its classified reason instead
+    // of whatever `git diff` happens to say about it.
     const baseRead = readBaseVersion(repoRoot, base);
+    const changedPaths = getChangedPaths(repoRoot, base);
     if (baseRead.kind === 'absent') {
       console.log(`no manifest at base ref '${base}' (first PR) — skipping bump check`);
       process.exit(0);

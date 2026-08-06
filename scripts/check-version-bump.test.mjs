@@ -19,7 +19,7 @@ const MANIFEST_REL = '.claude-plugin/marketplace.json';
 function git(root, ...args) {
   return execFileSync(
     'git',
-    ['-c', 'user.name=t', '-c', 'user.email=t@invalid', ...args],
+    ['-c', 'user.name=t', '-c', 'user.email=t@invalid', '-c', 'commit.gpgsign=false', ...args],
     { cwd: root, encoding: 'utf8' },
   );
 }
