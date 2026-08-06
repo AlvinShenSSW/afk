@@ -123,6 +123,14 @@ test('redacts signed and unsigned JWTs with short segments', () => {
   assert.doesNotMatch(text, /eyJhbGci/);
 });
 
+test('redacts all five JWE segments — no ciphertext tail survives', () => {
+  const jwe = 'eyJhbGciOiJSU0EtT0FFUCJ9.ZW5jcnlwdGVkX2tleV9mb28.aXZpdml2.c2lwaGVydGV4dF9oZXJlMTIzNDU2Nzg5MA.dGFnMTIz';
+  const { text } = redactSecrets(`Authorization: ${jwe}`);
+  assert.doesNotMatch(text, /c2lwaGVydGV4dF9oZXJl/);
+  assert.doesNotMatch(text, /dGFnMTIz/);
+  assert.match(text, /\[REDACTED\]/);
+});
+
 test('redacts underscore-adjacent tokens (lookbehind positives)', () => {
   const token = `ghp_${'Q1w2E3r4'.repeat(5)}`.slice(0, 40);
   const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjIn0.sig';
