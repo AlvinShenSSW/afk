@@ -8,8 +8,13 @@ on:
     branches: [main]
     paths:
       - 'skills/**'
-      - '.claude-plugin/marketplace.json'
       - 'scripts/sync-marketplace.mjs'
+      - '.claude-plugin/marketplace.json'
+      - '.github/plugin/marketplace.json'
+      - '.agents/plugins/marketplace.json'
+      - '.codex-plugin/plugin.json'
+      - 'plugin.json'
+      - 'package.json'
   workflow_dispatch:
 
 permissions:
@@ -29,6 +34,27 @@ jobs:
       - name: Regenerate manifests
         run: node scripts/sync-marketplace.mjs
 
+      # In-run guard for the commit below: manifest consistency + JSON
+      # validity. A belt, not armor — the full validate suite still runs on
+      # the next triggering push.
+      - name: Verify regenerated manifests
+        run: |
+          set -e
+          node scripts/sync-marketplace.mjs --check
+          for f in .claude-plugin/marketplace.json .github/plugin/marketplace.json \
+                   .agents/plugins/marketplace.json .codex-plugin/plugin.json \
+                   plugin.json package.json; do
+            node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$f"
+          done
+
+      # The push below authenticates as GITHUB_TOKEN, and GitHub's recursion
+      # prevention creates no workflow runs for such pushes — so no marker is
+      # needed to suppress anything, and adding the six written files to the
+      # paths filter above cannot loop (in a future PAT world, idempotence
+      # bounds any loop to one extra no-op run: the second run finds no
+      # drift). A hand-drift push to main is EXPECTED to show a red validate
+      # run while this job self-heals with an uncheckable commit — the red
+      # run is the alarm, not flakiness.
       - name: Commit drift
         run: |
           set -e
@@ -47,5 +73,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- "${files[@]}"
-          git commit -m "chore: sync manifests [skip ci]"
+          git commit -m "chore: sync manifests"
           git push
