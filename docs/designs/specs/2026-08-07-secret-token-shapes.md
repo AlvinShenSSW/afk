@@ -21,7 +21,7 @@ Acceptance criteria:
    generalises to a label-preserving `Bearer|token` rule whose `token` branch
    requires a digit in the value (R1-F1: without it, ordinary prose — "token
    authentication", "Token verification" — is redacted; digitless GitHub
-   tokens after `token ` are still caught by the prefix rule). The existing
+   tokens after the `token` label are still caught by the prefix rule). The existing
    `key[:=]value` rule covers separator forms and is unchanged.
 4. Existing behavior is unchanged and still tested: git SHAs (40-hex) kept,
    64+-hex redacted, pure-alpha long runs kept, sk-/tp-/AKIA/PEM/key=value
