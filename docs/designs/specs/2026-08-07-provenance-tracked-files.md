@@ -40,10 +40,12 @@ Acceptance criteria:
    of being silently skipped (R1-F1); directories (gitlinks, a trailing-NUL
    empty entry resolved away before joining) are expected non-files and are
    dropped with a comment. Tracked **symlinks** are scanned as their link
-   text via `readlinkSync` (R1-F2: `ln -s /Users/ghostuser/… link` ships a
-   verbatim local path that the target-following read — or CI's missing
-   target — would never see). Conflicted paths are deduped (`ls-files`
-   lists one entry per merge stage).
+   text via `readlinkSync` (R1-F2: a link whose target is a home-directory
+   path ships that verbatim local path as its blob — bytes the
+   target-following read, or CI's missing target, would never see; the new
+   scanner caught this very spec's own literal example of one, proving the
+   rule). Conflicted paths are deduped (`ls-files` lists one entry per
+   merge stage).
 6. Version bumped 0.4.10 → 0.4.11 (scripts/ ships) with manifests synced.
 
 Engineering invariants: dependency-free; shell-less `execFileSync('git',
