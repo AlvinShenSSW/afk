@@ -41,7 +41,7 @@ import { resolveCliBin, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/s
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
-const { emitSkip, emitReview, emitError } = createProtocol({ label: 'CLAUDE', slug: 'claude-gate' });
+const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CLAUDE', slug: 'claude-gate' });
 
 if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
   emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
@@ -385,10 +385,10 @@ if (denials.length) {
   process.stderr.write(`[claude-gate] reviewer was denied ${denials.length} tool call(s); see ${logFile}\n`);
 }
 
-const review = String(envelope?.result || '').trim();
-if (!review) {
-  emitError(`Claude returned an empty review (exit ${res.status}). Transcript: ${logFile}`, res.status || 1);
-}
-
-emitReview(review);
+emitVerifiedReview(String(envelope?.result || ''), {
+  requireVerdict: true,
+  emptyMessage: `Claude returned an empty review (exit ${res.status}). Transcript: ${logFile}`,
+  missingVerdictMessage: `Claude answered without the mandated verdict line; the review is discarded rather than presented as a verdict. Transcript: ${logFile}`,
+  exitCode: res.status || 1,
+});
 process.exit(0);

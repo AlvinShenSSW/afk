@@ -71,7 +71,7 @@ model, and a downgraded reviewer reads exactly like a thorough one.
 installed CLI is too old for the pinned id and rejects it outright. `--print-args`
 reports the resolved model without spending a call.
 
-Read the verdict between the `===== CODEX REVIEW (final message) =====` markers.
+Read the verdict between the `===== CODEX REVIEW (final message) =====` markers. Treat only column-0 marker lines as markers; the last END marker wins.
 `SKIPPED: …` (Codex absent, logged out, or disabled via `CODEX_REVIEW_GATE=off`)
 is not a failure — report it and continue. `ERROR: …` means the review itself
 failed — read the transcript it names; never report an errored run as clean.

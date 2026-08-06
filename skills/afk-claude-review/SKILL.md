@@ -100,7 +100,7 @@ external gate"). The reviewer keeps its read-only `Read,Grep,Glob` tools, so it
 can check whether the code says what the design claims. A missing or unreadable
 `--design` path fails loudly (`ERROR`, non-zero), never a skip.
 
-Read the verdict between the `===== CLAUDE REVIEW (final message) =====` markers.
+Read the verdict between the `===== CLAUDE REVIEW (final message) =====` markers. Treat only column-0 marker lines as markers; the last END marker wins.
 A `SKIPPED: …` line is not a failure — record it and continue per the `afk`
 gate-selection rule. The reasons are distinct on purpose, so the ledger can tell
 "correctly declined" from "could not review":

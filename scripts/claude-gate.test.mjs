@@ -449,7 +449,7 @@ test('an auxiliary model alongside the pinned reviewer is not a mismatch', () =>
   // "the pinned model is the only key" would fail every real review.
   withStub({
     is_error: false,
-    result: 'LGTM',
+    result: 'APPROVE — LGTM',
     modelUsage: usage('claude-haiku-4-5-20251001', PINNED),
   }, (bin) => {
     const result = runGate({
@@ -462,7 +462,7 @@ test('an auxiliary model alongside the pinned reviewer is not a mismatch', () =>
 });
 
 test('a dated snapshot of the pinned model satisfies the request', () => {
-  withStub({ is_error: false, result: 'LGTM', modelUsage: usage(`${PINNED}-20260115`) }, (bin) => {
+  withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage(`${PINNED}-20260115`) }, (bin) => {
     const result = runGate({
       args: ['--implementer', 'codex', '--commit', 'HEAD'],
       env: { CLAUDE_GATE_BIN: bin },
@@ -475,7 +475,7 @@ test('a dated snapshot of the pinned model satisfies the request', () => {
 test('a request pinned to a snapshot is satisfied by the family identity', () => {
   // The reverse direction of the same lineage: an operator who pins a snapshot
   // must not be blocked because the host reports the undated identity.
-  withStub({ is_error: false, result: 'LGTM', modelUsage: usage(PINNED) }, (bin) => {
+  withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage(PINNED) }, (bin) => {
     const result = runGate({
       args: ['--implementer', 'codex', '--commit', 'HEAD'],
       env: { CLAUDE_GATE_BIN: bin, CLAUDE_REVIEW_MODEL: `${PINNED}-20260115` },
@@ -487,7 +487,7 @@ test('a request pinned to a snapshot is satisfied by the family identity', () =>
 
 test('a review produced by another generation is an error, never a verdict', () => {
   // The reported defect: the request said Opus 5 and claude-opus-4-8 answered.
-  withStub({ is_error: false, result: 'LGTM', modelUsage: usage('claude-opus-4-8') }, (bin) => {
+  withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage('claude-opus-4-8') }, (bin) => {
     const result = runGate({
       args: ['--implementer', 'codex', '--commit', 'HEAD'],
       env: { CLAUDE_GATE_BIN: bin },
@@ -503,7 +503,7 @@ test('a review produced by another generation is an error, never a verdict', () 
 
 test('a near-miss identity does not pass on a shared prefix', () => {
   // Lineage matches at a segment boundary; claude-opus-50 is a different model.
-  withStub({ is_error: false, result: 'LGTM', modelUsage: usage('claude-opus-50') }, (bin) => {
+  withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage('claude-opus-50') }, (bin) => {
     const result = runGate({
       args: ['--implementer', 'codex', '--commit', 'HEAD'],
       env: { CLAUDE_GATE_BIN: bin },
@@ -530,7 +530,7 @@ test('design mode is not exempt from the identity check', () => {
 });
 
 test('an envelope with no modelUsage is unverifiable, not clean', () => {
-  withStub({ is_error: false, result: 'LGTM' }, (bin) => {
+  withStub({ is_error: false, result: 'APPROVE — LGTM' }, (bin) => {
     const result = runGate({
       args: ['--implementer', 'codex', '--commit', 'HEAD'],
       env: { CLAUDE_GATE_BIN: bin },
@@ -746,5 +746,16 @@ test('an is_error envelope with no api_error_status is an error, not a skip', ()
     assert.notEqual(result.status, 0);
     assert.match(result.stdout, /ERROR: Claude review failed/);
     assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
+});
+
+test('a claude review without the mandated verdict line is discarded as an error', () => {
+  withStub({ is_error: false, result: 'this looks fine to me overall', modelUsage: usage(PINNED) }, (bin) => {
+    const result = runGate({
+      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      env: { CLAUDE_GATE_BIN: bin },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: Claude answered without the mandated verdict line/);
   });
 });
