@@ -75,7 +75,7 @@ test('a GLM response body that never finishes ends as a non-zero timeout error',
       },
     });
     assert.notEqual(result.status, 0);
-    assert.match(result.stdout, /ERROR: GLM review timed out/);
+    assert.match(result.stdout, /timed out/i);
     assert.doesNotMatch(result.stdout, /SKIPPED/);
   } finally {
     server.closeAllConnections?.();
@@ -101,8 +101,9 @@ test('a GLM upstream error never echoes its response body', async () => {
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
       },
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /SKIPPED: Z\.ai HTTP 500/);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /ERROR: .*HTTP 500/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
     assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, new RegExp(key));
     assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /tp-/);
   } finally {
@@ -116,17 +117,21 @@ test('a GLM successful response cannot echo the configured key', async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
-      choices: [{ message: { content: `APPROVE ${key}` } }],
+      model: 'glm-5.2',
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: `APPROVE ${key}` }],
     }));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   try {
     const { port } = server.address();
+    // GLM_API_KEY-only environment: pins the documented ZAI -> GLM key
+    // fallback surviving the lifecycle's provider-env injection.
     const result = await runGateAsync({
       args: ['--commit', 'HEAD'],
       env: {
-        ZAI_API_KEY: key,
+        GLM_API_KEY: key,
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
       },
     });
@@ -216,4 +221,122 @@ test('every external gate is listed on every plugin surface', () => {
     assert.match(readme, new RegExp(gate), `README must list ${gate}`);
   }
   assert.match(config, /priority: codex > claude > kimi > glm/);
+});
+
+// ── lifecycle failure directions (post-fold firsts) ─────────────────────────
+
+async function withGlmServer(handler, fn) {
+  const server = createServer(handler);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const { port } = server.address();
+    return await fn(port);
+  } finally {
+    server.closeAllConnections?.();
+    server.close();
+  }
+}
+
+test('a GLM non-JSON body is an error, not a skip', async () => {
+  await withGlmServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('not-json');
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
+    });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /ERROR: .*bad_json/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
+});
+
+test('a GLM empty completion is an error, not a skip', async () => {
+  await withGlmServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ model: 'glm-5.2', stop_reason: 'end_turn', content: [] }));
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
+    });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /ERROR: .*empty/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
+});
+
+test('a truncated GLM completion (stop_reason max_tokens) is discarded as an error', async () => {
+  await withGlmServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      model: 'glm-5.2',
+      stop_reason: 'max_tokens',
+      content: [{ type: 'text', text: 'partial review that ran out of tok' }],
+    }));
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
+    });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /finish_reason "max_tokens"/);
+    assert.doesNotMatch(result.stdout, /partial review/);
+  });
+});
+
+test('a GLM reviewer identity outside the glm-5.2 lineage is discarded', async () => {
+  await withGlmServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      model: 'other-model-9',
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'APPROVE' }],
+    }));
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
+    });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /identity unverified/);
+  });
+});
+
+test('the GLM request is Anthropic-shaped with both auth headers and the output-token knob', async () => {
+  let seen;
+  await withGlmServer((request, response) => {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      seen = { url: request.url, headers: request.headers, body: JSON.parse(body) };
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        model: 'glm-5.2',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'APPROVE — shape probe' }],
+      }));
+    });
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', 'HEAD'],
+      env: {
+        ZAI_API_KEY: 'shape-probe-key',
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+        GLM_REVIEW_MAX_OUTPUT_TOKENS: '4096',
+      },
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.equal(seen.url, '/v1/messages');
+    assert.equal(seen.headers['x-api-key'], 'shape-probe-key');
+    assert.equal(seen.headers.authorization, 'Bearer shape-probe-key');
+    assert.equal(seen.headers['anthropic-version'], '2023-06-01');
+    assert.equal(seen.body.max_tokens, 4096);
+    assert.equal(seen.body.temperature, 0.2);
+    assert.equal(typeof seen.body.system, 'string');
+    assert.equal(seen.body.messages.length, 1);
+    assert.equal(seen.body.messages[0].role, 'user');
+  });
 });

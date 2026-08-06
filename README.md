@@ -214,6 +214,10 @@ VS Code.
 
 For the current shell, export only the provider you intend to use:
 
+`GLM_REVIEW_BASE_URL` must be an Anthropic-protocol endpoint (the default is
+`https://api.z.ai/api/anthropic`); the OpenAI-compatible Z.ai URL is no longer
+auto-detected.
+
 ```bash
 export ZAI_API_KEY="<your-zai-key>" # GLM; GLM_API_KEY is also accepted
 export DEEPSEEK_REVIEW_API_KEY="<your-deepseek-key>"

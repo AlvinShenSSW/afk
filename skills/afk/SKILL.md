@@ -362,9 +362,8 @@ fail on first invocation.
   Stable-unavailable `SKIPPED` reasons (disabled/missing executable/credential;
   a skip naming quota/rate-limit/model-unavailable from any gate) trigger fallback. Independence refusal
   makes that provider ineligible. A rejected/missing driver-supplied implementer
-  or bad target stops as a driver error. GLM transient `SKIPPED` and other gates'
-  transient nonzero `ERROR` get one sticky retry per role per full sequence,
-  then fallback. Unknown `ERROR` stops with its transcript. Skip/error attempts
+  or bad target stops as a driver error. Transient nonzero `ERROR` gets one
+  sticky retry per role per full sequence, then fallback. Unknown `ERROR` stops with its transcript. Skip/error attempts
   are not verdicts, do not increment the no-progress streak, and never count as
   clean.
 
