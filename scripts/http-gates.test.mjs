@@ -328,15 +328,8 @@ test('a response body that stalls after headers is classified as a timeout', asy
   });
 });
 
-test('started reviews reject rate limits, malformed bodies, empty content, and unsafe finish reasons', async () => {
+test('started reviews reject malformed bodies, empty content, and unsafe finish reasons', async () => {
   const cases = [
-    {
-      response: (res) => {
-        res.writeHead(429, { 'Content-Type': 'application/json' });
-        res.end('{"error":"limited"}');
-      },
-      expected: /rate_limit/,
-    },
     {
       response: (res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -461,5 +454,40 @@ test('both gate entry points support branch, commit, uncommitted, and design tar
         assert.equal(JSON.parse(result.stdout).kind, kind);
       }
     }
+  });
+});
+
+test('a rate-limited reviewer is unavailability, not a failed round — the next family takes its place', async () => {
+  await withServer((_request, response) => {
+    response.writeHead(429, { 'Content-Type': 'application/json' });
+    response.end('{"error":"limited"}');
+  }, async (port) => {
+    const result = await runGateAsync('deepseek', {
+      env: {
+        DEEPSEEK_REVIEW_API_KEY: 'test-only',
+        DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+      },
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /SKIPPED: .*rate.?limit/i);
+    assert.doesNotMatch(result.stdout, /ERROR:/);
+  });
+});
+
+test('a 404 skips as model-unavailable, naming both the model and base-URL suspects', async () => {
+  await withServer((_request, response) => {
+    response.writeHead(404, { 'Content-Type': 'application/json' });
+    response.end('{"error":"nope"}');
+  }, async (port) => {
+    const result = await runGateAsync('deepseek', {
+      env: {
+        DEEPSEEK_REVIEW_API_KEY: 'test-only',
+        DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+      },
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /SKIPPED: /);
+    assert.match(result.stdout, /DEEPSEEK_REVIEW_MODEL/);
+    assert.match(result.stdout, /DEEPSEEK_REVIEW_BASE_URL/);
   });
 });

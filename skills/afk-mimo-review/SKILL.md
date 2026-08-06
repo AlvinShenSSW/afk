@@ -45,7 +45,9 @@ The bounded snapshot excludes secret-bearing paths, redacts secret-shaped
 values, and rejects unsafe design inputs before the request. A missing or
 invalid `--design` target is `ERROR`, not a skip. A timeout, unsafe finish
 reason, or unverified response model also yields a non-zero `ERROR` with no
-partial verdict. A successful review that omitted entries carries a bounded
+partial verdict. Auth failures, rate limits, and an unavailable model or
+endpoint (HTTP 404) are `SKIPPED` — the reviewer is unavailable and the next
+family takes its place, per the shared skip-vs-error table. A successful review that omitted entries carries a bounded
 `SNAPSHOT_NOTE` count; redacted excluded paths stay in local stderr only.
 
 Read the verdict between the

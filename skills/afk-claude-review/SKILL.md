@@ -111,6 +111,9 @@ gate-selection rule. The reasons are distinct on purpose, so the ledger can tell
 - `SKIPPED: Claude CLI not installed …`
 - `SKIPPED: Claude not authenticated (HTTP 401) …`
 - `SKIPPED: Configured model "…" is unavailable (HTTP 404) …`
+- `SKIPPED: Claude is rate-limited or out of quota (HTTP 429) …` — the
+  selection rule treats a rate-limited reviewer as unavailable; the next gate
+  in priority takes its place.
 - `SKIPPED: No changes found for …`
 
 An `ERROR: …` line with a non-zero exit means the gate ran and could not produce

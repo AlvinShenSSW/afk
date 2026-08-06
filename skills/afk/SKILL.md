@@ -360,7 +360,8 @@ fail on first invocation.
   and no-progress streak.
 - **Classify the complete outcome.** Only a review message is a verdict.
   Stable-unavailable `SKIPPED` reasons (disabled/missing executable/credential;
-  Claude-only quota/model-unavailable) trigger fallback. Independence refusal
+  a skip naming quota/rate-limit/model-unavailable from any gate) trigger
+  fallback. Independence refusal
   makes that provider ineligible. A rejected/missing driver-supplied implementer
   or bad target stops as a driver error. GLM transient `SKIPPED` and other gates'
   transient nonzero `ERROR` get one sticky retry per role per full sequence,
