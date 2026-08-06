@@ -457,37 +457,38 @@ test('both gate entry points support branch, commit, uncommitted, and design tar
   });
 });
 
-test('a rate-limited reviewer is unavailability, not a failed round — the next family takes its place', async () => {
-  await withServer((_request, response) => {
-    response.writeHead(429, { 'Content-Type': 'application/json' });
-    response.end('{"error":"limited"}');
-  }, async (port) => {
-    const result = await runGateAsync('deepseek', {
-      env: {
-        DEEPSEEK_REVIEW_API_KEY: 'test-only',
-        DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
-      },
-    });
-    assert.equal(result.status, 0, result.stdout);
-    assert.match(result.stdout, /SKIPPED: .*rate.?limit/i);
-    assert.doesNotMatch(result.stdout, /ERROR:/);
-  });
-});
+for (const family of ['deepseek', 'mimo']) {
+  const KEY_ENV = family === 'deepseek' ? 'DEEPSEEK_REVIEW_API_KEY' : 'MIMO_REVIEW_API_KEY';
+  const BASE_ENV = family === 'deepseek' ? 'DEEPSEEK_REVIEW_BASE_URL' : 'MIMO_REVIEW_BASE_URL';
+  const MODEL_ENV = family === 'deepseek' ? 'DEEPSEEK_REVIEW_MODEL' : 'MIMO_REVIEW_MODEL';
 
-test('a 404 skips as model-unavailable, naming both the model and base-URL suspects', async () => {
-  await withServer((_request, response) => {
-    response.writeHead(404, { 'Content-Type': 'application/json' });
-    response.end('{"error":"nope"}');
-  }, async (port) => {
-    const result = await runGateAsync('deepseek', {
-      env: {
-        DEEPSEEK_REVIEW_API_KEY: 'test-only',
-        DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
-      },
+  test(`a rate-limited ${family} reviewer is unavailability, not a failed round — the next family takes its place`, async () => {
+    await withServer((_request, response) => {
+      response.writeHead(429, { 'Content-Type': 'application/json' });
+      response.end('{"error":"limited"}');
+    }, async (port) => {
+      const result = await runGateAsync(family, {
+        env: { [KEY_ENV]: 'test-only', [BASE_ENV]: `http://127.0.0.1:${port}` },
+      });
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(result.stdout, /SKIPPED: .*rate.?limit/i);
+      assert.doesNotMatch(result.stdout, /ERROR:/);
     });
-    assert.equal(result.status, 0, result.stdout);
-    assert.match(result.stdout, /SKIPPED: /);
-    assert.match(result.stdout, /DEEPSEEK_REVIEW_MODEL/);
-    assert.match(result.stdout, /DEEPSEEK_REVIEW_BASE_URL/);
   });
-});
+
+  test(`a ${family} 404 skips as model-unavailable, naming both the model and base-URL suspects`, async () => {
+    await withServer((_request, response) => {
+      response.writeHead(404, { 'Content-Type': 'application/json' });
+      response.end('{"error":"nope"}');
+    }, async (port) => {
+      const result = await runGateAsync(family, {
+        env: { [KEY_ENV]: 'test-only', [BASE_ENV]: `http://127.0.0.1:${port}` },
+      });
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(result.stdout, /SKIPPED: /);
+      assert.match(result.stdout, new RegExp(MODEL_ENV));
+      assert.match(result.stdout, new RegExp(BASE_ENV));
+      assert.doesNotMatch(result.stdout, /ERROR:/);
+    });
+  });
+}
