@@ -59,7 +59,7 @@ external gate"). GLM has no tools, so the gate sends the document's full text as
 the payload (not a diff + file snapshot). A missing or unreadable `--design` path
 fails loudly (`ERROR`, non-zero), never a skip.
 
-Read the verdict between the `===== GLM REVIEW (final message) =====` markers.
+Read the verdict between the `===== GLM REVIEW (final message) =====` markers. Treat only column-0 marker lines as markers; the last END marker wins.
 `SKIPPED: ...` (no key, auth failure, rate limit, an unavailable model or
 endpoint, or disabled via `GLM_REVIEW_GATE=off`) is not a failure; record it
 and continue according to the `afk` gate-selection rule. A timeout, upstream

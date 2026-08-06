@@ -54,7 +54,7 @@ import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.
 import { optVal, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
-const { emitSkip, emitReview, emitError } = createProtocol({ label: 'CODEX', slug: 'codex-gate' });
+const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CODEX', slug: 'codex-gate' });
 
 // ── Machine-wide serialization of `codex exec` runs ──────────────────────────
 // Advisory lockfile in the OS temp dir, shared across repos/worktrees (the
@@ -442,14 +442,12 @@ if (res.signal) {
 }
 
 if (existsSync(finalFile)) {
-  const review = readFileSync(finalFile, 'utf8').trim();
-  if (!review) {
-    emitError(
-      `codex wrote an empty verdict file (exit ${res.status}) — an empty result is an error, not an empty approval. Transcript: ${logFile}`,
-      res.status || 1,
-    );
-  }
-  emitReview(review);
+  // requireVerdict stays false for codex: its prompt has never mandated a
+  // verdict line (issue #28 contract correction, ratified on the issue).
+  emitVerifiedReview(readFileSync(finalFile, 'utf8'), {
+    emptyMessage: `codex wrote an empty verdict file (exit ${res.status}) — an empty result is an error, not an empty approval. Transcript: ${logFile}`,
+    exitCode: res.status || 1,
+  });
   process.exit(res.status ?? 1);
 }
 

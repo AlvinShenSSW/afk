@@ -60,7 +60,7 @@ import {
 } from '../../lib/gate/env.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import {
-  buildDesignReviewPrompt, buildReviewPrompt, DESIGN_VERDICTS, DIFF_VERDICTS,
+  buildDesignReviewPrompt, buildReviewPrompt,
 } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
@@ -70,7 +70,7 @@ import {
 import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
-const { emitSkip, emitReview, emitError } = createProtocol({ label: 'KIMI', slug: 'kimi-gate' });
+const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'KIMI', slug: 'kimi-gate' });
 
 if (isGateDisabled('KIMI_REVIEW_GATE')) {
   emitSkip('Kimi gate disabled via KIMI_REVIEW_GATE.');
@@ -145,21 +145,6 @@ const forceShim = ['1', 'true', 'yes', 'on'].includes(
 if (printPromptOnly) {
   process.stdout.write(`${reviewPrompt}\n`);
   process.exit(0);
-}
-
-// Built here, before any paid spawn, and escaped: these words come from another
-// module now (that is the point — a copy drifts). Escaping means a vocabulary
-// carrying a regex metacharacter matches literally instead of silently matching
-// something else; the guard below catches a vocabulary that is malformed as a
-// value (a non-string entry, a non-iterable export), which would otherwise exit
-// with a stack trace and no marker block.
-let VERDICT_WORDS;
-try {
-  const escaped = [...DIFF_VERDICTS, ...DESIGN_VERDICTS]
-    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  VERDICT_WORDS = new RegExp(`\\b(${escaped.join('|')})\\b`);
-} catch (err) {
-  emitError(`cannot review — the verdict vocabulary is not usable as a pattern: ${err.message}`, 1);
 }
 
 // The documented headless surface, transcribed from `kimi --help` (0.29.1,
@@ -381,22 +366,20 @@ if (!review) {
   );
 }
 
-// The shim path is the one where the brief travels by reference: a CLI that
-// never read the file still exits 0 with fluent text, and that text would be
-// emitted as a verdict. The prompt mandates a verdict line, so its absence
-// means the brief did not arrive — an ERROR naming the path, never a review.
-if (briefPath && !VERDICT_WORDS.test(review)) {
-  emitError(
-    'kimi answered without the verdict line its brief requires, so the brief handed to it '
-    + `(written to ${work} for the duration of the call, then removed) was most likely never read. `
-    + 'This install is a Windows script shim, whose only '
-    + 'transport is a file reference. Point KIMI_GATE_BIN at a native executable. '
-    + `Transcript: ${logFile}`,
-    1,
-  );
-}
-
-emitReview(review);
+// The prompt mandates a verdict line on every transport; its absence means
+// the review did not follow the brief. On the shim path — where the brief
+// travels by file reference — it more specifically means the brief was most
+// likely never read, so that path keeps its own diagnosis.
+emitVerifiedReview(review, {
+  requireVerdict: true,
+  missingVerdictMessage: briefPath
+    ? ('kimi answered without the verdict line its brief requires, so the brief handed to it '
+      + `(written to ${work} for the duration of the call, then removed) was most likely never read. `
+      + 'This install is a Windows script shim, whose only '
+      + 'transport is a file reference. Point KIMI_GATE_BIN at a native executable. '
+      + `Transcript: ${logFile}`)
+    : undefined,
+});
 // `?? 1`, never `?? 0`: a null status means kimi died on a signal, and a review
 // that was killed must not exit clean.
 process.exit(res.status ?? 1);

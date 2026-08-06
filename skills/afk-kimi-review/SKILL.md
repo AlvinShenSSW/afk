@@ -63,7 +63,7 @@ bound is reported as a non-zero `ERROR`, never a `SKIPPED`: a hang says nothing
 about whether this reviewer is available, so it takes the role's transient retry
 rather than an immediate fallback to another family.
 
-Read the verdict between the `===== KIMI REVIEW (final message) =====` markers.
+Read the verdict between the `===== KIMI REVIEW (final message) =====` markers. Treat only column-0 marker lines as markers; the last END marker wins.
 `SKIPPED: …` (Kimi absent, logged out, or disabled via `KIMI_REVIEW_GATE=off`)
 is not a failure — report it and continue. `ERROR: …` means the review itself
 failed or timed out — read the transcript it names; never report an errored run

@@ -51,7 +51,8 @@ family takes its place, per the shared skip-vs-error table. A successful review 
 `SNAPSHOT_NOTE` count; redacted excluded paths stay in local stderr only.
 
 Read the verdict between the
-`===== MIMO REVIEW (final message) =====` markers. A `SKIPPED` result is not a
+`===== MIMO REVIEW (final message) =====` markers. Treat only column-0
+marker lines as markers; the last END marker wins. A `SKIPPED` result is not a
 verdict; record it and follow the fallback rule in `../afk/SKILL.md`.
 
 ## Handle findings
