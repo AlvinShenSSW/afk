@@ -31,8 +31,16 @@ const CASES = {
   },
 };
 
+// glm resolves here but stays out of CASES: that loop's header/body asserts
+// are OpenAI-protocol-specific, and glm speaks the Anthropic protocol.
+const GATE_PATHS = {
+  deepseek: CASES.deepseek.gate,
+  mimo: CASES.mimo.gate,
+  glm: join(repoRoot, 'skills/afk-glm-review/glm-gate.mjs'),
+};
+
 function runGate(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot } = {}) {
-  return spawnGate([CASES[family].gate, ...args], {
+  return spawnGate([GATE_PATHS[family], ...args], {
     cwd,
     encoding: 'utf8',
     env: gateTestEnv(env),
@@ -40,7 +48,7 @@ function runGate(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot
 }
 
 async function runGateAsync(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot } = {}) {
-  const child = spawn(process.execPath, [CASES[family].gate, ...args], {
+  const child = spawn(process.execPath, [GATE_PATHS[family], ...args], {
     cwd,
     env: gateTestEnv(env),
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -457,10 +465,13 @@ test('both gate entry points support branch, commit, uncommitted, and design tar
   });
 });
 
-for (const family of ['deepseek', 'mimo']) {
-  const KEY_ENV = family === 'deepseek' ? 'DEEPSEEK_REVIEW_API_KEY' : 'MIMO_REVIEW_API_KEY';
-  const BASE_ENV = family === 'deepseek' ? 'DEEPSEEK_REVIEW_BASE_URL' : 'MIMO_REVIEW_BASE_URL';
-  const MODEL_ENV = family === 'deepseek' ? 'DEEPSEEK_REVIEW_MODEL' : 'MIMO_REVIEW_MODEL';
+const DIRECTION_FAMILIES = {
+  deepseek: { KEY_ENV: 'DEEPSEEK_REVIEW_API_KEY', BASE_ENV: 'DEEPSEEK_REVIEW_BASE_URL', MODEL_ENV: 'DEEPSEEK_REVIEW_MODEL' },
+  mimo: { KEY_ENV: 'MIMO_REVIEW_API_KEY', BASE_ENV: 'MIMO_REVIEW_BASE_URL', MODEL_ENV: 'MIMO_REVIEW_MODEL' },
+  glm: { KEY_ENV: 'ZAI_API_KEY', BASE_ENV: 'GLM_REVIEW_BASE_URL', MODEL_ENV: 'GLM_REVIEW_MODEL' },
+};
+
+for (const [family, { KEY_ENV, BASE_ENV, MODEL_ENV }] of Object.entries(DIRECTION_FAMILIES)) {
 
   test(`a rate-limited ${family} reviewer is unavailability, not a failed round — the next family takes its place`, async () => {
     await withServer((_request, response) => {
@@ -492,3 +503,17 @@ for (const family of ['deepseek', 'mimo']) {
     });
   });
 }
+
+test('a glm 401 skips as unauthenticated, naming the key env', async () => {
+  await withServer((_request, response) => {
+    response.writeHead(401, { 'Content-Type': 'application/json' });
+    response.end('{"error":"no"}');
+  }, async (port) => {
+    const result = await runGateAsync('glm', {
+      env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /SKIPPED: .*authentication failed/i);
+    assert.match(result.stdout, /ZAI_API_KEY/);
+  });
+});

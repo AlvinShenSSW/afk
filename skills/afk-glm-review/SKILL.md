@@ -60,9 +60,18 @@ the payload (not a diff + file snapshot). A missing or unreadable `--design` pat
 fails loudly (`ERROR`, non-zero), never a skip.
 
 Read the verdict between the `===== GLM REVIEW (final message) =====` markers.
-`SKIPPED: ...` (no key, auth failure, HTTP error, or disabled via
-`GLM_REVIEW_GATE=off`) is not a failure; record it and continue according to the
-`afk` gate-selection rule.
+`SKIPPED: ...` (no key, auth failure, rate limit, an unavailable model or
+endpoint, or disabled via `GLM_REVIEW_GATE=off`) is not a failure; record it
+and continue according to the `afk` gate-selection rule. A timeout, upstream
+HTTP error, non-JSON or empty response, unsafe finish reason, or unverified
+response model yields a non-zero `ERROR` with no partial verdict — the shared
+skip-vs-error table decides the direction, the same as every lifecycle gate.
+
+`GLM_REVIEW_BASE_URL` must be an Anthropic-protocol endpoint (default
+`https://api.z.ai/api/anthropic`); the OpenAI-compatible Z.ai URL is no longer
+auto-detected — a wrong endpoint surfaces as the 404 model-unavailable skip
+naming both suspects. Use `--print-args` for resolved metadata or
+`--print-prompt` for the redacted prompt without a provider call.
 
 ## Handle findings
 
@@ -113,7 +122,10 @@ or a gitignored `.env`. Disable with `GLM_REVIEW_GATE=off`.
 Config knobs:
 
 - `GLM_REVIEW_MODEL` (default `glm-5.2`)
-- `GLM_REVIEW_BASE_URL` (default `https://api.z.ai/api/anthropic`)
+- `GLM_REVIEW_BASE_URL` (default `https://api.z.ai/api/anthropic`;
+  Anthropic-protocol endpoints only)
 - `GLM_REVIEW_MAX_CTX_BYTES` (default `400000`)
+- `GLM_REVIEW_MAX_OUTPUT_TOKENS` (default `8192`)
+- `GLM_REVIEW_EXCLUDE_GLOBS` (extra snapshot exclusions, comma/newline list)
 - `GLM_REVIEW_TIMEOUT_MS` (default `900000`; shared fallback
   `AFK_REVIEW_TIMEOUT_MS`)
