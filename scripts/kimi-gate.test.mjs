@@ -519,3 +519,50 @@ test('the forced transport is observable, not silent', () => {
   assert.match(instruction, /review only/i);
   assert.doesNotMatch(instruction, /[^\x00-\x7F]/, 'a shelled argv element stays ASCII');
 });
+
+test('a signal-killed kimi is an ERROR, never a partial verdict', {
+  skip: process.platform === 'win32' ? 'needs a POSIX executable stub' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-sigkill-'));
+  try {
+    const stub = join(dir, 'kimi-stub');
+    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.stdout.write('PARTIAL: the diff looks f'); process.kill(process.pid, 'SIGKILL'); }\n`);
+    chmodSync(stub, 0o755);
+
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: { KIMI_GATE_BIN: stub },
+    });
+
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /ERROR: kimi did not exit normally/);
+    assert.match(result.stdout, /SIGKILL/);
+    // The truncated transcript must not surface inside the marker block.
+    assert.doesNotMatch(result.stdout, /PARTIAL: the diff/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('output past the buffer bound is an ERROR naming the knob, not a verdict', {
+  skip: process.platform === 'win32' ? 'needs a POSIX executable stub' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-enobufs-'));
+  try {
+    const stub = join(dir, 'kimi-stub');
+    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.stdout.write('x'.repeat(8192)); }\n`);
+    chmodSync(stub, 0o755);
+
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: { KIMI_GATE_BIN: stub, KIMI_REVIEW_MAX_BUFFER_BYTES: '1024' },
+    });
+
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /ERROR: kimi did not exit normally/);
+    assert.match(result.stdout, /ENOBUFS/);
+    assert.match(result.stdout, /KIMI_REVIEW_MAX_BUFFER_BYTES/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

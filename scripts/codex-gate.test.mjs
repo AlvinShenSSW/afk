@@ -414,3 +414,39 @@ test('a bare-name codex.cmd on PATH is resolved without disturbing the APPDATA p
     rmSync(emptyAppData, { recursive: true, force: true });
   }
 });
+
+function withEmptyVerdictStub(fn) {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-empty-'));
+  try {
+    const js = join(dir, 'stub.mjs');
+    writeFileSync(js, `
+import { writeFileSync } from 'node:fs';
+if (process.argv.includes('status')) {
+  process.stdout.write('Logged in');
+} else {
+  const i = process.argv.indexOf('-o');
+  if (i !== -1) writeFileSync(process.argv[i + 1], '   ');
+}
+`);
+    const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
+    writeFileSync(sh, process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+    if (process.platform !== 'win32') chmodSync(sh, 0o755);
+    return fn(sh);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('an empty verdict file is an error, not an empty approval', () => {
+  withEmptyVerdictStub((bin) => {
+    const result = runGate({
+      args: ['--commit', 'HEAD'],
+      env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+    });
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stdout, /ERROR: codex wrote an empty verdict file/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
+});
