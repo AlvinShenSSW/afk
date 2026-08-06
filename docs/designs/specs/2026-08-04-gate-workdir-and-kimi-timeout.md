@@ -24,7 +24,7 @@ at module top level. A `TMPDIR` naming a directory that does not exist makes it
 throw `ENOENT`, the exception escapes the module, and the gate exits with a raw
 stack trace and **no marker block**. Reproduced at `feb3468`:
 
-```
+```text
 $ TMPDIR=/nope/does/not/exist/ node skills/afk-kimi-review/kimi-gate.mjs --commit HEAD --implementer codex
 Error: ENOENT: no such file or directory, mkdtemp '/nope/does/not/exist/kimi-gate-XXXXXX'
 ```

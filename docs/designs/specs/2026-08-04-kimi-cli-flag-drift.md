@@ -19,7 +19,7 @@ Kimi Code CLI **0.29.1 supports neither flag**, so both paths exit 1 with empty
 stdout and the gate reports `kimi produced no final message (exit 1)` on every
 review. Verified against the installed CLI, not inferred:
 
-```
+```text
 $ kimi --version                → 0.29.1
 $ kimi --quiet -p "hi"          → error: unknown option '--quiet'
 $ kimi --help                   → -p, --prompt <prompt>
@@ -66,7 +66,7 @@ Engineering invariants:
 
 Non-goals:
 
-- **The `• ` prefix and 2-space continuation indent** this CLI adds to stdout.
+- **The `•` prefix (bullet plus space) and 2-space continuation indent** this CLI adds to stdout.
   Pinned by experiment (`• alpha` / `␣␣beta`), pre-dates #10, and de-prefixing
   risks eating indentation a review legitimately owns. Recorded, not changed.
 - No version detection or `--help` parsing: the two flags used are the
@@ -95,7 +95,7 @@ that door is closed.
 Instead the gate writes the review brief to a private temp file and passes a
 short instruction naming it:
 
-```
+```text
 kimi -p "Read the review brief at <path> in full; it is your task. Follow it exactly.
          Do NOT modify, stage, commit, write, or delete ANY file — review only."
      --output-format text
@@ -181,7 +181,7 @@ addition without anyone having predicted it.
 | A newer Kimi build does support `--quiet` and this "downgrades" it | None functional — `-p`/`--output-format` are documented on both | The intersection is the safe choice; D3 reports it loudly if even that drifts. |
 | The shim fallback depends on kimi choosing to read the named file | A review of nothing, reported as a verdict | Verified against the real CLI; the instruction is explicit; the gate already depends on kimi following prose (it fetches the diff itself). |
 | The brief file lands on disk | Same class of content the transcript already holds | Private temp dir, removed after the call, scoped to the shell path only. |
-| The `• `/indent formatting reaches the review block | Cosmetic; a review with indented code shifts by 2 | Pre-existing and out of scope; recorded above with its evidence. |
+| The `•`/indent formatting reaches the review block | Cosmetic; a review with indented code shifts by 2 | Pre-existing and out of scope; recorded above with its evidence. |
 | A non-ASCII temp path (a user named `José`) under cmd.exe (K6) | Unverified here; failure would be an unread brief, now caught by the verdict-line check | Node passes UTF-16 to `CreateProcess`; the deleted ASCII fold guarded stdin, not argv. |
 
 ## Adversarial review outcome
