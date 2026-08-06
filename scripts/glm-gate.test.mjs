@@ -126,10 +126,12 @@ test('a GLM successful response cannot echo the configured key', async () => {
   await once(server, 'listening');
   try {
     const { port } = server.address();
+    // GLM_API_KEY-only environment: pins the documented ZAI -> GLM key
+    // fallback surviving the lifecycle's provider-env injection.
     const result = await runGateAsync({
       args: ['--commit', 'HEAD'],
       env: {
-        ZAI_API_KEY: key,
+        GLM_API_KEY: key,
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
       },
     });

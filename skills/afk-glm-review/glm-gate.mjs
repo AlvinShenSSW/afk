@@ -20,8 +20,6 @@ import { makeAnthropicProvider } from '../../lib/http/anthropic-provider.mjs';
 const provider = makeAnthropicProvider({
   name: 'GLM',
   keyEnv: 'ZAI_API_KEY',
-  modelEnv: 'GLM_REVIEW_MODEL',
-  modelDefault: 'glm-5.2',
   baseUrlEnv: 'GLM_REVIEW_BASE_URL',
   baseUrlDefault: 'https://api.z.ai/api/anthropic',
 });
