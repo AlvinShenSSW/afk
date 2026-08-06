@@ -35,7 +35,11 @@ Pass `--implementer <family>` when another model wrote the change. In design
 mode (`--design`) the flag instead names the design's **author**, never the
 eventual code implementer — see `../afk/SKILL.md` ("Design-stage external
 gate"): declaring the code implementer there can hand a driver-authored design
-to the driver's own model for review.
+to the driver's own model for review. A persistent `implementer:` line in
+`.afk/config.md` also names the code implementer, and in design mode it can
+wrongly block that family's independent review of a driver-authored design —
+declare the design's author explicitly then: the per-run flag outranks the
+config line.
 
 The bounded snapshot excludes secret-bearing paths, redacts secret-shaped
 values, and rejects unsafe design inputs before the request. A missing or

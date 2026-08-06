@@ -88,7 +88,7 @@ test('design-stage finding vocabulary includes contested', () => {
 // The `--implementer` rule is one doctrine with two modes (PR: code
 // implementer; design: the design's author). The block is byte-identical in
 // every gate skill so drift in any copy fails here, not in a review.
-const IMPLEMENTER_RULE_RE = /Pass `--implementer <family>` when another model wrote the change\.[\s\S]*?driver's own model for review\./;
+const IMPLEMENTER_RULE_RE = /Pass `--implementer <family>` when another model wrote the change\.[\s\S]*?the per-run flag outranks the\nconfig line\./;
 
 test('every gate SKILL.md carries the identical implementer rule block', () => {
   const blocks = Object.entries(gates).map(([name, text]) => {
