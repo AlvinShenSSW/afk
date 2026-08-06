@@ -432,8 +432,24 @@ if (res.error) {
   process.exit(1);
 }
 
+// A signal-killed child may have died mid-write: its partial verdict file is
+// not a verdict.
+if (res.signal) {
+  emitError(
+    `codex was killed by ${res.signal} before completing the review; any partial verdict file is not a verdict. Transcript: ${logFile}`,
+    1,
+  );
+}
+
 if (existsSync(finalFile)) {
-  emitReview(readFileSync(finalFile, 'utf8'));
+  const review = readFileSync(finalFile, 'utf8').trim();
+  if (!review) {
+    emitError(
+      `codex wrote an empty verdict file (exit ${res.status}) — an empty result is an error, not an empty approval. Transcript: ${logFile}`,
+      res.status || 1,
+    );
+  }
+  emitReview(review);
   process.exit(res.status ?? 1);
 }
 

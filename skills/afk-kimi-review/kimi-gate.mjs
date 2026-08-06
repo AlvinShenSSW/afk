@@ -56,7 +56,7 @@ import {
 import { join } from 'node:path';
 
 import {
-  isGateDisabled, isSpawnTimeout, preflightTimeoutMs, reviewTimeoutMs,
+  isGateDisabled, isSpawnTimeout, positiveIntEnv, preflightTimeoutMs, reviewTimeoutMs,
 } from '../../lib/gate/env.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import {
@@ -235,9 +235,10 @@ process.stderr.write(
 process.stderr.write(`[kimi-gate] timeout -> ${timeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
 
+const maxBufferBytes = positiveIntEnv('KIMI_REVIEW_MAX_BUFFER_BYTES', 64 * 1024 * 1024);
 const spawnOpts = {
   encoding: 'utf8',
-  maxBuffer: 64 * 1024 * 1024, // reviews can be long
+  maxBuffer: maxBufferBytes, // reviews can be long
   timeout: timeoutMs,
   killSignal: 'SIGKILL',
 };
@@ -321,6 +322,23 @@ if (isSpawnTimeout(res)) {
   emitError(
     `kimi review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
     + `Raise KIMI_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    1,
+  );
+}
+
+// ENOBUFS, an external signal kill, or any other spawn-level failure the
+// specific checks above did not claim: whatever stdout holds is a fragment of
+// an aborted run, and half a review presented as a verdict is worse than none.
+// Both fields are printed — ENOBUFS arrives with SIGKILL also set, and a
+// signal-only message would mask the actionable class.
+if (res.error || res.signal) {
+  const code = res.error ? (res.error.code || res.error.message) : '';
+  const shown = [code, res.signal].filter(Boolean).join(', ');
+  const remedy = code === 'ENOBUFS'
+    ? ` Output exceeded the ${maxBufferBytes}-byte buffer; raise KIMI_REVIEW_MAX_BUFFER_BYTES.`
+    : '';
+  emitError(
+    `kimi did not exit normally (${shown}); any partial output is not a verdict.${remedy} Transcript: ${logFile}`,
     1,
   );
 }

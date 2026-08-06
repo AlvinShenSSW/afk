@@ -128,3 +128,9 @@ provider-specific finding baseline.
 
 Optional and self-skipping. Install the Kimi CLI and log in; needs Node + git on
 PATH. Disable with `KIMI_REVIEW_GATE=off`.
+
+Config knobs:
+
+- `KIMI_REVIEW_MAX_BUFFER_BYTES` (default `67108864`, 64 MiB) — the output
+  buffer bound; output past it aborts the run as an `ERROR`, never a truncated
+  verdict.
