@@ -123,6 +123,13 @@ test('redacts signed and unsigned JWTs with short segments', () => {
   assert.doesNotMatch(text, /eyJhbGci/);
 });
 
+test('redacts a padded base64url JWT (non-RFC encoders exist in the wild)', () => {
+  const padded = 'eyJhbGciOiJIUzI1NiI=.eyJzdWIiOiJhMTIzNDU2Nzg5MA==.c2lnbmF0dXJlX2hlcmU=';
+  const { text } = redactSecrets(`log: ${padded}`);
+  assert.doesNotMatch(text, /eyJhbGci/);
+  assert.doesNotMatch(text, /c2lnbmF0dXJl/);
+});
+
 test('redacts all five JWE segments — no ciphertext tail survives', () => {
   const jwe = 'eyJhbGciOiJSU0EtT0FFUCJ9.ZW5jcnlwdGVkX2tleV9mb28.aXZpdml2.c2lwaGVydGV4dF9oZXJlMTIzNDU2Nzg5MA.dGFnMTIz';
   const { text } = redactSecrets(`Authorization: ${jwe}`);
