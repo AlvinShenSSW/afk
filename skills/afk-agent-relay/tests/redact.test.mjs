@@ -70,3 +70,90 @@ test('isExcluded matches a secret DIRECTORY, not just basenames', () => {
   assert.ok(isExcluded('app/credentials/token.txt'));
   assert.ok(isExcluded('deep/nested/.env'));
 });
+
+// Provider token shapes (issue #23): prefix tokens, JWTs, and the token label.
+
+test('redacts GitHub classic and server tokens at realistic length', () => {
+  for (const prefix of ['ghp', 'ghs']) {
+    const token = `${prefix}_${'A1b2C3d4'.repeat(5)}`.slice(0, 40);
+    const { text } = redactSecrets(`push failed: ${token}`);
+    assert.doesNotMatch(text, new RegExp(`${prefix}_A1b2`));
+    assert.match(text, /\[REDACTED\]/);
+  }
+});
+
+test('redacts a fine-grained github_pat_ token', () => {
+  const token = `github_pat_${'A1b2C3d4E5'.repeat(9)}`.slice(0, 93);
+  const { text } = redactSecrets(`auth ${token}`);
+  assert.doesNotMatch(text, /github_pat_A1b2/);
+});
+
+test('redacts GitLab and Slack tokens', () => {
+  // Fixtures are assembled at runtime so no token-shaped literal sits in this
+  // file — push protection and gitleaks would (rightly) flag one.
+  const glpat = `glpat-${'x1y2z3'.repeat(4)}`;
+  const xoxb = ['xoxb', '1234567890', '1234567890123', 'Ab1Cd2Ef3Gh4Ij5Kl6Mn7'].join('-');
+  const { text } = redactSecrets(`a ${glpat} b ${xoxb}`);
+  assert.doesNotMatch(text, /glpat-x1y2/);
+  assert.doesNotMatch(text, /xoxb-1234/);
+});
+
+test('redacts a PAT embedded in a git remote URL', () => {
+  const token = `ghp_${'Z9y8X7w6'.repeat(5)}`.slice(0, 40);
+  const { text } = redactSecrets(`origin  https://${token}@github.com/o/r.git (push)`);
+  assert.doesNotMatch(text, /ghp_Z9y8/);
+  assert.match(text, /https:\/\/\[REDACTED\]@github\.com/);
+});
+
+test('redacts Authorization: token values, keeping the label', () => {
+  const { text } = redactSecrets('Authorization: token ghs_A1b2C3d4E5f6G7h8I9j0A1b2C3d4E5f6G7h8');
+  assert.match(text, /Authorization: (token \[REDACTED\]|\[REDACTED\])/);
+  assert.doesNotMatch(text, /ghs_A1b2/);
+});
+
+test('keeps Bearer label while redacting its value (regression)', () => {
+  const { text } = redactSecrets('Authorization: Bearer abcdefghijklmnop');
+  assert.match(text, /Bearer \[REDACTED\]/);
+});
+
+test('redacts signed and unsigned JWTs with short segments', () => {
+  const signed = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhIn0.c2ln-X_1';
+  const unsigned = 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJiIn0.';
+  const { text } = redactSecrets(`a ${signed} b ${unsigned}`);
+  assert.doesNotMatch(text, /eyJhbGci/);
+});
+
+test('redacts a padded base64url JWT (non-RFC encoders exist in the wild)', () => {
+  const padded = 'eyJhbGciOiJIUzI1NiI=.eyJzdWIiOiJhMTIzNDU2Nzg5MA==.c2lnbmF0dXJlX2hlcmU=';
+  const { text } = redactSecrets(`log: ${padded}`);
+  assert.doesNotMatch(text, /eyJhbGci/);
+  assert.doesNotMatch(text, /c2lnbmF0dXJl/);
+});
+
+test('redacts all five JWE segments — no ciphertext tail survives', () => {
+  const jwe = 'eyJhbGciOiJSU0EtT0FFUCJ9.ZW5jcnlwdGVkX2tleV9mb28.aXZpdml2.c2lwaGVydGV4dF9oZXJlMTIzNDU2Nzg5MA.dGFnMTIz';
+  const { text } = redactSecrets(`Authorization: ${jwe}`);
+  assert.doesNotMatch(text, /c2lwaGVydGV4dF9oZXJl/);
+  assert.doesNotMatch(text, /dGFnMTIz/);
+  assert.match(text, /\[REDACTED\]/);
+});
+
+test('redacts underscore-adjacent tokens (lookbehind positives)', () => {
+  const token = `ghp_${'Q1w2E3r4'.repeat(5)}`.slice(0, 40);
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjIn0.sig';
+  const { text } = redactSecrets(`_${token}_ and file_${jwt}`);
+  assert.doesNotMatch(text, /ghp_Q1w2/);
+  assert.doesNotMatch(text, /eyJhbGci/);
+});
+
+test('keeps ordinary prose near token-like words (negatives)', () => {
+  const prose = 'The token authentication flow is documented; an xoxb-compatible client uses a glpat-compatible-token helper. ghp_abc is a placeholder.';
+  const { text, count } = redactSecrets(prose);
+  assert.equal(count, 0);
+  assert.equal(text, prose);
+});
+
+test('keeps the sha512- label on lockfile integrity strings', () => {
+  const { text } = redactSecrets('"integrity": "sha512-C4TEKtWLNGWLTAkKvtoRlbNkDccGVdDcpQwoUc4qbHnpt7EPFvLGpMbwrPTZY3zqEMdEhCFAyDW3AS7DhDzo7g=="');
+  assert.match(text, /sha512-/);
+});
