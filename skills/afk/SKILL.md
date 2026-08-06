@@ -216,7 +216,11 @@ never-scale-down-gates rule, which governs PR gates only.
 - **Independence is from the design's AUTHOR.** The guard's `--implementer` here
   identifies whoever wrote the *design*, not the code implementer a PR-gate
   `--implementer` names. In the usual case the driver authors the design, so it is
-  omitted (the driver is assumed) and a same-model gate self-skips. Only when
+  omitted (the driver is assumed) and a same-model gate self-skips — unless
+  `.afk/config.md` carries a persistent `implementer:` line: that names the code
+  implementer and may only block, so in design mode it can wrongly block that
+  family's review of a driver-authored design; declare the design's author
+  explicitly then (the per-run flag outranks the config line). Only when
   another model authored the design (a design relay) declare that model — do NOT
   pass the eventual code implementer, or a driver-authored design could be
   reviewed by the driver's own model, defeating this step.
