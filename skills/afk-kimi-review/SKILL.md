@@ -1,6 +1,6 @@
 ---
 name: afk-kimi-review
-description: Part of the afk pipeline. Runs Kimi (Kimi CLI) as the default final independent, read-only external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
+description: Part of the afk pipeline. Runs Kimi (Kimi CLI) as the default final independent, read-only (prompt-requested) external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
 ---
 
 # afk-kimi-review
@@ -9,7 +9,8 @@ An independent second-opinion review by Kimi (a *different* model), used as the
 default **final** role after internal review and all outer findings are resolved.
 Run the ordered `gates` profile from `.afk/config.md`, and never use a reviewer
 whose model matches the implementer or another role. Kimi reviews the diff
-read-only; you triage and fix.
+read-only — requested in the prompt, not enforced by construction (Kimi drives
+git itself) — you triage and fix.
 
 The helper `kimi-gate.mjs` ships with this skill and travels with the plugin.
 
@@ -38,6 +39,12 @@ node "<helper-dir>/kimi-gate.mjs"
 Run it in the **background** with a generous timeout; redirect stdout to a file
 and read it when it completes. Pass through any target flag (`--base <branch>` /
 `--commit <sha>` / `--uncommitted`). Do not poll in a sleep loop.
+
+Pass `--implementer <family>` when another model wrote the change. In design
+mode (`--design`) the flag instead names the design's **author**, never the
+eventual code implementer — see `../afk/SKILL.md` ("Design-stage external
+gate"): declaring the code implementer there can hand a driver-authored design
+to the driver's own model for review.
 
 **Design mode** (`--design <path>`) reviews a design document's reasoning instead
 of a diff — the opt-in design-stage gate (see `../afk/SKILL.md`, "Design-stage

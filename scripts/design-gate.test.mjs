@@ -84,3 +84,30 @@ test('every gate SKILL.md documents design mode and the --design selector', () =
 test('design-stage finding vocabulary includes contested', () => {
   assert.match(afkSkill, /fixed \/ refuted \/ deferred \/ suppressed \/ contested/i);
 });
+
+// The `--implementer` rule is one doctrine with two modes (PR: code
+// implementer; design: the design's author). The block is byte-identical in
+// every gate skill so drift in any copy fails here, not in a review.
+const IMPLEMENTER_RULE_RE = /Pass `--implementer <family>` when another model wrote the change\.[\s\S]*?driver's own model for review\./;
+
+test('every gate SKILL.md carries the identical implementer rule block', () => {
+  const blocks = Object.entries(gates).map(([name, text]) => {
+    const match = text.match(IMPLEMENTER_RULE_RE);
+    assert.ok(match, `${name} SKILL.md must carry the implementer rule block`);
+    return [name, match[0]];
+  });
+  const [refName, ref] = blocks[0];
+  for (const [name, block] of blocks.slice(1)) {
+    assert.equal(block, ref, `${name} implementer rule must be byte-identical to ${refName}'s`);
+  }
+});
+
+test('the claude sample command does not hardcode the permitting flag', () => {
+  // `--implementer` is the one flag that can PERMIT a run; a copy-paste sample
+  // carrying it converts the intended self-skip into self-review.
+  assert.doesNotMatch(gates.claude, /claude-gate\.mjs" --implementer/);
+});
+
+test('the kimi skill carries the requested-not-enforced read-only caveat', () => {
+  assert.match(gates.kimi, /not enforced by construction/);
+});

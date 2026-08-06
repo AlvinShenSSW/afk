@@ -28,9 +28,14 @@ node "<helper-dir>/deepseek-gate.mjs"
 
 Run it in the background with a generous timeout and save stdout for the run
 record. Pass through `--base <branch>`, `--commit <sha>`, `--uncommitted`, or
-`--design <path>`, plus `--implementer <family>` when another model wrote the
-change. Use `--print-args` for resolved metadata or `--print-prompt` for the
-redacted prompt without a provider call. Do not poll in a sleep loop.
+`--design <path>`. Use `--print-args` for resolved metadata or `--print-prompt`
+for the redacted prompt without a provider call. Do not poll in a sleep loop.
+
+Pass `--implementer <family>` when another model wrote the change. In design
+mode (`--design`) the flag instead names the design's **author**, never the
+eventual code implementer — see `../afk/SKILL.md` ("Design-stage external
+gate"): declaring the code implementer there can hand a driver-authored design
+to the driver's own model for review.
 
 The bounded snapshot excludes secret-bearing paths, redacts secret-shaped
 values, and rejects unsafe design inputs before the request. A missing or

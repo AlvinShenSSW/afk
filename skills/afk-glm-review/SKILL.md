@@ -39,6 +39,12 @@ Run it in the **background** with a generous timeout; redirect stdout to a file
 and read it when it completes. Pass through any target flag (`--base <branch>` /
 `--commit <sha>` / `--uncommitted`). Do not poll in a sleep loop.
 
+Pass `--implementer <family>` when another model wrote the change. In design
+mode (`--design`) the flag instead names the design's **author**, never the
+eventual code implementer — see `../afk/SKILL.md` ("Design-stage external
+gate"): declaring the code implementer there can hand a driver-authored design
+to the driver's own model for review.
+
 **The review is bounded** by `GLM_REVIEW_TIMEOUT_MS` (default 15 min), with
 `AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
 never a partial verdict; it follows the role's transient retry rule.

@@ -42,6 +42,12 @@ completes. Pass through any target flag (`--base <branch>` / `--commit <sha>` /
 `--uncommitted`; default = current branch vs the default branch). Do not poll in
 a sleep loop — wait for completion.
 
+Pass `--implementer <family>` when another model wrote the change. In design
+mode (`--design`) the flag instead names the design's **author**, never the
+eventual code implementer — see `../afk/SKILL.md` ("Design-stage external
+gate"): declaring the code implementer there can hand a driver-authored design
+to the driver's own model for review.
+
 **Design mode** (`--design <path>`) reviews a design document's reasoning instead
 of a diff — the opt-in design-stage gate (see `../afk/SKILL.md`, "Design-stage
 external gate"). Codex runs it with `exec -s read-only` and the brief + doc piped

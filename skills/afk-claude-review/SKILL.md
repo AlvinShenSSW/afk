@@ -34,7 +34,9 @@ An unrecognised implementer value fails **closed**: the gate skips rather than
 guess that it is independent.
 
 Pass `--implementer <family>` whenever the implementer is not the driver — most
-often when `afk-agent-relay` relayed the implementation to another model. Known families: `claude`, `codex`, `kimi`, `glm`, `deepseek`, `mimo`, `gemini`, `copilot`.
+often when `afk-agent-relay` relayed the implementation to another model. In
+design mode the flag names the design's author, not the code implementer (see
+"Run it"). Known families: `claude`, `codex`, `kimi`, `glm`, `deepseek`, `mimo`, `gemini`, `copilot`.
 
 **Known gap:** `CLAUDECODE` identifies the driver, not the model. A Claude
 implementer driven from Copilot, Cursor, CI, or a plain terminal leaves it
@@ -67,12 +69,22 @@ skill's own directory. If `.afk/` is absent, the `afk-init` bootstrap runs
 automatically first:
 
 ```text
-node "<helper-dir>/claude-gate.mjs" --implementer codex
+node "<helper-dir>/claude-gate.mjs"
 ```
 
 Run it in the **background** with a generous timeout; redirect stdout to a file
 and read it when it completes. Pass through any target flag (`--base <branch>` /
 `--commit <sha>` / `--uncommitted`). Do not poll in a sleep loop.
+
+Pass `--implementer <family>` when another model wrote the change. In design
+mode (`--design`) the flag instead names the design's **author**, never the
+eventual code implementer — see `../afk/SKILL.md` ("Design-stage external
+gate"): declaring the code implementer there can hand a driver-authored design
+to the driver's own model for review.
+
+Add the flag only when that other model *actually* produced the artifact under
+review — it can permit a run as well as block one (Independence above), so a
+value copied in from an example defeats the self-skip this gate exists for.
 
 **The review is bounded** by `CLAUDE_REVIEW_TIMEOUT_MS` (default 15 min), with
 `AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
