@@ -40,6 +40,14 @@ test('an unknown code fails closed to error', () => {
   assert.equal(failureDirection(undefined), 'error');
 });
 
+test('prototype-named codes are unknown codes, not inherited lookups', () => {
+  // A bare index would resolve these to inherited values — a truthy
+  // non-direction that a future consumer could read as availability.
+  for (const code of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    assert.equal(failureDirection(code), 'error', code);
+  }
+});
+
 test('the driver doctrine no longer scopes quota/model-unavailable to Claude', () => {
   const afkSkill = readFileSync(new URL('../skills/afk/SKILL.md', import.meta.url), 'utf8');
   assert.doesNotMatch(afkSkill, /Claude-only/);
