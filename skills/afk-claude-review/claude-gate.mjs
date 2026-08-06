@@ -30,6 +30,7 @@ import { closeSync, openSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isGateDisabled, isSpawnTimeout, reviewTimeoutMs } from '../../lib/gate/env.mjs';
+import { failureDirection, httpFailureCode } from '../../lib/gate/failure.mjs';
 import { git } from '../../lib/gate/git.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
@@ -342,17 +343,21 @@ try {
 if (envelope?.is_error) {
   const status = envelope.api_error_status;
   const detail = String(envelope.result || '').slice(0, 300);
-  if (status === 401 || status === 403) {
-    emitSkip(`Claude not authenticated (HTTP ${status}) — log in with the Claude Code CLI, or set CLAUDE_REVIEW_GATE=off. ${detail}`);
-  }
-  if (status === 404) {
-    emitSkip(`Configured model "${model}" is unavailable (HTTP 404) — set CLAUDE_REVIEW_MODEL to a model this account can use. ${detail}`);
-  }
-  if (status === 429) {
-    // afk's selection rule treats an out-of-credit or rate-limited reviewer as
-    // UNAVAILABLE, so the next gate in priority takes its place. Erroring here
-    // would instead mark the round unclean and block the PR on a quota blip.
-    emitSkip(`Claude is rate-limited or out of quota (HTTP 429) — this gate cannot run right now; the next gate in priority should take its place. ${detail}`);
+  // Direction is table-owned (lib/gate/failure.mjs): auth, rate-limit, and
+  // model-unavailable are UNAVAILABILITY — the next gate in priority takes
+  // this reviewer's place. Erroring on a quota blip would block the PR.
+  const code = status ? httpFailureCode(status) : 'http_error';
+  if (failureDirection(code) === 'skip') {
+    if (code === 'auth') {
+      emitSkip(`Claude not authenticated (HTTP ${status}) — log in with the Claude Code CLI, or set CLAUDE_REVIEW_GATE=off. ${detail}`);
+    }
+    if (code === 'model_unavailable') {
+      emitSkip(`Configured model "${model}" is unavailable (HTTP 404) — set CLAUDE_REVIEW_MODEL to a model this account can use. ${detail}`);
+    }
+    if (code === 'rate_limit') {
+      emitSkip(`Claude is rate-limited or out of quota (HTTP 429) — this gate cannot run right now; the next gate in priority should take its place. ${detail}`);
+    }
+    emitSkip(`Claude is unavailable (HTTP ${status}). ${detail}`);
   }
   emitError(`Claude review failed${status ? ` (HTTP ${status})` : ''}: ${detail} Transcript: ${logFile}`, res.status || 1);
 }

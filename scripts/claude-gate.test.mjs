@@ -736,3 +736,15 @@ test('a bare-name claude.cmd on PATH is resolved', {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('an is_error envelope with no api_error_status is an error, not a skip', () => {
+  withStub({ is_error: true, result: 'something broke upstream' }, (bin) => {
+    const result = runGate({
+      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      env: { CLAUDE_GATE_BIN: bin },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: Claude review failed/);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  });
+});
