@@ -83,8 +83,8 @@ enablement.
 ## Debate record
 
 - R1 (3×P2 + 2 minor; central token-mechanics claims confirmed): F1 AC3
-  OR-branch unachievable → deviation ratified on #29 + in-run sync --check
-  + determinism argument; F2 "serializes" misdescribed cancel-in-progress →
+  OR-branch unachievable → deviation ratified on #29 with the in-run sync
+  --check and determinism argument; F2 "serializes" misdescribed cancel-in-progress →
   supersede-latest semantics stated as deliberate; F3 parse-only check
   blind to the real bug class → structural assertions (True-key aware);
   F4 no-trigger/no-loop confirmed + idempotence addendum; F5/F6 file list
