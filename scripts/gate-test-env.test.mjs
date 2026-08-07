@@ -5,8 +5,10 @@ import { delimiter, join } from 'node:path';
 import { test } from 'node:test';
 
 import {
-  gateTestEnv, pathKey, spawnGate, stubPath, tempEnv,
+  gateTestEnv, nonMergeHead, pathKey, spawnGate, stubPath, tempEnv,
 } from './gate-test-env.mjs';
+
+const TEST_COMMIT = nonMergeHead();
 
 test('gate test environment removes ambient gate configuration', () => {
   const result = gateTestEnv({}, {
@@ -107,7 +109,7 @@ test('a gate whose temp root does not exist still emits a marker block', () => {
     ['CODEX', 'skills/afk-codex-review/codex-gate.mjs', { CODEX_GATE_BIN: unusable }],
   ];
   for (const [label, gate, bin] of cases) {
-    const res = spawnGate([gate, '--commit', 'HEAD', '--implementer', 'glm'], {
+    const res = spawnGate([gate, '--commit', TEST_COMMIT, '--implementer', 'glm'], {
       cwd: new URL('..', import.meta.url),
       encoding: 'utf8',
       // tempEnv, not literal keys: Windows spells these `Temp`, and gateTestEnv
