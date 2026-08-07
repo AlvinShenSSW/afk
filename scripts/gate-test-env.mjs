@@ -119,3 +119,13 @@ export function stubPath(dir, name, env = process.env) {
     ));
   return { [key]: [dir, ...inherited].join(delimiter) };
 }
+
+// On a pull_request event, actions/checkout puts HEAD on the PR merge commit,
+// which the gates refuse by design ("select a parent-relative branch range").
+// Tests that just need SOME reviewable commit resolve the nearest non-merge
+// one instead of hardcoding HEAD, so the suite passes in every checkout shape.
+export function nonMergeHead(cwd = process.cwd()) {
+  return spawnSync('git', ['rev-list', '--no-merges', '-n', '1', 'HEAD'], {
+    cwd, encoding: 'utf8',
+  }).stdout.trim() || 'HEAD';
+}

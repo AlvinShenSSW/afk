@@ -8,7 +8,9 @@ import { createServer } from 'node:http';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, nonMergeHead, spawnGate } from './gate-test-env.mjs';
+
+const TEST_COMMIT = nonMergeHead();
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-glm-review/glm-gate.mjs';
@@ -67,7 +69,7 @@ test('a GLM response body that never finishes ends as a non-zero timeout error',
   try {
     const { port } = server.address();
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: {
         ZAI_API_KEY: 'test-only',
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}/anthropic`,
@@ -95,7 +97,7 @@ test('a GLM upstream error never echoes its response body', async () => {
   try {
     const { port } = server.address();
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: {
         ZAI_API_KEY: key,
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
@@ -129,7 +131,7 @@ test('a GLM successful response cannot echo the configured key', async () => {
     // GLM_API_KEY-only environment: pins the documented ZAI -> GLM key
     // fallback surviving the lifecycle's provider-env injection.
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: {
         GLM_API_KEY: key,
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
@@ -244,7 +246,7 @@ test('a GLM non-JSON body is an error, not a skip', async () => {
     response.end('not-json');
   }, async (port) => {
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
     });
     assert.notEqual(result.status, 0, result.stdout);
@@ -259,7 +261,7 @@ test('a GLM empty completion is an error, not a skip', async () => {
     response.end(JSON.stringify({ model: 'glm-5.2', stop_reason: 'end_turn', content: [] }));
   }, async (port) => {
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
     });
     assert.notEqual(result.status, 0, result.stdout);
@@ -278,7 +280,7 @@ test('a truncated GLM completion (stop_reason max_tokens) is discarded as an err
     }));
   }, async (port) => {
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
     });
     assert.notEqual(result.status, 0, result.stdout);
@@ -297,7 +299,7 @@ test('a GLM reviewer identity outside the glm-5.2 lineage is discarded', async (
     }));
   }, async (port) => {
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
     });
     assert.notEqual(result.status, 0, result.stdout);
@@ -321,7 +323,7 @@ test('the GLM request is Anthropic-shaped with both auth headers and the output-
     });
   }, async (port) => {
     const result = await runGateAsync({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: {
         ZAI_API_KEY: 'shape-probe-key',
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
