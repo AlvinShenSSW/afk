@@ -16,7 +16,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { verifyReviewerIdentity } from '../lib/gate/model-identity.mjs';
-import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
+import { gateTestEnv, nonMergeHead, spawnGate, stubPath } from './gate-test-env.mjs';
+
+const TEST_COMMIT = nonMergeHead();
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-claude-review/claude-gate.mjs';
@@ -135,7 +137,7 @@ test('the independence skip is distinguishable from every cannot-run skip', () =
 test('a Claude review that never returns ends as a non-zero timeout error', () => {
   withSleepingStub((bin) => {
     const result = runGate({
-      args: ['--commit', 'HEAD', '--implementer', 'codex'],
+      args: ['--commit', TEST_COMMIT, '--implementer', 'codex'],
       env: { CLAUDE_GATE_BIN: bin, CLAUDE_REVIEW_TIMEOUT_MS: '30' },
     });
     assert.notEqual(result.status, 0);
@@ -157,11 +159,11 @@ test('claude gate resolves a branch target to the promoted remote base', () => {
 });
 
 test('claude gate resolves a commit target', () => {
-  const result = runGate({ args: ['--implementer', 'codex', '--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-args'] });
 
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.kind, 'commit');
-  assert.equal(parsed.commit, 'HEAD');
+  assert.equal(parsed.commit, TEST_COMMIT);
 });
 
 // ── the prompt actually sent ────────────────────────────────────────────────
@@ -304,7 +306,7 @@ test('claude design mode: an unavailable reviewer skips and proceeds (Decision 6
 // ── the read-only boundary ──────────────────────────────────────────────────
 
 test('claude gate loads no tool that can write', () => {
-  const result = runGate({ args: ['--implementer', 'codex', '--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-args'] });
   const { args } = JSON.parse(result.stdout);
 
   const tools = args[args.indexOf('--tools') + 1];
@@ -326,7 +328,7 @@ test('claude gate loads no tool that can write', () => {
 test('claude gate never passes a fallback model', () => {
   // A silent downgrade to a weaker reviewer is a quality regression with no
   // visible symptom; an unavailable model must surface as a skip instead.
-  const result = runGate({ args: ['--implementer', 'codex', '--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-args'] });
   const { args } = JSON.parse(result.stdout);
   assert.equal(args.includes('--fallback-model'), false);
 });
@@ -335,13 +337,13 @@ test('the default reviewer is a pinned full model ID, not an alias', () => {
   // `--model opus` resolved to claude-opus-4-8 on CLI 2.1.214 while the pipeline
   // required a current generation. An alias is resolved host-side, so only a
   // full ID states which generation the gate asked for.
-  const base = runGate({ args: ['--implementer', 'codex', '--commit', 'HEAD', '--print-args'] });
+  const base = runGate({ args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-args'] });
   const dflt = JSON.parse(base.stdout).args;
   assert.equal(dflt[dflt.indexOf('--model') + 1], 'claude-opus-5');
   assert.equal(dflt[dflt.indexOf('--effort') + 1], 'medium');
 
   const custom = runGate({
-    args: ['--implementer', 'codex', '--commit', 'HEAD', '--print-args'],
+    args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-args'],
     env: { CLAUDE_REVIEW_MODEL: 'claude-sonnet-5', CLAUDE_REVIEW_EFFORT: 'high' },
   });
   const set = JSON.parse(custom.stdout).args;
@@ -354,7 +356,7 @@ test('an alias model is refused before any call is spent', () => {
   // during resolution rather than after a metered call.
   for (const alias of ['opus', 'sonnet', 'claude-opus-latest']) {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD', '--print-args'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-args'],
       env: { CLAUDE_REVIEW_MODEL: alias },
     });
     assert.notEqual(result.status, 0, `"${alias}" must not be accepted`);
@@ -369,7 +371,7 @@ test('an alias model is refused before any call is spent', () => {
 test('an is_error envelope with 401 skips as unauthenticated', () => {
   withStub({ is_error: true, api_error_status: 401, result: 'unauthorized' }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -380,7 +382,7 @@ test('an is_error envelope with 401 skips as unauthenticated', () => {
 test('an is_error envelope with 404 skips as model-unavailable', () => {
   withStub({ is_error: true, api_error_status: 404, result: 'no such model' }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       // Pinned in shape, absent in fact: unavailability is the host's answer,
       // not a malformed request.
       env: { CLAUDE_GATE_BIN: bin, CLAUDE_REVIEW_MODEL: 'claude-nonesuch-9' },
@@ -395,7 +397,7 @@ test('an is_error envelope with exit code 0 is still never a review', () => {
   // an API error. A gate reading the exit code would report failure as success.
   withStub({ is_error: true, api_error_status: 500, result: 'upstream boom' }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0, 'an errored review must not exit 0');
@@ -407,7 +409,7 @@ test('an is_error envelope with exit code 0 is still never a review', () => {
 test('an empty result is an error, not an empty approval', () => {
   withStub({ is_error: false, result: '   ', modelUsage: usage(PINNED) }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0);
@@ -418,7 +420,7 @@ test('an empty result is an error, not an empty approval', () => {
 test('unparseable output is an error, not silence', () => {
   withStub('not json at all', (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0);
@@ -429,7 +431,7 @@ test('unparseable output is an error, not silence', () => {
 test('a successful envelope is emitted as the review', () => {
   withStub({ is_error: false, result: '[P1] lib/x.mjs:1 boom\nREQUEST CHANGES', modelUsage: usage(PINNED) }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -453,7 +455,7 @@ test('an auxiliary model alongside the pinned reviewer is not a mismatch', () =>
     modelUsage: usage('claude-haiku-4-5-20251001', PINNED),
   }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -464,7 +466,7 @@ test('an auxiliary model alongside the pinned reviewer is not a mismatch', () =>
 test('a dated snapshot of the pinned model satisfies the request', () => {
   withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage(`${PINNED}-20260115`) }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -477,7 +479,7 @@ test('a request pinned to a snapshot is satisfied by the family identity', () =>
   // must not be blocked because the host reports the undated identity.
   withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage(PINNED) }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin, CLAUDE_REVIEW_MODEL: `${PINNED}-20260115` },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -489,7 +491,7 @@ test('a review produced by another generation is an error, never a verdict', () 
   // The reported defect: the request said Opus 5 and claude-opus-4-8 answered.
   withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage('claude-opus-4-8') }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0, 'an unpinned reviewer must not exit clean');
@@ -505,7 +507,7 @@ test('a near-miss identity does not pass on a shared prefix', () => {
   // Lineage matches at a segment boundary; claude-opus-50 is a different model.
   withStub({ is_error: false, result: 'APPROVE — LGTM', modelUsage: usage('claude-opus-50') }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0);
@@ -532,7 +534,7 @@ test('design mode is not exempt from the identity check', () => {
 test('an envelope with no modelUsage is unverifiable, not clean', () => {
   withStub({ is_error: false, result: 'APPROVE — LGTM' }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0, 'an unverifiable review must not exit clean');
@@ -544,7 +546,7 @@ test('an envelope with no modelUsage is unverifiable, not clean', () => {
 
 test('a missing CLI skips cleanly rather than failing the round', () => {
   const result = runGate({
-    args: ['--implementer', 'codex', '--commit', 'HEAD'],
+    args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
     env: { CLAUDE_GATE_BIN: join(tmpdir(), 'definitely-not-a-real-claude-binary-xyz') },
   });
 
@@ -645,7 +647,7 @@ test('an over-budget diff is an error, not a truncated approval', () => {
   // or the old side of a modification, is nowhere in the tree. Approving on a
   // partial diff would quietly redefine "reviewed".
   const result = runGate({
-    args: ['--implementer', 'codex', '--commit', 'HEAD'],
+    args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
     env: { CLAUDE_REVIEW_MAX_CTX_BYTES: '200' },
   });
 
@@ -660,7 +662,7 @@ test('rate-limiting is unavailability, not a failed review', () => {
   // and block the PR on a quota blip.
   withStub({ is_error: true, api_error_status: 429, result: 'rate limit exceeded' }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -725,7 +727,7 @@ test('a bare-name claude.cmd on PATH is resolved', {
   try {
     writeFileSync(join(dir, 'claude.cmd'), '@echo off\r\nexit /b 0\r\n');
     const result = runGate({
-      args: ['--commit', 'HEAD', '--implementer', 'codex', '--print-args'],
+      args: ['--commit', TEST_COMMIT, '--implementer', 'codex', '--print-args'],
       // stubPath: the native installer's `claude.exe` masks the shim shape for
       // most users, and pass 1 would then correctly return the bare name.
       env: stubPath(dir, 'claude'),
@@ -740,7 +742,7 @@ test('a bare-name claude.cmd on PATH is resolved', {
 test('an is_error envelope with no api_error_status is an error, not a skip', () => {
   withStub({ is_error: true, result: 'something broke upstream' }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0);
@@ -752,7 +754,7 @@ test('an is_error envelope with no api_error_status is an error, not a skip', ()
 test('a claude review without the mandated verdict line is discarded as an error', () => {
   withStub({ is_error: false, result: 'this looks fine to me overall', modelUsage: usage(PINNED) }, (bin) => {
     const result = runGate({
-      args: ['--implementer', 'codex', '--commit', 'HEAD'],
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
     });
     assert.notEqual(result.status, 0);

@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { gateTestEnv, spawnGate } from './gate-test-env.mjs';
+import { gateTestEnv, nonMergeHead, spawnGate } from './gate-test-env.mjs';
+
+const TEST_COMMIT = nonMergeHead();
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -39,7 +41,7 @@ const GATE_PATHS = {
   glm: join(repoRoot, 'skills/afk-glm-review/glm-gate.mjs'),
 };
 
-function runGate(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot } = {}) {
+function runGate(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = repoRoot } = {}) {
   return spawnGate([GATE_PATHS[family], ...args], {
     cwd,
     encoding: 'utf8',
@@ -47,7 +49,7 @@ function runGate(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot
   });
 }
 
-async function runGateAsync(family, { args = ['--commit', 'HEAD'], env = {}, cwd = repoRoot } = {}) {
+async function runGateAsync(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = repoRoot } = {}) {
   const child = spawn(process.execPath, [GATE_PATHS[family], ...args], {
     cwd,
     env: gateTestEnv(env),

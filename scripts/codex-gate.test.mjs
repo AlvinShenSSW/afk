@@ -12,7 +12,9 @@ import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
+import { gateTestEnv, nonMergeHead, spawnGate, stubPath } from './gate-test-env.mjs';
+
+const TEST_COMMIT = nonMergeHead();
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-codex-review/codex-gate.mjs';
@@ -88,7 +90,7 @@ test('codex gate honours every documented opt-out spelling', () => {
 test('a Codex review that never returns ends as a non-zero timeout error', () => {
   withSleepingStub((bin) => {
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: {
         CODEX_GATE_BIN: bin,
         CODEX_GATE_NO_LOCK: '1',
@@ -143,12 +145,12 @@ test('codex gate resolves and forwards a promoted base when none is given', () =
 });
 
 test('codex gate leaves an explicit non-base target untouched', () => {
-  const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
 
   const { args, hasExplicitTarget } = JSON.parse(result.stdout);
   assert.equal(hasExplicitTarget, true);
   assert.equal(args.includes('--base'), false, 'must not add a base beside an explicit target');
-  assert.equal(args[args.indexOf('--commit') + 1], 'HEAD');
+  assert.equal(args[args.indexOf('--commit') + 1], TEST_COMMIT);
 });
 
 test('codex gate promotes an operator-supplied base, not just the detected one', () => {
@@ -163,7 +165,7 @@ test('codex gate promotes an operator-supplied base, not just the detected one',
 
 test('codex gate keeps its lean-context overrides ahead of passthrough flags', () => {
   // Codex applies later -c overrides last, so an operator's own -c must win.
-  const result = runGate({ args: ['--commit', 'HEAD', '-c', 'model_reasoning_effort=high', '--print-args'] });
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '-c', 'model_reasoning_effort=high', '--print-args'] });
 
   const { args } = JSON.parse(result.stdout);
   const efforts = args.filter((a) => String(a).startsWith('model_reasoning_effort='));
@@ -171,7 +173,7 @@ test('codex gate keeps its lean-context overrides ahead of passthrough flags', (
 });
 
 test('codex gate does not forward --print-args to codex', () => {
-  const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
   const { args } = JSON.parse(result.stdout);
   assert.equal(args.includes('--print-args'), false);
 });
@@ -182,7 +184,7 @@ test('codex gate does not forward --print-args to codex', () => {
 // downgraded reviewer looks exactly like a clean one.
 
 test('codex gate pins the reviewer model instead of inheriting the session one', () => {
-  const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
 
   const { args, model } = JSON.parse(result.stdout);
   assert.equal(model, 'gpt-5.6-terra');
@@ -191,7 +193,7 @@ test('codex gate pins the reviewer model instead of inheriting the session one',
 
 test('codex gate honours an explicit CODEX_REVIEW_MODEL', () => {
   const result = runGate({
-    args: ['--commit', 'HEAD', '--print-args'],
+    args: ['--commit', TEST_COMMIT, '--print-args'],
     env: { CODEX_REVIEW_MODEL: 'gpt-5.6-sol' },
   });
 
@@ -207,7 +209,7 @@ test('codex gate treats every inherit spelling as "add no model override"', () =
   // configured one.
   for (const value of ['inherit', 'default', 'config', '', '  ', 'INHERIT']) {
     const result = runGate({
-      args: ['--commit', 'HEAD', '--print-args'],
+      args: ['--commit', TEST_COMMIT, '--print-args'],
       env: { CODEX_REVIEW_MODEL: value },
     });
     const { args, model } = JSON.parse(result.stdout);
@@ -224,7 +226,7 @@ test('codex gate keeps the pinned model ahead of an operator -c override', () =>
   // Codex applies later -c overrides last, so the pin must not outrank a
   // deliberate per-run choice made on the command line.
   const result = runGate({
-    args: ['--commit', 'HEAD', '-c', 'model=gpt-5.6-sol', '--print-args'],
+    args: ['--commit', TEST_COMMIT, '-c', 'model=gpt-5.6-sol', '--print-args'],
   });
 
   const { args } = JSON.parse(result.stdout);
@@ -368,7 +370,7 @@ test('an argument no shell can carry ends as a parseable gate ERROR, not a stack
     writeFileSync(bin, '@echo off\r\necho Logged in as test@example.com\r\nexit /b 0\r\n');
 
     const result = runGate({
-      args: ['--commit', 'HEAD', '--implementer', 'claude', '--some-pass-through', '%USERNAME%'],
+      args: ['--commit', TEST_COMMIT, '--implementer', 'claude', '--some-pass-through', '%USERNAME%'],
       // This is the first codex-gate test to reach the review spawn, so it is
       // also the first to reach the machine-wide review lock. A test must not
       // queue behind a real review someone is running on the same box — that
@@ -402,7 +404,7 @@ test('a bare-name codex.cmd on PATH is resolved without disturbing the APPDATA p
   try {
     writeFileSync(join(dir, 'codex.cmd'), '@echo off\r\nexit /b 0\r\n');
     const result = runGate({
-      args: ['--commit', 'HEAD', '--implementer', 'claude', '--print-args'],
+      args: ['--commit', TEST_COMMIT, '--implementer', 'claude', '--print-args'],
       // stubPath: a real `codex.exe` later on PATH would keep pass 1 from ever
       // reaching the stub shim this test is about.
       env: { APPDATA: emptyAppData, ...stubPath(dir, 'codex') },
@@ -442,7 +444,7 @@ if (process.argv.includes('status')) {
 test('an empty verdict file is an error, not an empty approval', () => {
   withEmptyVerdictStub((bin) => {
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
     });
     assert.notEqual(result.status, 0, result.stdout);
@@ -470,7 +472,7 @@ if (process.argv.includes('status')) {
       : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
     if (process.platform !== 'win32') chmodSync(sh, 0o755);
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { CODEX_GATE_BIN: sh, CODEX_GATE_NO_LOCK: '1' },
     });
     const lines = result.stdout.split('\n');

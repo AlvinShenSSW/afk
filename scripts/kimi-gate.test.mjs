@@ -13,7 +13,9 @@ import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, spawnGate, stubPath } from './gate-test-env.mjs';
+import { gateTestEnv, nonMergeHead, spawnGate, stubPath } from './gate-test-env.mjs';
+
+const TEST_COMMIT = nonMergeHead();
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-kimi-review/kimi-gate.mjs';
@@ -72,10 +74,10 @@ test('kimi gate resolves the default base to its promoted remote ref', () => {
 test('kimi gate tells its reviewer to go looking, unlike the tool-less gate', () => {
   // kimi HAS tools; glm does not. The context clause is per-gate for exactly
   // this reason, so a shared prompt must never flatten the difference.
-  const result = runGate({ args: ['--commit', 'HEAD', '--print-args'] });
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
   const { promptBytes, command } = JSON.parse(result.stdout);
   assert.ok(promptBytes > 0);
-  assert.equal(command, 'git show HEAD');
+  assert.equal(command, `git show ${TEST_COMMIT}`);
 });
 
 test('kimi gate never exits clean on a status it could not read', () => {
@@ -179,7 +181,7 @@ test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
     chmodSync(stub, 0o755);
 
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { KIMI_GATE_BIN: stub, KIMI_REVIEW_TIMEOUT_MS: '2000' },
     });
 
@@ -231,7 +233,7 @@ test('the stub reviewer receives the whole prompt, verbatim', {
     const record = join(dir, 'record.json');
     const bin = posixStub(dir, strictStub(dir, { record }));
 
-    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: bin } });
 
     assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, result.stderr);
     const { argv } = JSON.parse(readFileSync(record, 'utf8'));
@@ -269,7 +271,7 @@ test('the shim fallback hands over a brief on disk and takes it back', {
     const bin = posixStub(dir, impl);
 
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' },
     });
 
@@ -303,7 +305,7 @@ test('a shim answer with no verdict line is an error, never a review', {
     }));
 
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' },
     });
 
@@ -351,7 +353,7 @@ test('a bare-name .cmd shim on PATH is resolved and drives a completed review', 
     // stubPath, not a prepend: a real `kimi.exe` later on PATH would make
     // pass 1 return the bare name, and this gate would then spawn the REAL,
     // metered CLI instead of the stub.
-    const result = runGate({ args: ['--commit', 'HEAD'], env: stubPath(dir, 'kimi') });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: stubPath(dir, 'kimi') });
 
     assert.match(result.stdout, /STUB REVIEW: APPROVE — resolved via PATH/, result.stderr);
     assert.doesNotMatch(result.stdout, /SKIPPED/, 'a resolvable shim is not "not installed"');
@@ -408,7 +410,7 @@ test('the gate passes only flags this CLI documents', {
     const record = join(dir, 'record.json');
     const bin = posixStub(dir, strictStub(dir, { record }));
 
-    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: bin } });
 
     assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, `${result.stdout}\n${result.stderr}`);
     const { argv } = JSON.parse(readFileSync(record, 'utf8'));
@@ -438,7 +440,7 @@ test('a rejected flag is reported as CLI drift, not as an empty review', {
     ));
     const bin = posixStub(dir, impl);
 
-    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: bin } });
 
     assert.notEqual(result.status, 0);
     assert.match(result.stdout, /ERROR: /);
@@ -468,7 +470,7 @@ test('the forced shim transport replaces the primary spawn, never doubles it', {
     }));
 
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' },
     });
 
@@ -495,7 +497,7 @@ test('a no-output failure names the version and the argv, whatever the CLI said'
       body: "process.stderr.write('Segmentation fault: 11'); process.exit(139);",
     }));
 
-    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: bin } });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: bin } });
 
     assert.notEqual(result.status, 0);
     assert.match(result.stdout, /produced no final message/);
@@ -530,7 +532,7 @@ test('a signal-killed kimi is an ERROR, never a partial verdict', {
     chmodSync(stub, 0o755);
 
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { KIMI_GATE_BIN: stub },
     });
 
@@ -554,7 +556,7 @@ test('output past the buffer bound is an ERROR naming the knob, not a verdict', 
     chmodSync(stub, 0o755);
 
     const result = runGate({
-      args: ['--commit', 'HEAD'],
+      args: ['--commit', TEST_COMMIT],
       env: { KIMI_GATE_BIN: stub, KIMI_REVIEW_MAX_BUFFER_BYTES: '1024' },
     });
 
@@ -575,7 +577,7 @@ test('a direct-path kimi review without a verdict line is an error, not a verdic
     const stub = join(dir, 'kimi-stub');
     writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.stdout.write('fluent text with no verdict line'); }\n`);
     chmodSync(stub, 0o755);
-    const result = runGate({ args: ['--commit', 'HEAD'], env: { KIMI_GATE_BIN: stub } });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: stub } });
     assert.notEqual(result.status, 0, result.stdout);
     assert.match(result.stdout, /ERROR: .*verdict/);
     assert.doesNotMatch(result.stdout, /fluent text/);
