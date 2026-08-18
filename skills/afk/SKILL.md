@@ -38,16 +38,19 @@ self-contained spec.
    touch, naming, safe-direction-only, deploy is the operator's job, summary
    language, explicit gate choice).
 6. **Restate the scope and the effective gate profile with its source**
-   (`flags` / `config` / `legacy` / `built-in`) in one or two lines, then
+   (`flags` / `config` / `legacy` / `built-in`), and the resolved forge with
+   its source (`config` / `remote` / `default`), in one or two lines, then
    start. The restatement is what makes a misread flag or a template-written
-   profile visible before any paid work.
+   profile visible before any paid work. The forge decides which tracker an
+   issue id is read from, and the CLI of another one can answer for that id
+   and succeed.
 
 ## Per issue — the full waterfall (one at a time)
 
 **Every issue runs the full waterfall — no exceptions.** Each in-scope PR passes
 internal review AND the external gate(s) AND lands green (merged, or under
-`leave-open` marked ready only after internal review + gate + full test suite all
-pass). A design doc, a pushed branch, or a draft PR is a mid-waterfall
+`leave-open` declared ready only after internal review + gate + full test suite all
+pass). A design doc, a pushed branch, or a PR not yet ready is a mid-waterfall
 checkpoint — never a stopping point and never an operator handoff. "Next:
 operator runs the review" is a bug, not an end state.
 
@@ -56,20 +59,20 @@ evidence and material progress govern convergence, never round count) →
 design-stage external gate (opt-in pilot, default off; one role per evaluation —
 "Design-stage external gate" below) → tests
 first (targeted) → implementation → adversarial sweep →
-commit → push early → open the PR as draft → deterministic CI green (fix red
+commit → push early → open the PR as not-ready → deterministic CI green (fix red
 now) → **internal review** (`afk-internal-review`) → triage every finding and
 batch-fix admitted P1s plus eligible lower-severity work →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
-the final commit → mark ready → merge per policy. The design doc matters more
+the final commit → declare it ready → merge per policy. The design doc matters more
 than the code.
 
 - Scale design/debate depth to the work: mechanical, well-specified work gets a
   brief design and one debate round; design-heavy work gets the full treatment.
   Never scale down tests or gates.
 - **Green** = deterministic CI green AND the full test suite green on the final
-  commit. A green PR page alone is not green. Never mark ready before the suite
-  is green.
+  commit. A green status on the PR alone is not green. Never declare it ready
+  before the suite is green.
 
 **Freeze the issue contract before implementation.** The design records the
 acceptance criteria, product and engineering invariants, explicit non-goals,
@@ -506,7 +509,7 @@ Two consecutive unfinished rounds without material progress trigger an
 automatic root-cause checkpoint, never an operator permission prompt. Pause paid
 gates, cluster stable IDs, remove duplicates and unsupported scope, sweep the
 whole diff against the contract, apply one minimal batch fix, and run affected
-checks. If the checkpoint still cannot progress, leave the PR draft with
+checks. If the checkpoint still cannot progress, leave the PR not ready with
 `OUTSTANDING`, continue independent queued work, and report the blocker. If one
 decision changed A→B→A, pin the contract-and-test-backed choice; it changes again
 only on new evidence. The disposition record lives in the run ledger, PR thread,

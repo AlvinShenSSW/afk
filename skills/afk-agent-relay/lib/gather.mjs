@@ -1,5 +1,5 @@
 // gather.mjs — collect raw context OUT OF PROCESS so it never enters Claude's
-// window. Reads git diff / gh issue / files / ripgrep hits / log tails, applies
+// window. Reads git diff / tracked issues / files / ripgrep hits / log tails, applies
 // excludes + redaction, and enforces a loud byte cap (no silent truncation).
 //
 // All side-effecting deps (process spawn, file read) are injectable for test
@@ -7,6 +7,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
+import { issueCommand, resolveForge } from '../../../lib/forge.mjs';
 import {
   filterDiffByExcludes,
   filterGrepByExcludes,
@@ -48,6 +49,7 @@ export function gatherContext(sources = {}, opts = {}) {
     run = defaultRun,
     readFile = defaultReadFile,
     logTailLines = 200,
+    configPath = null,
   } = opts;
 
   const notes = [];
@@ -66,11 +68,27 @@ export function gatherContext(sources = {}, opts = {}) {
     }
   }
 
-  // gh issues
-  for (const n of sources.issue || []) {
-    const r = run('gh', ['issue', 'view', String(n)]);
-    if (r.error || r.status !== 0) notes.push(`[skip: gh issue view ${n} unavailable]`);
-    else if (r.stdout.trim()) chunks.push({ title: `issue #${n}`, body: r.stdout });
+  // tracked issues — dispatched on the resolved forge, never on which CLI runs.
+  // A forge without an adapter is named here rather than attempted: the CLI of
+  // a different forge can answer for an id it recognises and exit 0, which
+  // would put another tracker's issue into the brief under this id.
+  if ((sources.issue || []).length) {
+    const remote = run('git', ['remote', 'get-url', 'origin']);
+    const remoteUrl = remote.status === 0 ? remote.stdout.trim() : '';
+    const { forge } = resolveForge({ configPath, remoteUrl });
+    for (const n of sources.issue) {
+      const cmd = issueCommand(forge, n);
+      if (cmd.unsupported) {
+        notes.push(`[skip: issue ${n} not read — ${cmd.unsupported}]`);
+        continue;
+      }
+      const r = run(cmd.bin, cmd.args);
+      if (r.error || r.status !== 0) {
+        notes.push(`[skip: ${cmd.bin} could not read issue ${n} on ${forge}]`);
+      } else if (r.stdout.trim()) {
+        chunks.push({ title: `issue #${n}`, body: r.stdout });
+      }
+    }
   }
 
   // files

@@ -18,6 +18,12 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
                          # BLOCK a gate, never permit one: a value here is written
                          # once and goes stale, so it must not outrank a live signal.
 
+## forge
+# forge:                 # github · azure-devops. Omit to detect from the origin
+                         # remote, else github. Set it when the remote host is
+                         # not the tracker's, so an id is not read from whichever
+                         # CLI answers first.
+
 ## merge
 policy: leave-open       # leave-open · merge-to-unblock · merge-when-green
 

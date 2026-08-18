@@ -93,8 +93,8 @@ rounds, and final check results. Suggest running
 
 ### 7 — CI watch (only when asked to push / open a PR)
 
-If a push or PR is authorised, the job is not done when `git push` returns. Watch
-the checks (`gh pr checks <n> --watch`) and stay engaged until every required
+If a push or PR is authorised, the job is not done when `git push` returns. Poll
+the pushed revision's remote-CI checks and stay engaged until every required
 check is green: read each failing check's real output, confirm each finding
 against the cited code, fix true bugs with a regression test, update any doc the
 check flagged, and push one comprehensive fix commit per round. Once green, stop

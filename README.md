@@ -49,7 +49,9 @@ a tracker and choose work by itself.
 
 **Requirements:** git, Node 20+ for the bundled helpers (dependency-free ESM, no
 `npm install`), and the CLI or API credential for whichever external review
-roles you enable.
+roles you enable. Reading a tracked issue also needs that forge's CLI — `gh` for
+GitHub, `az` with the `azure-devops` extension for Azure DevOps. Everything else
+in the pipeline is plain git.
 
 ## What it provides
 
@@ -225,6 +227,9 @@ gates:    codex
 priority: codex > claude > kimi > glm
 # implementer:   # who writes the code, if not the driver; may only block a gate
 
+## forge
+# forge:                 # github · azure-devops
+
 ## merge
 policy: leave-open
 
@@ -281,6 +286,15 @@ The snapshot-backed API gates (GLM, DeepSeek, MiMo) and the agent relay filter
 their payload before it leaves the machine: secret-bearing paths (`.env`, keys,
 credential and secret files) are dropped from the snapshot, and known token
 shapes are redacted from what is sent.
+
+### Which forge
+
+`forge` decides which tracker an issue id is read from. Left unset it is detected
+from the `origin` remote, and falls back to GitHub when nothing matches. Set it
+explicitly when the code host and the tracker are not the same service: the id
+reaches whichever CLI the forge selects, and the CLI of a different forge can
+answer for that id and succeed, putting another tracker's issue into the plan.
+A forge with no adapter is named where it is needed rather than attempted.
 
 ## Merge policies
 

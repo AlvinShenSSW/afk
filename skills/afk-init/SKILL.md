@@ -1,6 +1,6 @@
 ---
 name: afk-init
-description: Part of the afk pipeline. One-time, idempotent bootstrap for a repository — detect build/test/lint commands, write .afk/config.md, ignore .afk/, and record the plugin root. Run once per repo before the other afk skills. Triggers include "/afk-init", "set up afk", "initialise afk".
+description: Part of the afk pipeline. One-time, idempotent bootstrap for a repository — detect build/test/lint commands, write .afk/config.md, ignore .afk/, and record the forge and plugin root. Run once per repo before the other afk skills. Triggers include "/afk-init", "set up afk", "initialise afk".
 ---
 
 # afk-init
@@ -22,7 +22,10 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
 4. **Detect commands.** Fill any blank `test`/`lint`/`build` line from the
    project's own manifest or task runner. Leave a line blank and say so when
    nothing is found — never guess a command.
-5. **Record `pluginRoot`.** Resolve the plugin's install location
+5. **Record the forge** when the `origin` remote resolves one, leaving `forge`
+   blank when it does not — a written-in guess reads exactly like a detected
+   value later, and it decides which tracker an issue id is read from.
+6. **Record `pluginRoot`.** Resolve the plugin's install location
    (`${CLAUDE_PLUGIN_ROOT}` when set, else the directory this skill loaded from)
    into `.afk/config.md`, so bundled helpers resolve under a drop-in install
    where the env var is unset. When a value is already recorded, ask the helper
@@ -38,13 +41,13 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
    `refresh` (the recorded value is a superseded version of this same install —
    write the resolved one), or `keep` (a custom or manual root, which is a
    deliberate choice and survives). Report the reason either way.
-6. **Ignore local AFK state and credentials.** Append the missing entries from
+7. **Ignore local AFK state and credentials.** Append the missing entries from
    the plugin's `templates/gitignore-snippet.txt` to `info/exclude` under
    `git rev-parse --path-format=absolute --git-common-dir`. That file is shared
    by every linked worktree and is not tracked, so one write covers `.afk/`
    wherever it is read from without dirtying a checkout that another session may
    have mid-work on another branch.
-7. **Surface the ordered-gate notice once.** Run the shared implementation used
+8. **Surface the ordered-gate notice once.** Run the shared implementation used
    by SessionStart and AFK kickoff:
 
    ```text
@@ -54,13 +57,13 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
    Pass on any line it prints. It owns `.afk/gate-profile-notice.json`, including
    the signature and atomic write, so no entry point reimplements that protocol.
    `AFK_GATE_PROFILE_NOTICE=off` opts out.
-8. **Surface the update notice.** Run
+9. **Surface the update notice.** Run
    `node "<plugin-root>/scripts/update-check.mjs"` and pass on any line it
    prints. It is silent when current, offline, or opted out, and never blocks —
    a stale install is otherwise invisible to anyone who does not run the full
    `afk` driver. Installing the update is the host's job and the operator's
    call; never self-update from a skill.
-9. **Report** each action as created / updated / already present.
+10. **Report** each action as created / updated / already present.
 
 ## Rules
 
