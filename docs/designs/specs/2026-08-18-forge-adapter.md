@@ -59,9 +59,13 @@ about commands nothing calls.
 Redaction gains a URL-userinfo rule, placed before the shape rules so none of
 them can half-redact a userinfo it only partly matches. The rule is positional
 rather than alphabetical: a credential in a URL is a credential whatever it
-looks like. The single-component form keeps a length floor because a bare `git@`
-in an ssh URL is a user name, and redacting it would cost the reader which
-remote a line names.
+looks like. Userinfo runs to the last `@` before the host, because both `:` and
+`@` are legal inside a password — a capture that stops at the first of either
+leaves the credential in the payload, or rewrites the line so it reads as
+redacted while the tail survives, which is worse than not matching. The
+single-component form keeps a length floor because a bare `git@` in an ssh URL
+is a user name, and redacting it would cost the reader which remote a line
+names.
 
 ## Verified against the installed CLI
 
@@ -77,6 +81,14 @@ remote a line names.
   to auto-detect, and an unauthenticated organization — exit **1** with empty
   stdout, so the status check in `gather.mjs` produces the named skip rather
   than pushing an error string into the brief as an issue body.
+
+- With an organization configured as `az`'s global default and no Azure remote
+  to detect, `az boards work-item show --id 42` does **not** refuse for a
+  missing organization — it proceeds to authenticate against that default. The
+  ambient default therefore answers when the remote cannot, which is the
+  wrong-tracker read this module exists to prevent, so the organization is
+  derived from the remote and passed explicitly with `--detect false`, and a
+  remote that names none builds no command at all.
 
 Still unverified, and therefore out of this change: whether `az repos pr policy
 list` can express "the checks for this commit". It cannot, on the documentation:
@@ -94,9 +106,11 @@ until it can be verified against a live organization.
 in, including scp-style and the legacy `visualstudio.com`; the lookalike host
 `github.com.evil.example` detecting nothing; config outranking remote and each
 source label; an unrecognised configured value keeping its name with
-`known: false`; both dispatches; a non-numeric or dash-leading reference never
-reaching a command line; and a consistency test that every forge in the exported
-list has a dispatch.
+`known: false`; both dispatches; the same organization derived from all five
+Azure remote shapes; an Azure remote naming no organization building no command;
+a non-numeric or dash-leading reference never reaching a command line; and a
+consistency test that every forge in the exported list can build a command from
+its own remote.
 
 `skills/afk-agent-relay/tests/redact.test.mjs`: a short userinfo credential, a
 userinfo credential with no distinguishing alphabet, host and user preserved

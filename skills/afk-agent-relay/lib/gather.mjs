@@ -77,7 +77,7 @@ export function gatherContext(sources = {}, opts = {}) {
     const remoteUrl = remote.status === 0 ? remote.stdout.trim() : '';
     const { forge } = resolveForge({ configPath, remoteUrl });
     for (const n of sources.issue) {
-      const cmd = issueCommand(forge, n);
+      const cmd = issueCommand(forge, n, { remoteUrl });
       if (cmd.unsupported) {
         notes.push(`[skip: issue ${n} not read — ${cmd.unsupported}]`);
         continue;

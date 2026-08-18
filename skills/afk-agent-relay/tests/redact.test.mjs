@@ -123,6 +123,29 @@ test('redacts a userinfo credential with no distinguishing alphabet', () => {
   assert.doesNotMatch(text, /abcdefghijklmnopqrstuvwxyzabc/);
 });
 
+test('redacts a userinfo password containing colons', () => {
+  // Colons are legal inside a userinfo password; a capture that stops at the
+  // first one leaves the whole credential in the payload.
+  const url = `https://user:part1:part2${'@'}dev.azure.com/o/p/_git/r`;
+  const { text } = redactSecrets(url);
+  assert.doesNotMatch(text, /part1|part2/);
+  assert.match(text, /https:\/\/user:\[REDACTED\]@dev\.azure\.com/);
+});
+
+test('redacts a userinfo password containing an at sign, wholly', () => {
+  // Stopping at the first `@` rewrites the line so it reads as redacted while
+  // the tail of the credential survives — worse than not matching at all.
+  const { text } = redactSecrets('https://user:p@ss:word@example.com/r');
+  assert.doesNotMatch(text, /ss:word/);
+  assert.match(text, /https:\/\/user:\[REDACTED\]@example\.com/);
+});
+
+test('redacts a userinfo password with an empty user', () => {
+  const url = `https://:justpassword${'@'}dev.azure.com/o/p/_git/r`;
+  const { text } = redactSecrets(url);
+  assert.doesNotMatch(text, /justpassword/);
+});
+
 test('keeps the host and user while redacting the userinfo credential', () => {
   // Redacting the whole userinfo would cost the reader which account and which
   // host a leaked remote points at, which is what makes the line worth keeping.

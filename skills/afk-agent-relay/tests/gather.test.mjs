@@ -128,7 +128,10 @@ test('an azure devops remote reads the work item through az', () => {
   );
   gatherContext({ issue: ['42'] }, { run, readFile: () => null });
   assert.ok(
-    calls.includes('az boards work-item show --id 42 --output json'),
+    calls.includes(
+      'az boards work-item show --id 42 --organization'
+        + ' https://dev.azure.com/org --detect false --output json',
+    ),
     calls.join(' | '),
   );
   assert.ok(!calls.some((c) => c.startsWith('gh ')), 'gh must not be tried');
