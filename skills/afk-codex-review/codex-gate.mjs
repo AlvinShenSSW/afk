@@ -161,6 +161,17 @@ function releaseCodexLock(lock) {
 }
 
 // Explicit opt-out: CODEX_REVIEW_GATE=off/0/false/no/disabled.
+// A target that could not be parsed is a caller error, and it must surface even
+// when the gate is switched off — placed after that exit, this check would be
+// unreachable in exactly the configuration that most needs to say why. Reads
+// argv directly: it runs before the shared `userArgs` binding exists.
+{
+  const early = parseTarget(process.argv.slice(2));
+  if (early.kind === 'error') {
+    emitError(`cannot review — ${validateTarget(early).reason}`, 1);
+  }
+}
+
 if (isGateDisabled('CODEX_REVIEW_GATE')) {
   emitSkip('Codex gate disabled via CODEX_REVIEW_GATE.');
 }
@@ -182,17 +193,6 @@ function resolveCodex() {
 }
 
 const userArgs = process.argv.slice(2);
-
-// A target that could not be parsed is a caller error, and it must surface
-// even when the gate is switched off — otherwise the check below is
-// unreachable in exactly the configuration that most needs to say why.
-{
-  const early = parseTarget(userArgs);
-  if (early.kind === 'error') {
-    emitError(`cannot review — ${validateTarget(early).reason}`, 1);
-  }
-}
-
 
 // Hidden self-test for the lock only (no codex call): --selftest-lock[=holdMs].
 // Acquires, optionally holds holdMs, releases, reports wait time.

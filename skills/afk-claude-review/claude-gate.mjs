@@ -43,22 +43,22 @@ import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CLAUDE', slug: 'claude-gate' });
 
-if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
-  emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
-}
-
-const userArgs = process.argv.slice(2);
-
-// A target that could not be parsed is a caller error, and it must surface
-// even when the gate is switched off — otherwise the check below is
-// unreachable in exactly the configuration that most needs to say why.
+// A target that could not be parsed is a caller error, and it must surface even
+// when the gate is switched off — placed after that exit, this check would be
+// unreachable in exactly the configuration that most needs to say why. Reads
+// argv directly: it runs before the shared `userArgs` binding exists.
 {
-  const early = parseTarget(userArgs);
+  const early = parseTarget(process.argv.slice(2));
   if (early.kind === 'error') {
     emitError(`cannot review — ${validateTarget(early).reason}`, 1);
   }
 }
 
+if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
+  emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
+}
+
+const userArgs = process.argv.slice(2);
 const printArgsOnly = userArgs.includes('--print-args');
 // Prints the exact prompt the reviewer would receive, and calls no model. The
 // argv is not the review: asserting flags proved nothing about whether the

@@ -72,22 +72,22 @@ import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'KIMI', slug: 'kimi-gate' });
 
-if (isGateDisabled('KIMI_REVIEW_GATE')) {
-  emitSkip('Kimi gate disabled via KIMI_REVIEW_GATE.');
-}
-
-const userArgs = process.argv.slice(2);
-
-// A target that could not be parsed is a caller error, and it must surface
-// even when the gate is switched off — otherwise the check below is
-// unreachable in exactly the configuration that most needs to say why.
+// A target that could not be parsed is a caller error, and it must surface even
+// when the gate is switched off — placed after that exit, this check would be
+// unreachable in exactly the configuration that most needs to say why. Reads
+// argv directly: it runs before the shared `userArgs` binding exists.
 {
-  const early = parseTarget(userArgs);
+  const early = parseTarget(process.argv.slice(2));
   if (early.kind === 'error') {
     emitError(`cannot review — ${validateTarget(early).reason}`, 1);
   }
 }
 
+if (isGateDisabled('KIMI_REVIEW_GATE')) {
+  emitSkip('Kimi gate disabled via KIMI_REVIEW_GATE.');
+}
+
+const userArgs = process.argv.slice(2);
 const printArgsOnly = userArgs.includes('--print-args');
 // Prints the exact review prompt kimi would receive, and calls no model — the
 // only way to observe that design mode swapped the diff context clause.
