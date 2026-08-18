@@ -238,3 +238,56 @@ test('a cross-host azure setup without the organization builds no command', () =
   assert.ok(!calls.some((c) => c.startsWith('az ') || c.startsWith('gh ')), calls.join(' | '));
   assert.match(g.notes[0], /azure-organization/);
 });
+
+// A read whose payload carries a comment count but no comment bodies loses the
+// discussion. The count makes the loss knowable, so leaving it unsaid is the
+// silent skip the rules forbid.
+
+const workItem = (commentCount) =>
+  JSON.stringify({ id: 42, fields: { 'System.Title': 't', 'System.CommentCount': commentCount } });
+
+test('an issue read that drops its discussion says how much it dropped', () => {
+  const { run } = runnerFor('https://dev.azure.com/org/proj/_git/repo', ok(workItem(12)));
+  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
+  assert.equal(g.notes.length, 1, g.notes.join(' | '));
+  assert.match(g.notes[0], /issue 42/);
+  assert.match(g.notes[0], /12/);
+  assert.doesNotMatch(g.notes[0], /\baz\b|\bgh\b/, 'the note must not name a CLI');
+  assert.match(g.text, /System\.Title/, 'the payload still reaches the brief');
+});
+
+test('an issue with no discussion adds no note', () => {
+  // A note on every read is noise, and noise is how a real one gets missed.
+  const { run } = runnerFor('https://dev.azure.com/org/proj/_git/repo', ok(workItem(0)));
+  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
+  assert.deepEqual(g.notes, []);
+});
+
+test('a payload carrying no count at all adds no note', () => {
+  // The GitHub read renders its comments inline and has no count field; a note
+  // derived from the forge rather than the response would fire spuriously.
+  const { run } = runnerFor('https://github.com/o/r.git', ok('#42 issue body\n\nsome comment text'));
+  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
+  assert.deepEqual(g.notes, []);
+});
+
+test('a count that is not a positive integer adds no note', () => {
+  // The note stands in for a payload the reader cannot see, so a fractional or
+  // negative count would read as a defect in the note rather than in the read.
+  for (const count of ['many', 2.7, -3, null, Number.NaN]) {
+    const { run } = runnerFor('https://dev.azure.com/org/proj/_git/repo', ok(
+      JSON.stringify({ fields: { 'System.CommentCount': count } }),
+    ));
+    const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
+    assert.deepEqual(g.notes, [], String(count));
+  }
+});
+
+test('an unparseable payload is passed through without a note', () => {
+  // The read succeeded; guessing at a shape it does not have would invent a
+  // loss that may not exist.
+  const { run } = runnerFor('https://dev.azure.com/org/proj/_git/repo', ok('not json at all'));
+  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
+  assert.deepEqual(g.notes, []);
+  assert.match(g.text, /not json at all/);
+});

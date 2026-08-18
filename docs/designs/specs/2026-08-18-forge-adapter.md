@@ -71,7 +71,10 @@ names.
 
 ## Verified against the installed CLI
 
-`az` 2.89.1 with the `azure-devops` extension 1.0.6, on this machine:
+`az` 2.89.1 with the `azure-devops` extension 1.0.6, on this machine. The
+`--help` and failure-shape items below were established before any organization
+was reachable; the response-shape items were confirmed later against a live one
+(see *Verified against a live organization*).
 
 - `az boards work-item show` takes `--id` as its only required argument and has
   **no** `--project` parameter, which is what confirms a work item id is
@@ -120,6 +123,22 @@ one may exist — which is precisely the cross-host setup the `forge:` key is se
 for, so the derivation would be wrong exactly where the key is needed. That case
 takes `azure-organization` from config instead, and builds no command when
 neither source names one.
+
+## Verified against a live organization
+
+The command this adapter emits was later run end to end, which settles three
+things the design had recorded as assumptions:
+
+- The emitted argv works unchanged and exits 0 with a work item's field bag.
+- `System.Description` is **HTML**, not markdown — the read is a REST field bag
+  rather than the rendered body `gh issue view` returns.
+- The state vocabulary belongs to the project's process template, so no
+  open/closed mapping can be hardcoded: one Scrum project produced `New`,
+  `To Do`, `In Progress`, `Done`, and `Removed` across three work item types.
+- The payload carries `System.CommentCount` and **no comment bodies**. That
+  asymmetry against the GitHub read is a defect in its own right, tracked and
+  fixed separately; it is recorded here because this is where the claim that
+  the two reads are equivalent would otherwise live.
 
 Still unverified, and therefore out of this change: whether `az repos pr policy
 list` can express "the checks for this commit". It cannot, on the documentation:
