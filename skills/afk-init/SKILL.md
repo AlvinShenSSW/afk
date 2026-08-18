@@ -22,9 +22,18 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
 4. **Detect commands.** Fill any blank `test`/`lint`/`build` line from the
    project's own manifest or task runner. Leave a line blank and say so when
    nothing is found — never guess a command.
-5. **Record the forge** when the `origin` remote resolves one, leaving `forge`
-   blank when it does not — a written-in guess reads exactly like a detected
-   value later, and it decides which tracker an issue id is read from.
+5. **Record the forge.** Ask the shared resolver rather than reading the host
+   yourself — the value written here outranks the remote at every later read, so
+   a hand-derived one that disagrees with the adapter sends issue reads to the
+   wrong tracker:
+
+   ```text
+   node "<plugin-root>/lib/forge.mjs" --remote "$(git remote get-url origin)"
+   ```
+
+   It prints `{ forge, reason, azureOrganization, githubRepository }`. Write
+   `forge`, and leave the line blank when it is `null` — a written-in guess
+   reads exactly like a detected value later. Report the reason either way.
 6. **Record `pluginRoot`.** Resolve the plugin's install location
    (`${CLAUDE_PLUGIN_ROOT}` when set, else the directory this skill loaded from)
    into `.afk/config.md`, so bundled helpers resolve under a drop-in install

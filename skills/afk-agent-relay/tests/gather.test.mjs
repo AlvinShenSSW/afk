@@ -116,7 +116,7 @@ const failed = { status: 1, stdout: '', stderr: 'boom', error: undefined };
 test('a github remote reads the issue through gh', () => {
   const { run, calls } = runnerFor('https://github.com/o/r.git', ok('issue body here'));
   const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
-  assert.ok(calls.includes('gh issue view 42'), calls.join(' | '));
+  assert.ok(calls.includes('gh issue view 42 --repo o/r'), calls.join(' | '));
   assert.match(g.text, /issue body here/);
   assert.equal(g.notes.length, 0);
 });
@@ -153,13 +153,16 @@ test('a configured forge with no adapter names itself and builds no command', ()
   assert.match(g.notes[0], /no issue adapter for forge: bitbucket/);
 });
 
-test('an unrecognised remote host falls back to github as specified', () => {
+test('an unrecognised remote host falls back to github, still bound to its repo', () => {
   // Self-hosted GitHub is the common case behind an unrecognised host, so the
-  // fallback is deliberate; it is the configured-unknown case above that must
-  // not fall back.
+  // fallback is deliberate; the host stays in the selector so the read is not
+  // left for GH_REPO to decide, and gh refuses a host it does not know.
   const { run, calls } = runnerFor('https://git.example.com/o/r.git', ok('body'));
   gatherContext({ issue: ['42'] }, { run, readFile: () => null });
-  assert.ok(calls.includes('gh issue view 42'), calls.join(' | '));
+  assert.ok(
+    calls.includes('gh issue view 42 --repo git.example.com/o/r'),
+    calls.join(' | '),
+  );
 });
 
 test('a CLI that fails and a forge that is unsupported give different notes', () => {

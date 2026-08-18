@@ -92,15 +92,21 @@ names.
   derived from the remote and passed explicitly with `--detect false`, and a
   remote that names none builds no command at all.
 
-The two CLIs need different treatment on a remote neither the config nor the
-host recognises, and the difference is verified rather than assumed. `gh`
-refuses a host it was never authenticated against, so an unrecognised remote —
-a self-hosted install, typically — is left to it; a remote belonging to a known
-*different* forge is not, because there `gh` takes its repository from the
-environment instead. `az` makes no such refusal: it falls through to its
-configured default organization, so an Azure read is bound explicitly or not
-built at all. `github-repository` and `azure-organization` name the tracker for
-a checkout whose remote cannot.
+Neither CLI is left to choose the tracker. `gh` takes `GH_REPO` over the
+checkout's own origin — verified: with it set, `gh issue view 45` in this
+repository returned a different repository's item and exited 0 — and `az` falls
+through to its configured default organization. Every read is therefore bound
+by an explicit selector, derived from the remote or configured, and no command
+is built when neither names one. An unrecognised host keeps its host in the
+GitHub selector: a self-hosted install still has to be named, and `gh` refuses
+one it was never authenticated against, which is the wanted answer. A remote
+belonging to a known *different* forge names no GitHub repository at all, since
+deriving one from its path would build a plausible bogus selector.
+
+`github-repository` and `azure-organization` name the tracker for a checkout
+whose remote cannot. Both are stripped of any userinfo before reaching an argv:
+`.afk/config.md` holds no secret by rule, but argv is readable by any process on
+the machine, so a pasted credential is dropped rather than trusted.
 
 Deriving that organization is restricted to an Azure-shaped remote. The first
 path segment of any other host reads as an organization of the same name, and
@@ -118,6 +124,11 @@ than "green", non-CI gates such as minimum-reviewers appear in the same list,
 and `configuration.isBlocking` decides what actually gates a merge. A command
 swap would report green where nothing was checked, so the operation stays prose
 until it can be verified against a live organization.
+
+`lib/forge.mjs` carries a small CLI, the way `lib/plugin-root.mjs` does.
+`afk-init` records the forge, and the value it writes outranks the remote at
+every later read, so a second derivation in that prose would be a second source
+of truth that can disagree with the adapter it feeds.
 
 ## Test plan
 
