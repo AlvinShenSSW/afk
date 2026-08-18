@@ -43,6 +43,20 @@ import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CLAUDE', slug: 'claude-gate' });
 
+// A target that could not be parsed is a caller error, and it must surface even
+// when the gate is switched off — placed after that exit, this check would be
+// unreachable in exactly the configuration that most needs to say why. Reads
+// argv directly: it runs before the shared `userArgs` binding exists.
+{
+  const early = parseTarget(process.argv.slice(2));
+  // A design target names its document here, so a missing path is the same
+  // class of caller error as an unparseable target and must surface with it.
+  if (early.kind === 'error' || early.kind === 'design') {
+    const valid = validateTarget(early);
+    if (!valid.ok) emitError(`cannot review — ${valid.reason}`, 1);
+  }
+}
+
 if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
   emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
 }
@@ -62,7 +76,9 @@ const isDesign = target.kind === 'design';
 // one about to self-skip, so a design target validates BEFORE the independence
 // guard. A diff target validates after it — a self-skipping gate need not
 // resolve a ref it will never review.
-if (isDesign) {
+// A target that could not be parsed is the same class of operator error: it
+// must surface, not become an exit-0 skip when the guard happens to decline.
+if (isDesign || target.kind === 'error') {
   const valid = validateTarget(target);
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);

@@ -72,6 +72,20 @@ import { parseTarget, validateTarget } from '../../lib/gate/target.mjs';
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'KIMI', slug: 'kimi-gate' });
 
+// A target that could not be parsed is a caller error, and it must surface even
+// when the gate is switched off — placed after that exit, this check would be
+// unreachable in exactly the configuration that most needs to say why. Reads
+// argv directly: it runs before the shared `userArgs` binding exists.
+{
+  const early = parseTarget(process.argv.slice(2));
+  // A design target names its document here, so a missing path is the same
+  // class of caller error as an unparseable target and must surface with it.
+  if (early.kind === 'error' || early.kind === 'design') {
+    const valid = validateTarget(early);
+    if (!valid.ok) emitError(`cannot review — ${valid.reason}`, 1);
+  }
+}
+
 if (isGateDisabled('KIMI_REVIEW_GATE')) {
   emitSkip('Kimi gate disabled via KIMI_REVIEW_GATE.');
 }
@@ -87,7 +101,9 @@ const isDesign = target.kind === 'design';
 // A malformed --design is operator error that must fail loud on EVERY gate, even
 // one about to self-skip, so a design target validates BEFORE the independence
 // guard. A diff target validates after it.
-if (isDesign) {
+// A target that could not be parsed is the same class of operator error: it
+// must surface, not become an exit-0 skip when the guard happens to decline.
+if (isDesign || target.kind === 'error') {
   const valid = validateTarget(target);
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);

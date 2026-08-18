@@ -114,6 +114,15 @@ export function makeCodexProvider() {
         throw relayError('timeout', `codex exec killed (${res.signal}); timeout ${timeoutMs}ms`);
       }
 
+      // A non-zero exit is a failed run whatever it printed: codex emits a
+      // complete marker block on some failures, and reading stdout alone
+      // accepted those as a clean brief.
+      if (res.status !== 0) {
+        throw relayError(
+          'codex_error',
+          `codex exec exited ${res.status}; stderr: ${String(res.stderr || '').slice(0, 200)}`,
+        );
+      }
       const text = String(res.stdout || '').trim();
       if (!text) {
         throw relayError(

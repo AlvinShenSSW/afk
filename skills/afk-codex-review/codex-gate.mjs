@@ -51,7 +51,9 @@ import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
-import { optVal, readDesign, validateTarget } from '../../lib/gate/target.mjs';
+import {
+  optVal, parseTarget, readDesign, readOption, validateTarget,
+} from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CODEX', slug: 'codex-gate' });
@@ -159,6 +161,20 @@ function releaseCodexLock(lock) {
 }
 
 // Explicit opt-out: CODEX_REVIEW_GATE=off/0/false/no/disabled.
+// A target that could not be parsed is a caller error, and it must surface even
+// when the gate is switched off — placed after that exit, this check would be
+// unreachable in exactly the configuration that most needs to say why. Reads
+// argv directly: it runs before the shared `userArgs` binding exists.
+{
+  const early = parseTarget(process.argv.slice(2));
+  // A design target names its document here, so a missing path is the same
+  // class of caller error as an unparseable target and must surface with it.
+  if (early.kind === 'error' || early.kind === 'design') {
+    const valid = validateTarget(early);
+    if (!valid.ok) emitError(`cannot review — ${valid.reason}`, 1);
+  }
+}
+
 if (isGateDisabled('CODEX_REVIEW_GATE')) {
   emitSkip('Codex gate disabled via CODEX_REVIEW_GATE.');
 }
@@ -196,15 +212,24 @@ if (selftest) {
   process.exit(0);
 }
 
-const hasTarget = userArgs.some((a) =>
-  ['--base', '--commit', '--uncommitted'].includes(a),
-);
+// Both spellings count as a target. Seeing only the bare token meant
+// `--commit=HEAD` looked target-less, so the default `--base` was injected
+// alongside it and codex received two conflicting selectors.
+const TARGET_FLAGS = ['--base', '--commit', '--uncommitted'];
+const hasTarget = userArgs.some((a) => typeof a === 'string'
+  && TARGET_FLAGS.some((flag) => a === flag || a.startsWith(`${flag}=`)));
 const printArgsOnly = userArgs.includes('--print-args');
 
 // Promote an operator-supplied `--base` to its remote-tracking ref too, not just
 // the auto-detected default: a bare `--base main` against a stale local main is
 // the same wrong-commit-range defect, and the other three gates promote it.
 function promoteExplicitBase(argv) {
+  const equals = argv.findIndex((a) => typeof a === 'string' && a.startsWith('--base='));
+  if (equals >= 0) {
+    const next = [...argv];
+    next[equals] = `--base=${resolveBase(argv[equals].slice('--base='.length))}`;
+    return next;
+  }
   const i = argv.indexOf('--base');
   if (i < 0 || i + 1 >= argv.length) return argv;
   const next = [...argv];
@@ -222,13 +247,19 @@ const passThrough = promoteExplicitBase(
 // --design is operator error that must ERROR even when codex would self-skip as
 // the implementer. Detect by PRESENCE (a valueless --design must still select
 // the design kind, then fail loud), not by optVal's value alone.
-const isDesign = userArgs.includes('--design');
-const designPath = optVal(userArgs, '--design');
+// The shared reader, not a second spelling rule: `--design=spec.md` here once
+// entered diff mode and forwarded an argument `codex exec review` rejects.
+const designFlag = readOption(userArgs, '--design');
+const isDesign = designFlag.supplied;
+const parsedTarget = parseTarget(userArgs);
+const designPath = designFlag.value || null;
 const designTarget = isDesign
   ? { kind: 'design', path: designPath, label: designPath ? `the design document at ${designPath}` : 'a design document (no --design path given)' }
   : null;
-if (isDesign) {
-  const valid = validateTarget(designTarget);
+if (parsedTarget.kind === 'error' || isDesign) {
+  // The parse error wins: with two --design flags isDesign is also true, and
+  // validating the synthesized first one would discard the ambiguity.
+  const valid = validateTarget(parsedTarget.kind === 'error' ? parsedTarget : designTarget);
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
