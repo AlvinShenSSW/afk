@@ -153,6 +153,19 @@ test('keeps the host and user while redacting the userinfo credential', () => {
   assert.match(text, /https:\/\/alice:\[REDACTED\]@example\.com/);
 });
 
+test('a rule that declines to replace does not report a redaction', () => {
+  // The count is what a reader is shown in place of the payload, so a rule that
+  // matches a candidate and returns it unchanged must not claim one.
+  for (const untouched of [
+    `ssh://git${'@'}github.com/org/repo.git`,
+    'a deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef b',
+  ]) {
+    const { text, count } = redactSecrets(untouched);
+    assert.equal(text, untouched);
+    assert.equal(count, 0, untouched);
+  }
+});
+
 test('an uppercase scheme redacts its userinfo too', () => {
   // URI schemes are case-insensitive, so a case-sensitive rule leaks exactly
   // the credential it was added to catch.
