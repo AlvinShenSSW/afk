@@ -4,6 +4,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gatherContext, filterDiffByExcludes, filterGrepByExcludes } from '../lib/gather.mjs';
+import { runRole } from '../lib/role.mjs';
+import { mainWorktree } from '../../../lib/gate/git.mjs';
 
 const noRun = () => ({ status: 1, stdout: '', stderr: '', error: new Error('nope') });
 
@@ -168,4 +170,39 @@ test('a CLI that fails and a forge that is unsupported give different notes', ()
   assert.equal(badRef.notes.length, 1);
   assert.match(badRef.notes[0], /not a positive issue reference/);
   assert.notEqual(cliFailed.notes[0], badRef.notes[0]);
+});
+
+test('the role pipeline hands gather the main worktree config path', async () => {
+  // The forge override is read from `.afk/config.md`. Without it reaching the
+  // one caller that runs in production, the shipped key resolves only in tests.
+  let seen = 'GATHER NEVER CALLED';
+  // Only the argument gather receives is under test; the provider call after it
+  // is stubbed just far enough to be reached, and may fail past that point.
+  await runRole(
+    {
+      label: 'BRIEF',
+      defaultProvider: 'deepseek',
+      providerEnv: 'P',
+      modelEnv: 'M',
+      systemPrompt: 's',
+      validate: () => ({ ok: true }),
+      buildUser: () => 'u',
+    },
+    {
+      argv: ['--manual', '--task', 't', '--issue', '1'],
+      env: { DEV_DEEPSEEK_API_KEY: 'k' },
+      gather: (_sources, opts) => {
+        seen = opts.configPath;
+        return { text: '', notes: [], bytes: 0 };
+      },
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ choices: [{ message: { content: 'x' } }] }),
+        text: async () => '{}',
+      }),
+    },
+  ).catch(() => {});
+  assert.notEqual(seen, 'GATHER NEVER CALLED', 'gather was never reached');
+  assert.equal(seen, join(mainWorktree({}), '.afk', 'config.md'));
 });
