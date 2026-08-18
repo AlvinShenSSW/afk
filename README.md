@@ -80,7 +80,7 @@ scope
 -> targeted tests
 -> implementation
 -> self-review
--> pull request (draft) + CI green
+-> pull request (draft) + required checks resolved
 -> internal review
 -> Codex external role (or independent fallback; single by default)
 -> Kimi final external role (only when a double profile is selected)

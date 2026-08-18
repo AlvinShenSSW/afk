@@ -61,15 +61,20 @@ test('every unresolved reading has the same named exit', () => {
   // The `expected` branch once said only that it never settles, leaving the
   // one state with no next step at all.
   assert.match(afk, /`absent` settles it at once,\s+`detect` \(default\) once the window closes, `expected` never/);
-  assert.match(afk, /any other value,\s+blank included, is a config error/);
+  assert.match(afk, /blank or absent\s+is `detect`/);
+  assert.match(afk, /a non-empty value outside those\s+three is a config error/);
+  // Blank once read as `expected`, so a bootstrapped repo could never be ready.
+  assert.doesNotMatch(afk, /blank included, is a config error/);
   assert.match(afk, /Unsettled, it takes the\s+same exit as a failing check/);
   assert.equal((afk.match(/OUTSTANDING`, take up other queued work/g) ?? []).length, 1);
 });
 
-test('the wait is bounded from a recorded start', () => {
-  // A window with no durable start cannot tell a resumed tick that it is spent.
-  assert.match(afk, /stamp the reading's first\s+attempt on the revision/);
-  assert.match(afk, /30 minutes of wall clock from that\s+stamp/);
+test('the wait is bounded from a start stamped against the commit', () => {
+  // A window with no durable start cannot tell a resumed tick that it is spent,
+  // and one not keyed to the commit lets a new revision inherit a spent window.
+  assert.match(afk, /attempt against that revision's commit/);
+  assert.match(afk, /30 minutes of wall clock\s*\n?from that stamp/);
+  assert.match(afk, /a new commit starts its own/);
 });
 
 test('a check never ends the waterfall anywhere but at its own step', () => {
@@ -93,7 +98,10 @@ test('the tradeoff is stated in the driver and reaches the report', () => {
   // describe casually; silence about it is as bad as overclaiming.
   assert.match(afk, /one of the few control points outside this agent's authority/);
   assert.match(afk, /both are evaluation the driver performs on itself/);
-  assert.match(afk, /every revision no required\ncheck constrained/);
+  // A lookup that never answered establishes nothing about the forge, so the
+  // report must not render it as "no check was required".
+  assert.match(afk, /named no required check or never answered — which of the two it was/);
+  assert.match(afk, /these are two different\n  facts/);
   const start = afk.indexOf('**Remote checks.**');
   const end = afk.indexOf('**Merge bar.**');
   // Fail closed: a renamed heading would slice to '' and pass every guard.
@@ -119,7 +127,7 @@ test('the pilot and internal review defer to the driver rather than restating it
 test('a value outside the three is a config error, not a settled reading', () => {
   // A misspelling that fell through to no branch left an empty reading with no
   // resolution at all, and one that fell back to `detect` would settle it.
-  assert.match(afk, /any other value,\n  blank included, is a config error/);
+  assert.match(afk, /blank or absent\n  is `detect`, as every key here resolves/);
   assert.match(afk, /read it as `expected`/);
 });
 

@@ -512,17 +512,21 @@ forge's own vocabulary, and a reading nobody took resolves nothing:
   not ready with `OUTSTANDING`, take up other queued work, and re-read on a
   later tick;
 - it names no required check, or gives no answer at all — no adapter for that
-  host, a CLI failure, a rate limit — → **unresolved** until `## checks` →
+  host, a CLI failure, a rate limit — → **unresolved** (these are two different
+  facts: one is the forge's answer, the other is that the run never got one, and
+  neither is ever recorded as the other) until `## checks` →
   `remote-ci` in `.afk/config.md` settles it: `absent` settles it at once,
-  `detect` (default) once the window closes, `expected` never; any other value,
-  blank included, is a config error — report it and read it as `expected`, since
-  a misspelling must not settle a reading by accident. Unsettled, it takes the
+  `detect` (default) once the window closes, `expected` never; blank or absent
+  is `detect`, as every key here resolves, while a non-empty value outside those
+  three is a config error — report it and read it as `expected`, since a
+  misspelling must not settle a reading by accident. Unsettled, it takes the
   same exit as a failing check: `OUTSTANDING`, other queued work, and a re-read
   on a later tick.
 
 Record with the answer which of those it was, and stamp the reading's first
-attempt on the revision — the window is 30 minutes of wall clock from that
-stamp, so a resumed tick can tell a spent window from a fresh one. `remote-ci`
+attempt against that revision's commit — the window is 30 minutes of wall clock
+from that stamp, so a resumed tick can tell a spent window from a fresh one, and
+a new commit starts its own. `remote-ci`
 governs only an empty or unanswered reading, and adds no requirement of its own;
 what counts as required is the forge's answer, read as above. This is the one step that may leave a PR not ready over
 a check: a check read earlier never ends an issue's waterfall.
@@ -663,8 +667,9 @@ would leave a finished run forever resumable and its scope never free again.
 ## End-of-run report
 
 Every PR with its state (merged / open-awaiting-review), every notable decision,
-each external-gate outcome (including any `SKIPPED`), every revision no required
-check constrained — with which reading said so, and that the ordered roles and
-the local suite were then the whole of what this run applied to it —
+each external-gate outcome (including any `SKIPPED`), every revision whose
+reading named no required check or never answered — which of the two it was, and
+that the ordered roles and the local suite were then the whole of what this run
+applied to it —
 deferred/remaining items,
 and anything blocking. In the operator's preferred language.
