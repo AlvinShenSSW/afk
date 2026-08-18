@@ -105,6 +105,97 @@ test('redacts a PAT embedded in a git remote URL', () => {
   assert.match(text, /https:\/\/\[REDACTED\]@github\.com/);
 });
 
+test('redacts any credential in a URL userinfo, whatever its shape', () => {
+  // Without this rule a userinfo credential is redacted only when it happens to
+  // match some other rule, so its coverage tracks the token's alphabet rather
+  // than the fact that it is a credential in a URL.
+  const short = 'abc123def456ghi789';
+  const { text } = redactSecrets(`https://user:${short}@dev.azure.com/o/p/_git/r`);
+  assert.doesNotMatch(text, /abc123def456/);
+  assert.match(text, /https:\/\/user:\[REDACTED\]@dev\.azure\.com/);
+});
+
+test('redacts a userinfo credential with no distinguishing alphabet', () => {
+  // A classic Azure DevOps PAT is 52 base32 characters; the catch-all covers it
+  // only via the digit guard, which an all-letter token slips.
+  const noDigit = 'abcdefghijklmnopqrstuvwxyz'.repeat(2);
+  const { text } = redactSecrets(`https://u:${noDigit}@dev.azure.com/o/p/_git/r`);
+  assert.doesNotMatch(text, /abcdefghijklmnopqrstuvwxyzabc/);
+});
+
+test('redacts a userinfo password containing colons', () => {
+  // Colons are legal inside a userinfo password; a capture that stops at the
+  // first one leaves the whole credential in the payload.
+  const url = `https://user:part1:part2${'@'}dev.azure.com/o/p/_git/r`;
+  const { text } = redactSecrets(url);
+  assert.doesNotMatch(text, /part1|part2/);
+  assert.match(text, /https:\/\/user:\[REDACTED\]@dev\.azure\.com/);
+});
+
+test('redacts a userinfo password containing an at sign, wholly', () => {
+  // Stopping at the first `@` rewrites the line so it reads as redacted while
+  // the tail of the credential survives — worse than not matching at all.
+  const { text } = redactSecrets('https://user:p@ss:word@example.com/r');
+  assert.doesNotMatch(text, /ss:word/);
+  assert.match(text, /https:\/\/user:\[REDACTED\]@example\.com/);
+});
+
+test('redacts a userinfo password with an empty user', () => {
+  const url = `https://:justpassword${'@'}dev.azure.com/o/p/_git/r`;
+  const { text } = redactSecrets(url);
+  assert.doesNotMatch(text, /justpassword/);
+});
+
+test('keeps the host and user while redacting the userinfo credential', () => {
+  // Redacting the whole userinfo would cost the reader which account and which
+  // host a leaked remote points at, which is what makes the line worth keeping.
+  const { text } = redactSecrets('origin  https://alice:s3cr3tvalue@example.com/o/r.git (push)');
+  assert.match(text, /https:\/\/alice:\[REDACTED\]@example\.com/);
+});
+
+test('a rule that declines to replace does not report a redaction', () => {
+  // The count is what a reader is shown in place of the payload, so a rule that
+  // matches a candidate and returns it unchanged must not claim one.
+  for (const untouched of [
+    `ssh://git${'@'}github.com/org/repo.git`,
+    'a deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef b',
+  ]) {
+    const { text, count } = redactSecrets(untouched);
+    assert.equal(text, untouched);
+    assert.equal(count, 0, untouched);
+  }
+});
+
+test('an uppercase scheme redacts its userinfo too', () => {
+  // URI schemes are case-insensitive, so a case-sensitive rule leaks exactly
+  // the credential it was added to catch.
+  const url = `HTTPS://user:secrettoken${'@'}example.com/path`;
+  const { text } = redactSecrets(url);
+  assert.doesNotMatch(text, /secrettoken/);
+});
+
+test('a URL with no credential is untouched', () => {
+  const url = 'https://dev.azure.com/org/project/_git/repo';
+  const { text, count } = redactSecrets(`clone ${url} now`);
+  assert.equal(text, `clone ${url} now`);
+  assert.equal(count, 0);
+});
+
+test('an Azure DevOps PAT stays redacted in every shape it travels in', () => {
+  // Coverage today is incidental — it rests on a 52-char base32 PAT containing
+  // a digit. Pinned so a future rule change cannot quietly remove it.
+  const pat = '7fq3k2mzx5v6bnwl4hdcj8ry2tsp3gqa5vzm7kxn4bwc6hdj2tly';
+  assert.equal(pat.length, 52);
+  for (const shape of [
+    `the value is ${pat} here`,
+    `https://user:${pat}@dev.azure.com/org/proj/_git/repo`,
+    `AZURE_DEVOPS_EXT_PAT=${pat}`,
+  ]) {
+    const { text } = redactSecrets(shape);
+    assert.doesNotMatch(text, /7fq3k2mzx5v6/, `unredacted in: ${shape}`);
+  }
+});
+
 test('redacts Authorization: token values, keeping the label', () => {
   const { text } = redactSecrets('Authorization: token ghs_A1b2C3d4E5f6G7h8I9j0A1b2C3d4E5f6G7h8');
   assert.match(text, /Authorization: (token \[REDACTED\]|\[REDACTED\])/);

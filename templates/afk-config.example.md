@@ -18,6 +18,19 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
                          # BLOCK a gate, never permit one: a value here is written
                          # once and goes stale, so it must not outrank a live signal.
 
+## forge
+# forge:                 # github · azure-devops. Omit to detect from the origin
+                         # remote, else github. Set it when the remote host is
+                         # not the tracker's, so an id is not read from whichever
+                         # CLI answers first.
+# azure-organization:    # https://dev.azure.com/<org>. Required only when the
+                         # forge is azure-devops and origin is on another host —
+                         # there is no Azure remote to read the org from, and a
+                         # same-named org on another host may exist.
+# github-repository:     # [HOST/]OWNER/REPO. The same, for a github forge whose
+                         # origin is elsewhere: gh would otherwise pick the
+                         # repository from the checkout or its environment.
+
 ## merge
 policy: leave-open       # leave-open · merge-to-unblock · merge-when-green
 

@@ -54,7 +54,9 @@ node "<relay-dir>/scope.mjs" --manual --task "<raw request>"
 
 ### Flags
 
-`--task "<one line>"` (required) · `--issue N` (repeatable; runs `gh issue view`)
+`--task "<one line>"` (required) · `--issue N` (repeatable; reads the tracked
+issue through the forge resolved for this repository — a forge with no adapter
+is named in the notes, never omitted silently)
 · `--diff [base]` (runs `git diff`; bare = default base) · `--files a b …`
 (reads files) · `--logs path …` (tails) · `--grep "pat"` (repeatable; ripgrep) ·
 `--provider <name>` / `--model <id>` (override for this call).

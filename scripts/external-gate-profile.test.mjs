@@ -38,6 +38,13 @@ test('new configs choose a single Codex gate; ordered doubles are explicit opt-i
   }
 });
 
+test('kickoff restates the resolved forge with its source', () => {
+  // The restatement is what makes a misdetected forge visible before any paid
+  // work; without a pin it can be dropped while the gate-profile half survives.
+  assert.match(afk, /resolved forge with\s+its source/i);
+  assert.match(afk, /`config` \/ `remote` \/ `default`/);
+});
+
 test('handoff role flags are a defined, bounded per-run channel', () => {
   // The grammar and lifetime rules from the 2026-08-03 design (F10, F13, F4,
   // F5, F17, F19, F22): affirmative form, collapse, lookalike recording,

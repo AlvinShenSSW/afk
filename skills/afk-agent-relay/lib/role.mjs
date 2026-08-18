@@ -6,6 +6,8 @@
 // Returns { code, out } and does NOT touch process.* — the entry bootstrap
 // prints/exits. That keeps the whole pipeline unit-testable.
 
+import { join } from 'node:path';
+
 import {
   parseArgs,
   gate,
@@ -17,7 +19,15 @@ import {
   parseExcludeList,
 } from './relay.mjs';
 import { buildRegistry, resolveProvider } from './providers.mjs';
+import { mainWorktree } from '../../../lib/gate/git.mjs';
 import { gatherContext } from './gather.mjs';
+
+// `.afk/config.md` in the repository's main working tree, or null when git
+// cannot answer — resolution then falls to the remote, never to a guess.
+function afkConfigPath() {
+  const root = mainWorktree({});
+  return root ? join(root, '.afk', 'config.md') : null;
+}
 
 export async function runRole(cfg, io) {
   const { argv, env, fetchImpl, spawnImpl, readFileImpl, gather } = io;
@@ -61,6 +71,9 @@ export async function runRole(cfg, io) {
       maxBytes: envInt(env, 'AGENT_RELAY_MAX_INPUT_BYTES', 400000),
       excludeGlobs: parseExcludeList(env.AGENT_RELAY_EXCLUDE),
       redact: !isOff(env.AGENT_RELAY_REDACT), // default on
+      // `.afk/` lives in the main working tree, so a run from a linked worktree
+      // reads the same forge the rest of the pipeline resolved.
+      configPath: afkConfigPath(),
     },
   );
 
