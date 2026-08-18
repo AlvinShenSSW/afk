@@ -198,15 +198,24 @@ if (selftest) {
   process.exit(0);
 }
 
-const hasTarget = userArgs.some((a) =>
-  ['--base', '--commit', '--uncommitted'].includes(a),
-);
+// Both spellings count as a target. Seeing only the bare token meant
+// `--commit=HEAD` looked target-less, so the default `--base` was injected
+// alongside it and codex received two conflicting selectors.
+const TARGET_FLAGS = ['--base', '--commit', '--uncommitted'];
+const hasTarget = userArgs.some((a) => typeof a === 'string'
+  && TARGET_FLAGS.some((flag) => a === flag || a.startsWith(`${flag}=`)));
 const printArgsOnly = userArgs.includes('--print-args');
 
 // Promote an operator-supplied `--base` to its remote-tracking ref too, not just
 // the auto-detected default: a bare `--base main` against a stale local main is
 // the same wrong-commit-range defect, and the other three gates promote it.
 function promoteExplicitBase(argv) {
+  const equals = argv.findIndex((a) => typeof a === 'string' && a.startsWith('--base='));
+  if (equals >= 0) {
+    const next = [...argv];
+    next[equals] = `--base=${resolveBase(argv[equals].slice('--base='.length))}`;
+    return next;
+  }
   const i = argv.indexOf('--base');
   if (i < 0 || i + 1 >= argv.length) return argv;
   const next = [...argv];
@@ -233,8 +242,10 @@ const designPath = designFlag.value || null;
 const designTarget = isDesign
   ? { kind: 'design', path: designPath, label: designPath ? `the design document at ${designPath}` : 'a design document (no --design path given)' }
   : null;
-if (isDesign || parsedTarget.kind === 'error') {
-  const valid = validateTarget(isDesign ? designTarget : parsedTarget);
+if (parsedTarget.kind === 'error' || isDesign) {
+  // The parse error wins: with two --design flags isDesign is also true, and
+  // validating the synthesized first one would discard the ambiguity.
+  const valid = validateTarget(parsedTarget.kind === 'error' ? parsedTarget : designTarget);
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
