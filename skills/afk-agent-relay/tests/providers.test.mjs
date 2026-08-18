@@ -238,3 +238,24 @@ test('deepseekUsage prefers cached_tokens, falls back to prompt_cache_hit_tokens
   assert.equal(deepseekUsage({ usage: { prompt_tokens_details: { cached_tokens: 3 } } }).cacheRead, 3);
   assert.equal(deepseekUsage({ usage: { prompt_cache_hit_tokens: 7 } }).cacheRead, 7);
 });
+
+test('a codex exec that exits non-zero is a failure, whatever it printed', async () => {
+  // A well-formed marker block on stdout says nothing about whether the run
+  // succeeded; accepting it let a failed invocation pass for a clean brief.
+  const { buildRegistry, resolveProvider } = await import('../lib/providers.mjs');
+  const provider = resolveProvider(buildRegistry(), 'codex');
+  const spawnImpl = () => ({
+    status: 1,
+    stdout: '===== AGENT BRIEF =====\nbody\n===== END AGENT BRIEF =====',
+    stderr: 'upstream refused',
+    error: undefined,
+    signal: null,
+  });
+  await assert.rejects(
+    () => provider.complete({
+      system: 's', user: 'u', model: 'm', maxTokens: 10,
+      env: { PATH: process.env.PATH }, spawnImpl,
+    }),
+    (err) => /exited 1/.test(String(err.message)),
+  );
+});
