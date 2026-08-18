@@ -504,9 +504,10 @@ required/advisory distinction, every check it reports is required here. Classify
 by what the answer names, never by how the lookup exited — a status code is a
 forge's own vocabulary, and a reading nobody took resolves nothing:
 
-- the answer names at least one required check and none is failing or
-  unfinished → **resolved**;
-- it names one failing or unfinished → **unresolved**: fix a failure now, else
+- the answer names at least one required check and every one of them passed →
+  **resolved**;
+- it names one that did not pass, whether it ended without passing or has not
+  ended → **unresolved**: fix a failure now, else
   re-read until the answer changes or the window below closes, then leave the PR
   not ready with `OUTSTANDING`, take up other queued work, and re-read on a
   later tick;

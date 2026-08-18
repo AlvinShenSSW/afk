@@ -49,8 +49,12 @@ test('no forge outcome vocabulary is restated in the prose', () => {
 test('an empty reading cannot satisfy the passing clause', () => {
   // "every required check passed" is vacuously true over an empty set, so the
   // reading nobody could take would have passed the bar by absence.
-  assert.match(afk, /the answer names at least one required check and none is failing or\s+unfinished/);
+  assert.match(afk, /the answer names at least one required check and every one of them passed/);
   assert.doesNotMatch(afk, /every required check passed → \*\*resolved\*\*/);
+  // A terminal non-passing outcome — cancelled, timed out — is neither failing
+  // nor unfinished, and once fell through into the passing clause.
+  assert.match(afk, /whether it ended without passing or has not\n  ended/);
+  assert.doesNotMatch(afk, /none is failing or\s+unfinished/);
 });
 
 test('every unresolved reading has the same named exit', () => {
@@ -132,4 +136,6 @@ test('the config key ships unset so a bootstrapped repo chooses nothing', () => 
   assert.match(template, /^## checks$/m);
   assert.match(template, /^# remote-ci:/m);
   assert.doesNotMatch(template, /^remote-ci:/m);
+  // The template once contradicted the driver's conservative fallback.
+  assert.doesNotMatch(template, /makes no check required/);
 });

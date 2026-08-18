@@ -311,7 +311,9 @@ than attempted.
 revision, or cannot be asked at all. `detect` (the default) settles it once the
 run's re-read window closes; `absent` settles it at once, for a repository the
 operator knows runs none; `expected` never settles it, for one that must always
-report. It makes no check required — only the forge's own branch rule does.
+report. It adds no required check of its own; what counts as required is the
+forge's answer — a forge that draws no required/advisory line has every check it
+reports read as required.
 
 Where no required check constrained a revision, the ordered roles and the local
 suite are the whole of what the run applied, and both are evaluation the driver

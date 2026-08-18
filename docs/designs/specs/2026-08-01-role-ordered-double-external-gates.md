@@ -1,5 +1,12 @@
 # Ordered External Gate List
 
+> **Superseded in part by
+> [`2026-08-18-remote-checks.md`](2026-08-18-remote-checks.md).** The per-run
+> remote-CI exception described below — `remote CI not run` with
+> operator-authorized local gates — is retired. A revision's checks are now
+> always read, and only `remote-ci` decides what an empty or unanswered reading
+> means.
+
 - **Issue:** [#1 — default double external gates: Codex outer, Kimi final](https://github.com/AlvinShenSSW/afk/issues/1)
 - **Status:** Revision 14 — shared notice mechanism added after final-review P2
 - **Author:** Codex
