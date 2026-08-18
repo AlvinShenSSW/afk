@@ -513,15 +513,17 @@ forge's own vocabulary, and a reading nobody took resolves nothing:
 - it names no required check, or gives no answer at all — no adapter for that
   host, a CLI failure, a rate limit — → **unresolved** until `## checks` →
   `remote-ci` in `.afk/config.md` settles it: `absent` settles it at once,
-  `detect` (default) once the window closes, `expected` never. Unsettled, it
-  takes the same exit as a failing check: `OUTSTANDING`, other queued work, and
-  a re-read on a later tick.
+  `detect` (default) once the window closes, `expected` never; any other value,
+  blank included, is a config error — report it and read it as `expected`, since
+  a misspelling must not settle a reading by accident. Unsettled, it takes the
+  same exit as a failing check: `OUTSTANDING`, other queued work, and a re-read
+  on a later tick.
 
 Record with the answer which of those it was, and stamp the reading's first
 attempt on the revision — the window is 30 minutes of wall clock from that
 stamp, so a resumed tick can tell a spent window from a fresh one. `remote-ci`
-governs only an empty or unanswered reading; only the forge's own branch rule
-makes a check required. This is the one step that may leave a PR not ready over
+governs only an empty or unanswered reading, and adds no requirement of its own;
+what counts as required is the forge's answer, read as above. This is the one step that may leave a PR not ready over
 a check: a check read earlier never ends an issue's waterfall.
 
 A required check is one of the few control points outside this agent's authority

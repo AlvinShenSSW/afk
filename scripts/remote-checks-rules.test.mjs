@@ -22,7 +22,7 @@ test('the checks are always read; only an empty reading is configurable', () => 
   // that a repository added after the key was written.
   assert.match(afk, /ask the forge which checks it required of the\s+final revision/);
   assert.match(afk, /`remote-ci`\s+governs only an empty or unanswered reading/);
-  assert.match(afk, /only the forge's own branch rule\s+makes a check required/);
+  assert.match(afk, /adds no requirement of its own/);
 });
 
 test('classification never reads an exit code', () => {
@@ -57,7 +57,8 @@ test('every unresolved reading has the same named exit', () => {
   // The `expected` branch once said only that it never settles, leaving the
   // one state with no next step at all.
   assert.match(afk, /`absent` settles it at once,\s+`detect` \(default\) once the window closes, `expected` never/);
-  assert.match(afk, /Unsettled, it\s+takes the same exit as a failing check/);
+  assert.match(afk, /any other value,\s+blank included, is a config error/);
+  assert.match(afk, /Unsettled, it takes the\s+same exit as a failing check/);
   assert.equal((afk.match(/OUTSTANDING`, take up other queued work/g) ?? []).length, 1);
 });
 
@@ -106,6 +107,23 @@ test('the pilot and internal review defer to the driver rather than restating it
   assert.doesNotMatch(pilot, /CI green — not local green/);
   assert.match(internal, /Which readings permit ready is the driver's/);
   assert.doesNotMatch(internal, /CI hard gate/);
+  // The retired framing survived here once; the driver-only guard missed it.
+  assert.doesNotMatch(internal, /deterministic CI/);
+  assert.doesNotMatch(pilot, /deterministic CI/);
+});
+
+test('a value outside the three is a config error, not a settled reading', () => {
+  // A misspelling that fell through to no branch left an empty reading with no
+  // resolution at all, and one that fell back to `detect` would settle it.
+  assert.match(afk, /any other value,\n  blank included, is a config error/);
+  assert.match(afk, /read it as `expected`/);
+});
+
+test('the rule adds no requirement of its own', () => {
+  // "only the forge's own branch rule makes a check required" contradicted the
+  // conservative fallback for a forge that draws no required/advisory line.
+  assert.match(afk, /adds no requirement of its own/);
+  assert.doesNotMatch(afk, /only the forge's own branch rule\nmakes a check required/);
 });
 
 test('the config key ships unset so a bootstrapped repo chooses nothing', () => {

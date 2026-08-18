@@ -57,7 +57,8 @@ Evaluate every dimension; do not skip one because it seems unlikely:
 
 ## 3 — Targeted verification (conditional)
 
-Trust the deterministic CI for what it covers; do not re-run the full suite. Run
+Trust the revision's passing checks for what they cover; do not re-run the full
+suite. Run
 a **targeted** test only when a specific concern from step 2 warrants a live
 check (an untested logic path, a data/security concern, a new integration). If a
 concern needs no live check, say so.
