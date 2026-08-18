@@ -77,11 +77,16 @@ export function gatherContext(sources = {}, opts = {}) {
     const remote = run('git', ['remote', 'get-url', 'origin']);
     const remoteUrl = remote.status === 0 ? remote.stdout.trim() : '';
     const { forge } = resolveForge({ configPath, remoteUrl });
+    // Both name the tracker for a checkout whose remote cannot; without them the
+    // forge's CLI picks one from the working directory or its own environment.
     const organization = configPath
       ? readConfigSectionValue(configPath, 'forge', 'azure-organization')
       : null;
+    const repository = configPath
+      ? readConfigSectionValue(configPath, 'forge', 'github-repository')
+      : null;
     for (const n of sources.issue) {
-      const cmd = issueCommand(forge, n, { remoteUrl, organization });
+      const cmd = issueCommand(forge, n, { remoteUrl, organization, repository });
       if (cmd.unsupported) {
         notes.push(`[skip: issue ${n} not read — ${cmd.unsupported}]`);
         continue;

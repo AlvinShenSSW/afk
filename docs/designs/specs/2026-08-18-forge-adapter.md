@@ -9,7 +9,8 @@ Acceptance criteria:
 
 1. One place resolves which forge a repository lives on, and no skill or bundled
    script names a forge CLI. `skills/afk-agent-relay/lib/gather.mjs:71` held the
-   only executable coupling.
+   only executable coupling, and neither CLI may take the tracker from ambient
+   state where config or the remote can name it.
 2. Resolution is `.afk/config.md` `forge:` if set, else the `origin` remote,
    else GitHub, and the resolved value and its source are stated once at
    kickoff the way the gate profile already is. An Azure organization comes
@@ -90,6 +91,16 @@ names.
   wrong-tracker read this module exists to prevent, so the organization is
   derived from the remote and passed explicitly with `--detect false`, and a
   remote that names none builds no command at all.
+
+The two CLIs need different treatment on a remote neither the config nor the
+host recognises, and the difference is verified rather than assumed. `gh`
+refuses a host it was never authenticated against, so an unrecognised remote —
+a self-hosted install, typically — is left to it; a remote belonging to a known
+*different* forge is not, because there `gh` takes its repository from the
+environment instead. `az` makes no such refusal: it falls through to its
+configured default organization, so an Azure read is bound explicitly or not
+built at all. `github-repository` and `azure-organization` name the tracker for
+a checkout whose remote cannot.
 
 Deriving that organization is restricted to an Azure-shaped remote. The first
 path segment of any other host reads as an organization of the same name, and

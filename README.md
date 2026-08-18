@@ -230,6 +230,7 @@ priority: codex > claude > kimi > glm
 ## forge
 # forge:                 # github · azure-devops
 # azure-organization:    # https://dev.azure.com/<org>, for a cross-host setup
+# github-repository:     # [HOST/]OWNER/REPO, likewise
 
 ## merge
 policy: leave-open
@@ -295,9 +296,11 @@ from the `origin` remote, and falls back to GitHub when nothing matches. Set it
 explicitly when the code host and the tracker are not the same service: the id
 reaches whichever CLI the forge selects, and the CLI of a different forge can
 answer for that id and succeed, putting another tracker's issue into the plan.
-That cross-host case also needs `azure-organization`, because there is no Azure
-remote to read the organization from and a same-named one may exist. A forge
-that cannot be served is named where it is needed rather than attempted.
+That cross-host case also needs the key naming the tracker itself —
+`azure-organization` or `github-repository` — because there is no remote to read
+it from and each CLI would otherwise take one from the checkout or its own
+environment. A forge that cannot be served is named where it is needed rather
+than attempted.
 
 ## Merge policies
 

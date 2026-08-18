@@ -27,6 +27,9 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
                          # forge is azure-devops and origin is on another host —
                          # there is no Azure remote to read the org from, and a
                          # same-named org on another host may exist.
+# github-repository:     # [HOST/]OWNER/REPO. The same, for a github forge whose
+                         # origin is elsewhere: gh would otherwise pick the
+                         # repository from the checkout or its environment.
 
 ## merge
 policy: leave-open       # leave-open · merge-to-unblock · merge-when-green
