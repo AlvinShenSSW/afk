@@ -167,8 +167,11 @@ function releaseCodexLock(lock) {
 // argv directly: it runs before the shared `userArgs` binding exists.
 {
   const early = parseTarget(process.argv.slice(2));
-  if (early.kind === 'error') {
-    emitError(`cannot review — ${validateTarget(early).reason}`, 1);
+  // A design target names its document here, so a missing path is the same
+  // class of caller error as an unparseable target and must surface with it.
+  if (early.kind === 'error' || early.kind === 'design') {
+    const valid = validateTarget(early);
+    if (!valid.ok) emitError(`cannot review — ${valid.reason}`, 1);
   }
 }
 
