@@ -80,7 +80,7 @@ scope
 -> targeted tests
 -> implementation
 -> self-review
--> pull request (draft) + CI green
+-> pull request (draft) + required checks resolved
 -> internal review
 -> Codex external role (or independent fallback; single by default)
 -> Kimi final external role (only when a double profile is selected)
@@ -232,6 +232,9 @@ priority: codex > claude > kimi > glm
 # azure-organization:    # https://dev.azure.com/<org>, for a cross-host setup
 # github-repository:     # [HOST/]OWNER/REPO, likewise
 
+## checks
+# remote-ci:             # detect (default) · expected · absent
+
 ## merge
 policy: leave-open
 
@@ -301,6 +304,21 @@ That cross-host case also needs the key naming the tracker itself —
 it from and each CLI would otherwise take one from the checkout or its own
 environment. A forge that cannot be served is named where it is needed rather
 than attempted.
+
+### What an empty check reading means
+
+`remote-ci` says what to do when the forge names no required check for a
+revision, or cannot be asked at all. `detect` (the default) settles it once the
+run's re-read window closes; `absent` settles it at once, for a repository the
+operator knows runs none; `expected` never settles it, for one that must always
+report. It adds no required check of its own; what counts as required is the
+forge's answer — a forge that draws no required/advisory line has every check it
+reports read as required.
+
+Where no required check constrained a revision, the ordered roles and the local
+suite are the whole of what the run applied, and both are evaluation the driver
+performs on itself. A required check is one of the few control points outside
+that authority, so every such revision is named in the end-of-run report.
 
 ## Merge policies
 

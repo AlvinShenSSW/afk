@@ -49,8 +49,9 @@ self-contained spec.
 
 **Every issue runs the full waterfall — no exceptions.** Each in-scope PR passes
 internal review AND the external gate(s) AND lands green (merged, or under
-`leave-open` declared ready only after internal review + gate + full test suite all
-pass). A design doc, a pushed branch, or a PR not yet ready is a mid-waterfall
+`leave-open` declared ready only after internal review + gate + full test
+suite + the revision's check reading). A design doc, a pushed branch, or a PR
+not yet ready is a mid-waterfall
 checkpoint — never a stopping point and never an operator handoff. "Next:
 operator runs the review" is a bug, not an end state.
 
@@ -59,8 +60,9 @@ evidence and material progress govern convergence, never round count) →
 design-stage external gate (opt-in pilot, default off; one role per evaluation —
 "Design-stage external gate" below) → tests
 first (targeted) → implementation → adversarial sweep →
-commit → push early → open the PR as not-ready → deterministic CI green (fix red
-now) → **internal review** (`afk-internal-review`) → triage every finding and
+commit → push early → open the PR as not-ready → read the revision's checks
+(fix a failure now) → **internal review** (`afk-internal-review`) → triage
+every finding and
 batch-fix admitted P1s plus eligible lower-severity work →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
@@ -70,9 +72,9 @@ than the code.
 - Scale design/debate depth to the work: mechanical, well-specified work gets a
   brief design and one debate round; design-heavy work gets the full treatment.
   Never scale down tests or gates.
-- **Green** = deterministic CI green AND the full test suite green on the final
-  commit. A green status on the PR alone is not green. Never declare it ready
-  before the suite is green.
+- **Green** = the full test suite green on the final commit, and that commit's
+  check reading resolved ("Remote checks"). A green status on the PR alone is
+  not green. Never declare it ready before the suite is green.
 
 **Freeze the issue contract before implementation.** The design records the
 acceptance criteria, product and engineering invariants, explicit non-goals,
@@ -487,18 +489,58 @@ pushes, and diff growth do not.
 
 The no-progress streak crosses debate rounds, paid role verdicts, role
 substitutions, and sequence restarts. A stage is unfinished only while it has an
-untriaged or contested finding, an open admitted P1, a failing required check, or
+untriaged or contested finding, an open admitted P1, an unresolved check
+reading, or
 an unstamped current role. The streak resets only on material progress; a role
 change or sequence restart never resets it by itself.
 
 After final is clean, run the full native suite once on the same commit. A test
 failure or content fix restarts ordered roles; a green suite with unchanged
-stamps permits ready. Remote-CI exceptions are per-run only: name replacement
-local commands in the ledger/PR and report `remote CI not run`, never claim the
-pushed revision had deterministic remote-CI green.
+stamps permits ready once the revision's check reading resolves.
 
-**Merge bar.** An open admitted P1, an `UNTRIAGED` or `Contested` finding, a
-failing required check, or an unmet frozen-contract item bars merge. A deferred
+**Remote checks.** Before ready, ask the forge which checks it required of the
+final revision and record its answer as given; where a forge draws no
+required/advisory distinction, every check it reports is required here. Classify
+by what the answer names, never by how the lookup exited — a status code is a
+forge's own vocabulary, and a reading nobody took resolves nothing:
+
+- the answer names at least one required check and every one of them passed →
+  **resolved**;
+- it names one that did not pass, whether it ended without passing or has not
+  ended → **unresolved**: fix a failure now, else
+  re-read until the answer changes or the window below closes, then leave the PR
+  not ready with `OUTSTANDING`, take up other queued work, and re-read on a
+  later tick;
+- it names no required check, or gives no answer at all — no adapter for that
+  host, a CLI failure, a rate limit — → **unresolved** (these are two different
+  facts: one is the forge's answer, the other is that the run never got one, and
+  neither is ever recorded as the other) until `## checks` →
+  `remote-ci` in `.afk/config.md` settles it: `absent` settles it at once,
+  `detect` (default) once the window closes, `expected` never; blank or absent
+  is `detect`, as every key here resolves, while a non-empty value outside those
+  three is a config error — report it and read it as `expected`, since a
+  misspelling must not settle a reading by accident. Unsettled, it takes the
+  same exit as a failing check: `OUTSTANDING`, other queued work, and a re-read
+  on a later tick.
+
+Record with the answer which of those it was, and stamp the reading's first
+attempt against that revision's commit — the window is 30 minutes of wall clock
+from that stamp, so a resumed tick can tell a spent window from a fresh one, and
+a new commit starts its own. `remote-ci`
+governs only an empty or unanswered reading, and adds no requirement of its own;
+what counts as required is the forge's answer, read as above. This is the one step that may leave a PR not ready over
+a check: a check read earlier never ends an issue's waterfall.
+
+A required check is one of the few control points outside this agent's authority
+(AGENTS.md, "What this plugin can and cannot enforce"). Where none constrained a
+revision, the ordered roles and the local suite are all this run applied, and
+both are evaluation the driver performs on itself. Anything else holding the
+merge — branch protection, a host hook, the owner's review — sits outside this
+run and is not read here.
+
+**Merge bar.** An open admitted P1, an `UNTRIAGED` or `Contested` finding, an
+unresolved check reading ("Remote checks"), or an unmet frozen-contract item
+bars merge. A deferred
 structural P2 does not block the role stamp or ready state, but it bars auto-merge
 until the operator explicitly owns the risk at the merge boundary. Deferred
 minor and out-of-scope findings do not bar auto-merge. A P1 cannot be accepted; only the
@@ -625,5 +667,9 @@ would leave a finished run forever resumable and its scope never free again.
 ## End-of-run report
 
 Every PR with its state (merged / open-awaiting-review), every notable decision,
-each external-gate outcome (including any `SKIPPED`), deferred/remaining items,
+each external-gate outcome (including any `SKIPPED`), every revision whose
+reading named no required check or never answered — which of the two it was, and
+that the ordered roles and the local suite were then the whole of what this run
+applied to it —
+deferred/remaining items,
 and anything blocking. In the operator's preferred language.

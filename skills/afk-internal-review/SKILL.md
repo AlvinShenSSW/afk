@@ -18,13 +18,17 @@ The long report is written only at the very end (see Output).
 ## 1 — Gather context
 
 Collect every signal before forming an opinion: PR metadata and linked
-issue/spec and its frozen issue contract; the full diff; commit history; CI status; the surrounding code of
+issue/spec and its frozen issue contract; the full diff; commit history; the
+checks the forge reports for the revision; the surrounding code of
 changed functions (not only the diff lines); existing tests and coverage; new
 dependencies; config, migrations, and flags; recent related merges.
 
-**CI hard gate:** if a required check is failing or pending, do not do a deep
-review — send the branch back to get CI green first, unless the operator asks to
-review-with-caveat (then note that the review predates green CI).
+**Checks before depth:** a failing required check means the diff will change —
+send the branch back to fix it rather than reading it deeply, unless the
+operator asks to review-with-caveat. A check still unfinished, none reported,
+or no answer at all is not that: review now and note what the reading said.
+Which readings permit ready is the driver's (`../afk/SKILL.md`, "Remote
+checks"), never this review's.
 
 ## 2 — Deep review
 
@@ -53,7 +57,8 @@ Evaluate every dimension; do not skip one because it seems unlikely:
 
 ## 3 — Targeted verification (conditional)
 
-Trust the deterministic CI for what it covers; do not re-run the full suite. Run
+Trust the revision's passing checks for what they cover; do not re-run the full
+suite. Run
 a **targeted** test only when a specific concern from step 2 warrants a live
 check (an untested logic path, a data/security concern, a new integration). If a
 concern needs no live check, say so.
