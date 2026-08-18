@@ -16,7 +16,8 @@ session runs a lighter model, note it before proceeding.
 
 Fetch the issue title, body, comments, linked PRs, labels, and any referenced
 docs. Identify the exact problem, the explicit or implied acceptance criteria,
-hard constraints (performance, compatibility, security), and every ambiguity.
+hard constraints (performance, compatibility, security) with the bar that
+makes each checkable, and every ambiguity — a constraint with no bar is one.
 
 ### 2 — Read the code
 
@@ -25,12 +26,31 @@ affected modules, existing patterns and idioms, existing tests, and any related
 config, flags, migrations, schemas, or interfaces. Check for open PRs or recent
 merges in the same area.
 
-### 3 — Clarify (last resort)
+### 3 — Close the requirement set
+
+Settle here what the issue left unstated: ask what the issue must decide, not
+what the implementation must do. The code read separates a gap the repository
+already settles from one nobody has decided.
+
+- **Authority** — what precondition admits a use, what refuses it, and who or
+  what may invoke it.
+- **Lifecycle** — the second run, resumption after partial failure, and
+  reversal, wherever a use leaves state behind or repeats against it.
+- **Outcome set** — every terminal state the change can reach besides the
+  intended one; each distinguishable failure, partial completion, and no effect.
+- **Consumers** — what each consumer the issue never names observes after the
+  change, including any that must be unaffected.
+
+Record only an axis that both applies and the issue leaves open; padding buries
+what matters. Only a gap the repository settles becomes an acceptance criterion;
+the rest go to Clarify. Each lands once.
+
+### 4 — Clarify (last resort)
 
 Ask at most two or three questions, and only for genuine ambiguity that reading
 cannot resolve. Record every assumption you make in lieu of asking.
 
-### 4 — Produce the plan
+### 5 — Produce the plan
 
 Output, in this shape:
 
