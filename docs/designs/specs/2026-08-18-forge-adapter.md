@@ -104,15 +104,15 @@ belonging to a known *different* forge names no GitHub repository at all, since
 deriving one from its path would build a plausible bogus selector.
 
 `github-repository` and `azure-organization` name the tracker for a checkout
-whose remote cannot.
-
-The redaction count now moves only when a replacement actually differs from what
-it matched. Several rules — the userinfo floor and the base64 catch-all's hex and
-no-digit guards — match a candidate and return it unchanged, and the count is
-what a reader is shown in place of the payload, so counting those reported a
-redaction that did not happen. Both are stripped of any userinfo before reaching an argv:
+whose remote cannot. Both are stripped of any userinfo before reaching an argv:
 `.afk/config.md` holds no secret by rule, but argv is readable by any process on
 the machine, so a pasted credential is dropped rather than trusted.
+
+The redaction count moves only when a replacement differs from what it matched.
+Several rules — the userinfo floor and the base64 catch-all's hex and no-digit
+guards — match a candidate and return it unchanged, and the count is what a
+reader is shown in place of the payload, so counting those reported a redaction
+that did not happen.
 
 Deriving that organization is restricted to an Azure-shaped remote. The first
 path segment of any other host reads as an organization of the same name, and
