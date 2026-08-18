@@ -42,6 +42,21 @@ function detectBase(run) {
   return 'main';
 }
 
+// A read whose payload states a comment count but carries no comment bodies has
+// lost the discussion, and the count is what makes that knowable. Derived from
+// the response, never from the forge: a read that renders its comments inline
+// carries no count and must not acquire a note for having none.
+function uncollectedComments(stdout) {
+  let payload;
+  try {
+    payload = JSON.parse(stdout);
+  } catch {
+    return 0;
+  }
+  const count = payload?.fields?.['System.CommentCount'];
+  return typeof count === 'number' && count > 0 ? count : 0;
+}
+
 export function gatherContext(sources = {}, opts = {}) {
   const {
     maxBytes = 400000,
@@ -96,6 +111,8 @@ export function gatherContext(sources = {}, opts = {}) {
         notes.push(`[skip: ${cmd.bin} could not read issue ${n} on ${forge}]`);
       } else if (r.stdout.trim()) {
         chunks.push({ title: `issue #${n}`, body: r.stdout });
+        const dropped = uncollectedComments(r.stdout);
+        if (dropped) notes.push(`[issue ${n}: ${dropped} comment(s) not in the read]`);
       }
     }
   }
