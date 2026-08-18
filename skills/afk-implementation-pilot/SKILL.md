@@ -93,17 +93,23 @@ rounds, and final check results. Suggest running
 
 ### 7 — CI watch (only when asked to push / open a PR)
 
-If a push or PR is authorised, the job is not done when `git push` returns. Poll
-the pushed revision's remote-CI checks and stay engaged until every required
-check is green: read each failing check's real output, confirm each finding
-against the cited code, fix true bugs with a regression test, update any doc the
-check flagged, and push one comprehensive fix commit per round. Once green, stop
-pushing — do not chase informational-only notes with more commits.
+If a push or PR is authorised, the job is not done when `git push` returns. Ask
+the forge which checks it required of the pushed revision (`../afk/SKILL.md`,
+"Remote checks", for what counts as required) and stay engaged while any is
+failing: read its real output, confirm each finding against the cited code, fix
+true bugs with a regression test, update any doc it flagged, and push one
+comprehensive fix commit per round. Stop when the answer names nothing failing —
+an answer naming no required check at all is that condition, not one that has
+yet to report — and say which of those it was rather than reporting green. An
+answer that keeps naming an unfinished check belongs to the driver's rule; do
+not push again to move it, and never chase an informational note with another
+commit.
 
 ## Hard rules
 
 - Requires a plan. Two consecutive clean self-review rounds is the minimum bar.
 - Never merge, push, or open a PR unless explicitly asked.
-- CI green — not local green — is the merge-ready bar once a push is authorised.
+- Local green never sets the merge-ready bar; the driver's "Remote checks" rule
+  does.
 - Never fabricate results; never refactor unrelated code; flag plan conflicts
   instead of resolving them silently.

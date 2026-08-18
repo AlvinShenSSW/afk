@@ -31,6 +31,13 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
                          # origin is elsewhere: gh would otherwise pick the
                          # repository from the checkout or its environment.
 
+## checks
+# remote-ci:             # detect (default) · expected · absent. Governs only
+                         # what an empty or unanswered reading means: detect
+                         # settles it once the window closes, absent at once,
+                         # expected never. It makes no check required — only a
+                         # forge branch rule does.
+
 ## merge
 policy: leave-open       # leave-open · merge-to-unblock · merge-when-green
 
