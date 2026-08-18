@@ -183,6 +183,17 @@ function resolveCodex() {
 
 const userArgs = process.argv.slice(2);
 
+// A target that could not be parsed is a caller error, and it must surface
+// even when the gate is switched off — otherwise the check below is
+// unreachable in exactly the configuration that most needs to say why.
+{
+  const early = parseTarget(userArgs);
+  if (early.kind === 'error') {
+    emitError(`cannot review — ${validateTarget(early).reason}`, 1);
+  }
+}
+
+
 // Hidden self-test for the lock only (no codex call): --selftest-lock[=holdMs].
 // Acquires, optionally holds holdMs, releases, reports wait time.
 const selftest = userArgs.find((a) => a.startsWith('--selftest-lock'));
