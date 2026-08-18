@@ -12,7 +12,8 @@ Acceptance criteria:
    only executable coupling.
 2. Resolution is `.afk/config.md` `forge:` if set, else the `origin` remote,
    else GitHub, and the resolved value and its source are stated once at
-   kickoff the way the gate profile already is.
+   kickoff the way the gate profile already is. An Azure organization comes
+   from `azure-organization` if set, else an Azure-shaped remote, else nothing.
 3. A forge with no adapter degrades to a named reason, never a silent omission.
 4. A credential in a URL's userinfo is redacted whatever its shape.
 5. The pilot's CI-watch step and the driver's PR-lifecycle prose name the
@@ -89,6 +90,13 @@ names.
   wrong-tracker read this module exists to prevent, so the organization is
   derived from the remote and passed explicitly with `--detect false`, and a
   remote that names none builds no command at all.
+
+Deriving that organization is restricted to an Azure-shaped remote. The first
+path segment of any other host reads as an organization of the same name, and
+one may exist — which is precisely the cross-host setup the `forge:` key is set
+for, so the derivation would be wrong exactly where the key is needed. That case
+takes `azure-organization` from config instead, and builds no command when
+neither source names one.
 
 Still unverified, and therefore out of this change: whether `az repos pr policy
 list` can express "the checks for this commit". It cannot, on the documentation:

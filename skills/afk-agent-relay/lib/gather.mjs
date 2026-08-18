@@ -7,6 +7,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
+import { readConfigSectionValue } from '../../../lib/config.mjs';
 import { issueCommand, resolveForge } from '../../../lib/forge.mjs';
 import {
   filterDiffByExcludes,
@@ -76,8 +77,11 @@ export function gatherContext(sources = {}, opts = {}) {
     const remote = run('git', ['remote', 'get-url', 'origin']);
     const remoteUrl = remote.status === 0 ? remote.stdout.trim() : '';
     const { forge } = resolveForge({ configPath, remoteUrl });
+    const organization = configPath
+      ? readConfigSectionValue(configPath, 'forge', 'azure-organization')
+      : null;
     for (const n of sources.issue) {
-      const cmd = issueCommand(forge, n, { remoteUrl });
+      const cmd = issueCommand(forge, n, { remoteUrl, organization });
       if (cmd.unsupported) {
         notes.push(`[skip: issue ${n} not read — ${cmd.unsupported}]`);
         continue;

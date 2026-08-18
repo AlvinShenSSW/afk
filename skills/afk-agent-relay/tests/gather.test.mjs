@@ -209,3 +209,29 @@ test('the role pipeline hands gather the main worktree config path', async () =>
   assert.notEqual(seen, 'GATHER NEVER CALLED', 'gather was never reached');
   assert.equal(seen, join(mainWorktree({}), '.afk', 'config.md'));
 });
+
+test('a cross-host azure setup reads the organization from config', () => {
+  // forge: azure-devops with a non-Azure origin is the case the key exists for;
+  // deriving from that origin would name a plausible wrong organization.
+  const dir = mkdtempSync(join(tmpdir(), 'afk-gather-'));
+  const configPath = join(dir, 'config.md');
+  writeFileSync(
+    configPath,
+    '## forge\nforge: azure-devops\nazure-organization: https://dev.azure.com/contoso\n',
+  );
+  const { run, calls } = runnerFor('https://github.com/code-owner/repo.git', ok('{}'));
+  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null, configPath });
+  assert.ok(calls.some((c) => c.includes('https://dev.azure.com/contoso')), calls.join(' | '));
+  assert.ok(!calls.some((c) => c.includes('code-owner')), calls.join(' | '));
+  assert.equal(g.notes.length, 0);
+});
+
+test('a cross-host azure setup without the organization builds no command', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'afk-gather-'));
+  const configPath = join(dir, 'config.md');
+  writeFileSync(configPath, '## forge\nforge: azure-devops\n');
+  const { run, calls } = runnerFor('https://github.com/code-owner/repo.git', ok('{}'));
+  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null, configPath });
+  assert.ok(!calls.some((c) => c.startsWith('az ') || c.startsWith('gh ')), calls.join(' | '));
+  assert.match(g.notes[0], /azure-organization/);
+});
