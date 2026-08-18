@@ -291,3 +291,39 @@ test('an unparseable payload is passed through without a note', () => {
   assert.deepEqual(g.notes, []);
   assert.match(g.text, /not json at all/);
 });
+
+// The cap is named in bytes, bounds what is sent to a paid model, and was
+// measured in UTF-16 code units — about a third of the real payload for CJK.
+
+test('the cap counts bytes, not UTF-16 code units', () => {
+  const cjk = '需求'.repeat(2000); // 4000 chars, 12000 bytes
+  const g = gatherContext(
+    { files: ['a.md'] },
+    { run: noRun, readFile: () => cjk, maxBytes: 3000, redact: false },
+  );
+  assert.ok(
+    Buffer.byteLength(g.text, 'utf8') <= 3200,
+    `payload was ${Buffer.byteLength(g.text, 'utf8')} bytes against a 3000-byte cap`,
+  );
+  assert.equal(g.bytes, Buffer.byteLength(g.text, 'utf8'));
+});
+
+test('truncation never splits a character', () => {
+  const astral = '🙂'.repeat(2000);
+  const g = gatherContext(
+    { files: ['a.md'] },
+    { run: noRun, readFile: () => astral, maxBytes: 1000, redact: false },
+  );
+  assert.doesNotMatch(g.text, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/, 'a lone high surrogate survived');
+  assert.doesNotMatch(g.text, /(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/, 'a lone low surrogate survived');
+});
+
+test('an ascii payload under the cap is unchanged', () => {
+  const g = gatherContext(
+    { files: ['a.md'] },
+    { run: noRun, readFile: () => 'plain ascii body', maxBytes: 4000, redact: false },
+  );
+  assert.match(g.text, /plain ascii body/);
+  // redact:false adds its own warning; what matters is that the cap added none.
+  assert.ok(!g.notes.some((n) => /truncated|dropped/.test(n)), g.notes.join(' | '));
+});

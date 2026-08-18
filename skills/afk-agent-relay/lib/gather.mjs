@@ -178,29 +178,47 @@ export function gatherContext(sources = {}, opts = {}) {
     notes.push('[warning: secret redaction DISABLED (AGENT_RELAY_REDACT=off)]');
   }
 
-  // assemble under the byte cap — truncation is loud
+  // assemble under the byte cap — truncation is loud. The cap is named in
+  // bytes and bounds a paid model's input, so it is measured in bytes: a
+  // UTF-16 length lets CJK content past it by roughly three times.
+  const byteLength = (s) => Buffer.byteLength(s, 'utf8');
+
+  // Cut on a character boundary, never mid-sequence: slicing by code unit can
+  // leave a lone surrogate half, and slicing by byte can split a code point.
+  function sliceToBytes(text, limit) {
+    if (byteLength(text) <= limit) return text;
+    const buf = Buffer.from(text, 'utf8');
+    let end = limit;
+    // Step back off a UTF-8 continuation byte (0b10xxxxxx).
+    while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+    return buf.subarray(0, end).toString('utf8');
+  }
+
   let budget = maxBytes;
   let capped = false;
   const parts = [];
   for (const c of chunks) {
     const header = `\n===== ${c.title} =====\n`;
-    if (capped || budget - header.length <= 0) {
+    const headerBytes = byteLength(header);
+    if (capped || budget - headerBytes <= 0) {
       capped = true;
       notes.push(`[dropped: ${c.title} — AGENT_RELAY_MAX_INPUT_BYTES reached]`);
       continue;
     }
     let body = c.body;
-    const avail = budget - header.length;
-    if (body.length > avail) {
-      const cut = body.length - avail;
-      body = body.slice(0, avail) + `\n…[truncated ${cut} bytes of ${c.title}]`;
+    const avail = budget - headerBytes;
+    if (byteLength(body) > avail) {
+      const original = byteLength(body);
+      body = sliceToBytes(body, avail);
+      const cut = original - byteLength(body);
+      body += `\n…[truncated ${cut} bytes of ${c.title}]`;
       notes.push(`[truncated: ${c.title} (${cut} bytes) to fit cap]`);
       capped = true;
     }
     parts.push(header + body);
-    budget -= header.length + body.length;
+    budget -= headerBytes + byteLength(body);
   }
 
   const text = parts.join('\n');
-  return { text, notes, bytes: text.length };
+  return { text, notes, bytes: byteLength(text) };
 }
