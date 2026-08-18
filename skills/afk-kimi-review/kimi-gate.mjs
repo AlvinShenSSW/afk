@@ -87,7 +87,9 @@ const isDesign = target.kind === 'design';
 // A malformed --design is operator error that must fail loud on EVERY gate, even
 // one about to self-skip, so a design target validates BEFORE the independence
 // guard. A diff target validates after it.
-if (isDesign) {
+// A target that could not be parsed is the same class of operator error: it
+// must surface, not become an exit-0 skip when the guard happens to decline.
+if (isDesign || target.kind === 'error') {
   const valid = validateTarget(target);
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);

@@ -51,7 +51,9 @@ import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
-import { optVal, readDesign, validateTarget } from '../../lib/gate/target.mjs';
+import {
+  optVal, parseTarget, readDesign, readOption, validateTarget,
+} from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CODEX', slug: 'codex-gate' });
@@ -222,13 +224,17 @@ const passThrough = promoteExplicitBase(
 // --design is operator error that must ERROR even when codex would self-skip as
 // the implementer. Detect by PRESENCE (a valueless --design must still select
 // the design kind, then fail loud), not by optVal's value alone.
-const isDesign = userArgs.includes('--design');
-const designPath = optVal(userArgs, '--design');
+// The shared reader, not a second spelling rule: `--design=spec.md` here once
+// entered diff mode and forwarded an argument `codex exec review` rejects.
+const designFlag = readOption(userArgs, '--design');
+const isDesign = designFlag.supplied;
+const parsedTarget = parseTarget(userArgs);
+const designPath = designFlag.value || null;
 const designTarget = isDesign
   ? { kind: 'design', path: designPath, label: designPath ? `the design document at ${designPath}` : 'a design document (no --design path given)' }
   : null;
-if (isDesign) {
-  const valid = validateTarget(designTarget);
+if (isDesign || parsedTarget.kind === 'error') {
+  const valid = validateTarget(isDesign ? designTarget : parsedTarget);
   if (!valid.ok) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
