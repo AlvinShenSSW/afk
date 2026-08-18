@@ -100,10 +100,12 @@ test('the spec review bullet does not re-enumerate what the sweep routes', () =>
 test('the sweep claims no authority it does not have', () => {
   // Level 1: prose and evaluation only. A planning step that called itself
   // enforcing would be the overclaim this repo keeps finding in its own work.
-  const sweep = planner.slice(
-    planner.indexOf('### 3 — Close the requirement set'),
-    planner.indexOf('### 4 — Clarify (last resort)'),
-  );
+  const start = planner.indexOf('### 3 — Close the requirement set');
+  const end = planner.indexOf('### 4 — Clarify (last resort)');
+  // Fail closed: a renamed heading slices to '' and every guard below would
+  // pass on the empty string instead of on the step it is meant to bound.
+  assert.ok(start !== -1 && end > start, 'the sweep must be bounded by both headings');
+  const sweep = planner.slice(start, end);
   assert.doesNotMatch(sweep, /enforced|blocked|guaranteed/i);
   assert.doesNotMatch(sweep, /\bP1\b|\bP2\b|severity|finding/i);
 });
