@@ -3,7 +3,7 @@
 // using an INDEPENDENT model. Default provider: codex.
 //
 // It does NOT create the issue — it prints a draft; you/Claude review, then
-// `gh issue create`.
+// open it on whichever forge tracks the work.
 //
 //   node scope.mjs --manual --task "<raw request>" [--files a.py] [--issue 12]
 

@@ -153,6 +153,14 @@ test('keeps the host and user while redacting the userinfo credential', () => {
   assert.match(text, /https:\/\/alice:\[REDACTED\]@example\.com/);
 });
 
+test('an uppercase scheme redacts its userinfo too', () => {
+  // URI schemes are case-insensitive, so a case-sensitive rule leaks exactly
+  // the credential it was added to catch.
+  const url = `HTTPS://user:secrettoken${'@'}example.com/path`;
+  const { text } = redactSecrets(url);
+  assert.doesNotMatch(text, /secrettoken/);
+});
+
 test('a URL with no credential is untouched', () => {
   const url = 'https://dev.azure.com/org/project/_git/repo';
   const { text, count } = redactSecrets(`clone ${url} now`);
