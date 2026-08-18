@@ -54,7 +54,9 @@ function uncollectedComments(stdout) {
     return 0;
   }
   const count = payload?.fields?.['System.CommentCount'];
-  return typeof count === 'number' && count > 0 ? count : 0;
+  // Integer, not merely a number: the note stands in for the payload a reader
+  // cannot see, and half a comment reads as a defect in the note itself.
+  return Number.isInteger(count) && count > 0 ? count : 0;
 }
 
 export function gatherContext(sources = {}, opts = {}) {

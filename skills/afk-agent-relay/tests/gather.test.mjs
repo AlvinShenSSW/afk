@@ -271,12 +271,16 @@ test('a payload carrying no count at all adds no note', () => {
   assert.deepEqual(g.notes, []);
 });
 
-test('a payload whose count is present but not a number adds no note', () => {
-  const { run } = runnerFor('https://dev.azure.com/org/proj/_git/repo', ok(
-    JSON.stringify({ fields: { 'System.CommentCount': 'many' } }),
-  ));
-  const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
-  assert.deepEqual(g.notes, []);
+test('a count that is not a positive integer adds no note', () => {
+  // The note stands in for a payload the reader cannot see, so a fractional or
+  // negative count would read as a defect in the note rather than in the read.
+  for (const count of ['many', 2.7, -3, null, Number.NaN]) {
+    const { run } = runnerFor('https://dev.azure.com/org/proj/_git/repo', ok(
+      JSON.stringify({ fields: { 'System.CommentCount': count } }),
+    ));
+    const g = gatherContext({ issue: ['42'] }, { run, readFile: () => null });
+    assert.deepEqual(g.notes, [], String(count));
+  }
 });
 
 test('an unparseable payload is passed through without a note', () => {
