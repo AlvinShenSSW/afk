@@ -59,6 +59,9 @@ import { join } from 'node:path';
 
 import { resolveDialect } from '../../lib/gate/cli-dialect.mjs';
 import {
+  ASCII_PUNCTUATION_CONSTRAINT, encodingCrash, resolveConsole, toAsciiPunctuation,
+} from '../../lib/gate/console-encoding.mjs';
+import {
   isGateDisabled, isSpawnTimeout, positiveIntEnv, preflightTimeoutMs, reviewTimeoutMs,
 } from '../../lib/gate/env.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
@@ -135,13 +138,34 @@ if (!isDesign) {
 // Design mode swaps the whole clause: the diff clause's `git show`/`git diff` is
 // meaningless for a design, and pointing kimi at the doc ON DISK (rather than
 // injecting its text) keeps a large doc out of the prompt entirely.
+//
+// The brief is composed with a SLOT per operand, not with the operands
+// themselves. On a constrained console the fixed prose is normalised to ASCII
+// punctuation, and normalising a brief that already carried the target would
+// rewrite it: a design doc at `…/规格 — v2.md` becomes a path that does not
+// exist, AFTER validateTarget confirmed the real one does — and the reviewer
+// then takes the blame for not reading it. Which is this gate's own failure
+// mode, rebuilt by the fix for it.
+//
+// Per OPERAND, not per argument: the builders take this gate's whole context
+// clause as one argument, so a slot standing in for all of it would protect
+// that clause's prose too — and in diff mode that prose holds the brief's only
+// non-ASCII character, so the normalisation would reach nothing at all.
+//
+// NUL-delimited, because NUL is the one byte no path or ref can contain, so an
+// operand can never collide with a slot.
+const SLOT = { scope: '\u0000afk-scope\u0000', target: '\u0000afk-target\u0000' };
 let reviewPrompt;
+let operands;
 if (target.kind === 'design') {
-  const context = `Review the design document at ${target.path} in this git repository. Read it in full first. Use git and read surrounding files to check any claim the design makes about the code. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
-  reviewPrompt = buildDesignReviewPrompt({ scope: target.label, context });
+  const context = `Review the design document at ${SLOT.target} in this git repository. Read it in full first. Use git and read surrounding files to check any claim the design makes about the code. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
+  reviewPrompt = buildDesignReviewPrompt({ scope: SLOT.scope, context });
+  operands = [[SLOT.scope, target.label], [SLOT.target, target.path]];
 } else {
-  const context = `Inspect the target with ${target.inspect || `\`${target.command}\``} in this git repository. Use git and read surrounding files for context. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
-  reviewPrompt = buildReviewPrompt({ scope: target.label, context });
+  const inspect = target.inspect || `\`${target.command}\``;
+  const context = `Inspect the target with ${SLOT.target} in this git repository. Use git and read surrounding files for context. Do NOT modify, stage, commit, write, or delete ANY file — review only.`;
+  reviewPrompt = buildReviewPrompt({ scope: SLOT.scope, context });
+  operands = [[SLOT.scope, target.label], [SLOT.target, inspect]];
 }
 
 // resolveCliBin, not the bare name: `npm i -g @moonshot-ai/kimi-code` — the
@@ -164,6 +188,27 @@ const timeoutMs = reviewTimeoutMs('kimi');
 // for exactly that reason. It forces the TRANSPORT, never the platform.
 const forceShim = ['1', 'true', 'yes', 'on'].includes(
   (process.env.KIMI_GATE_FORCE_SHIM || '').trim().toLowerCase());
+
+// Composed HERE, after `timeoutMs` is bound and before the --print-prompt exit:
+// the probe is bounded by that timeout, and resolving at the template above
+// would read `timeoutMs` in its temporal dead zone — a ReferenceError, a stack
+// trace, and no marker block, which is the one output shape this protocol
+// exists to guarantee.
+const consoleEncoding = resolveConsole({
+  override: process.env.KIMI_GATE_CONSOLE || '',
+  probe: () => spawnCli('reg', [
+    'query', 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage', '/v', 'ACP',
+  ], { encoding: 'utf8', timeout: preflightTimeoutMs(timeoutMs), killSignal: 'SIGKILL' }),
+});
+if (!consoleEncoding.ok) emitError(`not retryable — ${consoleEncoding.reason}`, 1);
+if (consoleEncoding.constrain) {
+  reviewPrompt = `${toAsciiPunctuation(reviewPrompt)}\n${ASCII_PUNCTUATION_CONSTRAINT}`;
+}
+// split/join, never String.replace: with a string pattern, `replace` interprets
+// `$&`, `` $` ``, `$'` and `$$` IN THE REPLACEMENT, so a ref or path carrying
+// one is mangled — `feature/$&-fix` comes back with the slot re-inserted into
+// the brief, and `$$` (a routine temp-path idiom) collapses.
+for (const [slot, value] of operands) reviewPrompt = reviewPrompt.split(slot).join(value);
 
 if (printPromptOnly) {
   process.stdout.write(`${reviewPrompt}\n`);
@@ -428,11 +473,47 @@ if (res.error || res.signal) {
 
 const review = out.trim();
 
+// stderr first, then stdout: a CLI that folds its traceback into its transcript
+// stream must not escape the diagnosis. The cost is that a review ABOUT
+// encodings could match its own text, on a path that is an ERROR either way.
+//
+// LAZY and BOUNDED, because this runs on every review: eager, it would scan and
+// line-split up to `maxBufferBytes` of a perfectly good answer for a fault that
+// is not there. A traceback lands at the END of the stream it aborts, so a
+// tail of stdout is the part worth reading.
+const CRASH_SCAN_TAIL = 64 * 1024;
+let crashCache;
+const crashInfo = () => {
+  if (crashCache === undefined) {
+    crashCache = encodingCrash(`${err}\n${out.length > CRASH_SCAN_TAIL ? out.slice(-CRASH_SCAN_TAIL) : out}`);
+  }
+  return crashCache;
+};
+const codePageNote = consoleEncoding.codePage ? ` (ANSI code page ${consoleEncoding.codePage})` : '';
+
+// Keyed on WHICH signature matched, because the two are different events with
+// different remedies. An output-punctuation constraint does nothing for a brief
+// the CLI could not read, and a decode failure on the shim path IS a brief that
+// never arrived — so that conclusion is kept, not displaced by this one.
+const encodingFailure = () => (crashInfo().kind === 'decode'
+  ? `kimi could not decode text this gate handed it: ${crashInfo().detail}.${briefPath
+    ? ` The brief was written to ${work} as UTF-8 and read back under this machine's own encoding${codePageNote}, so it most likely never arrived — which is what a missing verdict on this transport means. Point KIMI_GATE_BIN at a native executable so the brief travels in argv instead of through a file.`
+    : ` The payload this gate sent could not be decoded by the CLI${codePageNote}.`}`
+  : `kimi crashed while writing its answer: ${crashInfo().detail}. A character the model wrote cannot be encoded by this machine's ANSI code page${codePageNote}, so the CLI died mid-write: the review was lost to the transport, NOT to a reviewer that failed to answer.${consoleEncoding.constrain
+    ? ' The ASCII-punctuation constraint was applied on this run, so the model wrote a character it was asked not to.'
+    : ` The constraint was NOT applied on this run (${consoleEncoding.source === 'override' ? 'KIMI_GATE_CONSOLE forced it off' : 'the probe read the code page as UTF-8'}); force it with KIMI_GATE_CONSOLE=legacy.`}`);
+
 // Not authenticated -> clean skip. Requires an EMPTY review as well as the
 // keyword, so a real review that merely mentions login/auth cannot be
 // misread as an auth failure.
 if (!review && /no model configured|use \/login|\bkimi login\b|not (logged in|authenticated)|unauthorized|please (log|sign) in/i.test(err)) {
   emitSkip('Kimi not authenticated — run `kimi login`, or set KIMI_REVIEW_GATE=off to disable this gate.');
+}
+
+if (!review && crashInfo()) {
+  // The reported symptom: forty minutes of paid review, discarded, and the
+  // gate blaming the reviewer for a fault in the transport.
+  emitError(`${encodingFailure()} Transcript: ${logFile}`, res.status || 1);
 }
 
 if (!review) {
@@ -478,19 +559,49 @@ if (!review) {
   );
 }
 
+// A CLI that died mid-write leaves a FRAGMENT on stdout, and a fragment that
+// happens to carry a verdict word is accepted by the protocol as a verdict.
+// That is the fail-open half of the encoding bug, and it is worse than the
+// reported symptom. Scoped to non-empty stdout deliberately: the empty-stdout
+// paths above own the auth SKIP (a logged-out reviewer must still fall back to
+// another family) and the `not retryable —` flag-drift diagnosis, and neither
+// may be swallowed by this rule.
+//
+// It rests on an assumption nothing here can verify — that a successful review
+// exits 0. `kimi -p …` is a paid call. If it is wrong, every review on that
+// install errors, retries once, and falls back; the ERROR says exactly that
+// shape so one round of transcripts identifies it.
+if (res.status !== 0) {
+  emitError(
+    `kimi exited ${res.status} while stdout held a review-shaped answer, so that answer is a `
+    + `fragment of an aborted run, not a verdict.${crashInfo() ? ` ${encodingFailure()}` : ''} `
+    + `Transcript: ${logFile}`,
+    res.status,
+  );
+}
+
 // The prompt mandates a verdict line on every transport; its absence means
 // the review did not follow the brief. On the shim path — where the brief
 // travels by file reference — it more specifically means the brief was most
-// likely never read, so that path keeps its own diagnosis.
+// likely never read, so that path keeps its own diagnosis. An encoding fault
+// outranks both, EXCEPT a decode failure on the shim path, where the two are
+// the same event and `encodingFailure` already says so.
 emitVerifiedReview(review, {
   requireVerdict: true,
-  missingVerdictMessage: briefPath
-    ? ('kimi answered without the verdict line its brief requires, so the brief handed to it '
-      + `(written to ${work} for the duration of the call, then removed) was most likely never read. `
-      + 'This install is a Windows script shim, whose only '
-      + 'transport is a file reference. Point KIMI_GATE_BIN at a native executable. '
-      + `Transcript: ${logFile}`)
-    : undefined,
+  missingVerdictMessage: (() => {
+    if (crashInfo()) return `${encodingFailure()} Transcript: ${logFile}`;
+    if (briefPath) {
+      return 'kimi answered without the verdict line its brief requires, so the brief handed to it '
+        + `(written to ${work} for the duration of the call, then removed) was most likely never read. `
+        + 'This install is a Windows script shim, whose only '
+        + 'transport is a file reference. Point KIMI_GATE_BIN at a native executable. '
+        + `Transcript: ${logFile}`;
+    }
+    // Today's default names no transcript, leaving the operator un-pointed at
+    // the log that holds the answer.
+    return 'kimi answered without the mandated verdict line; the review is discarded rather than '
+      + `presented as a verdict. Transcript: ${logFile}`;
+  })(),
 });
 // `?? 1`, never `?? 0`: a null status means kimi died on a signal, and a review
 // that was killed must not exit clean.
