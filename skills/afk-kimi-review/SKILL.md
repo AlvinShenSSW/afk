@@ -1,6 +1,6 @@
 ---
 name: afk-kimi-review
-description: Part of the afk pipeline. Runs Kimi (Kimi CLI) as the default final independent, read-only (prompt-requested) external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
+description: Part of the afk pipeline. Runs Kimi (Kimi Code CLI or Kimi CLI) as the default final independent, read-only (prompt-requested) external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
 ---
 
 # afk-kimi-review
@@ -74,12 +74,23 @@ platform. It exists so that path is testable off Windows — `EINVAL` cannot be
 produced on POSIX — and it makes the review indirect (the brief travels by file
 reference). Never set it for a real review.
 
-One `ERROR` is **not** transient and must not be retried: `kimi rejected an
-argument this gate sent …`. The helper and the installed CLI disagree about the
-flag list, so every retry rejects the same flags and every fallback hides the
-defect — the failure mode that kept this gate reporting "produced no final
-message" on every review. Stop the round, report it, and fix the flag list
-against `kimi --help`.
+An `ERROR` whose message begins **`not retryable —`** must not be retried and
+must not fall back. It means the helper and the installed CLI disagree about how
+this CLI is invoked — a rejected flag, a rejected value, a dialect that could
+not be resolved, or an unrecognised `KIMI_GATE_DIALECT`. Every retry is answered
+identically and every fallback hides the defect, which is how this gate once
+reported "produced no final message" on every review. Stop the round and report
+it; the message names the installed version, the exact argv, and the resolved
+dialect with its source. Key the rule on that prefix, not on any one sentence.
+
+**Two different CLIs are named `kimi`** — the npm Kimi Code CLI
+(`@moonshot-ai/kimi-code`) and MoonshotAI's Python Kimi CLI, whose headless
+flags disagree — so the gate reads the flag list from the installed CLI's own
+`--help` before each review rather than carrying a table. It reports the
+resolved dialect on stderr. A print-mode CLI documenting no
+`--final-message-only` is refused before the call, not warned about: its answer
+would be a whole transcript, and a transcript containing a verdict word cannot
+be told apart from a verdict, so such a review could read as clean.
 
 ## Handle findings (batch — minimise calls)
 
@@ -126,11 +137,16 @@ provider-specific finding baseline.
 
 ## Setup (per machine, once)
 
-Optional and self-skipping. Install the Kimi CLI and log in; needs Node + git on
-PATH. Disable with `KIMI_REVIEW_GATE=off`.
+Optional and self-skipping. Install either Kimi CLI — `npm i -g
+@moonshot-ai/kimi-code` (the npm Kimi Code CLI) or MoonshotAI's Python Kimi CLI
+— and log in; needs Node + git on PATH. Disable with `KIMI_REVIEW_GATE=off`.
 
 Config knobs:
 
 - `KIMI_REVIEW_MAX_BUFFER_BYTES` (default `67108864`, 64 MiB) — the output
   buffer bound; output past it aborts the run as an `ERROR`, never a truncated
   verdict.
+- `KIMI_GATE_DIALECT` (`prompt` · `print` · `print-positional`) — forces the
+  headless flag group and **replaces** the `--help` probe. For an install whose
+  help layout the parser cannot read; unset, the gate derives the group. An
+  unrecognised value stops the round rather than falling back to probing.

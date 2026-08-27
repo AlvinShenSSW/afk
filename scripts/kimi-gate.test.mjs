@@ -17,6 +17,12 @@ import { gateTestEnv, nonMergeHead, spawnGate, stubPath } from './gate-test-env.
 
 const TEST_COMMIT = nonMergeHead();
 
+// `--print-args` now probes the installed CLI (the argv is a function of it), so
+// a dry-run test that asserts the TARGET must still be hermetic: point the gate
+// at a binary that is definitively absent rather than at whatever `kimi` the
+// developer happens to have on PATH.
+const NO_CLI = { KIMI_GATE_BIN: join(tmpdir(), 'kimi-gate-absent-binary') };
+
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-kimi-review/kimi-gate.mjs';
 
@@ -26,6 +32,29 @@ function runGate({ args = [], env = {} } = {}) {
     encoding: 'utf8',
     env: gateTestEnv(env),
   });
+}
+
+/** The smallest help text the gate can compose today's argv from. */
+const MINIMAL_HELP = 'Usage: kimi [options]\n\nOptions:\n  -p, --prompt <p>      prompt\n  --output-format <f>   format\n';
+
+/**
+ * A POSIX stub answering the two local probes — `--version` and `--help` — and
+ * then running `body`. Every stub must answer both: the gate reads its flag
+ * list from `--help`, so a stub that ignores it has no dialect and the gate
+ * (correctly) refuses to invent one.
+ */
+function probeAnsweringStub(dir, body) {
+  const stub = join(dir, 'kimi-stub');
+  writeFileSync(stub, [
+    `#!${process.execPath}`,
+    'const a = process.argv;',
+    "if (a.includes('--version')) { process.stdout.write('stub'); process.exit(0); }",
+    `if (a.includes('--help')) { process.stdout.write(${JSON.stringify(MINIMAL_HELP)}); process.exit(0); }`,
+    body,
+    '',
+  ].join('\n'));
+  chmodSync(stub, 0o755);
+  return stub;
 }
 
 function withDesignDoc(text, fn) {
@@ -60,7 +89,7 @@ test('kimi gate honours every documented opt-out spelling', () => {
 // the extracted target/base code. --print-args makes that surface observable.
 
 test('kimi gate resolves the default base to its promoted remote ref', () => {
-  const result = runGate({ args: ['--print-args'] });
+  const result = runGate({ args: ['--print-args'], env: NO_CLI });
 
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
@@ -74,7 +103,7 @@ test('kimi gate resolves the default base to its promoted remote ref', () => {
 test('kimi gate tells its reviewer to go looking, unlike the tool-less gate', () => {
   // kimi HAS tools; glm does not. The context clause is per-gate for exactly
   // this reason, so a shared prompt must never flatten the difference.
-  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'], env: NO_CLI });
   const { promptBytes, command } = JSON.parse(result.stdout);
   assert.ok(promptBytes > 0);
   assert.equal(command, `git show ${TEST_COMMIT}`);
@@ -92,7 +121,7 @@ test('kimi gate never exits clean on a status it could not read', () => {
 
 test('kimi design mode resolves the design kind, not a diff selector', () => {
   withDesignDoc('# Spec\n', (path) => {
-    const result = runGate({ args: ['--design', path, '--print-args'] });
+    const result = runGate({ args: ['--design', path, '--print-args'], env: NO_CLI });
     assert.equal(result.status, 0, result.stderr);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.kind, 'design');
@@ -140,21 +169,21 @@ test('kimi design mode: an unavailable reviewer skips and proceeds (Decision 6 a
 // only boundedness control this gate has.
 
 test('kimi gate bounds a review by default', () => {
-  const result = runGate({ args: ['--print-args'] });
+  const result = runGate({ args: ['--print-args'], env: NO_CLI });
 
   const { timeoutMs } = JSON.parse(result.stdout);
   assert.equal(timeoutMs, 45 * 60 * 1000);
 });
 
 test('kimi gate honours KIMI_REVIEW_TIMEOUT_MS', () => {
-  const result = runGate({ args: ['--print-args'], env: { KIMI_REVIEW_TIMEOUT_MS: '1000' } });
+  const result = runGate({ args: ['--print-args'], env: { ...NO_CLI, KIMI_REVIEW_TIMEOUT_MS: '1000' } });
 
   const { timeoutMs } = JSON.parse(result.stdout);
   assert.equal(timeoutMs, 1000);
 });
 
 test('kimi gate inherits AFK_REVIEW_TIMEOUT_MS when no gate override exists', () => {
-  const result = runGate({ args: ['--print-args'], env: { AFK_REVIEW_TIMEOUT_MS: '1234' } });
+  const result = runGate({ args: ['--print-args'], env: { ...NO_CLI, AFK_REVIEW_TIMEOUT_MS: '1234' } });
   const { timeoutMs } = JSON.parse(result.stdout);
   assert.equal(timeoutMs, 1234);
 });
@@ -163,7 +192,7 @@ test('kimi gate keeps the default bound when the override is unusable', () => {
   // `0` is the dangerous one: Node reads it as "no timeout", so a typo would
   // silently restore the unbounded hang this bound exists to prevent.
   for (const value of ['0', '-1', 'abc']) {
-    const result = runGate({ args: ['--print-args'], env: { KIMI_REVIEW_TIMEOUT_MS: value } });
+    const result = runGate({ args: ['--print-args'], env: { ...NO_CLI, KIMI_REVIEW_TIMEOUT_MS: value } });
     const { timeoutMs } = JSON.parse(result.stdout);
     assert.equal(timeoutMs, 45 * 60 * 1000, JSON.stringify(value));
     assert.match(result.stderr, /KIMI_REVIEW_TIMEOUT_MS/, JSON.stringify(value));
@@ -176,9 +205,7 @@ test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
 }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-hang-'));
   try {
-    const stub = join(dir, 'kimi-stub');
-    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.on('SIGTERM', () => {}); setInterval(() => {}, 60000); }\n`);
-    chmodSync(stub, 0o755);
+    const stub = probeAnsweringStub(dir, "process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);");
 
     const result = runGate({
       args: ['--commit', TEST_COMMIT],
@@ -198,7 +225,9 @@ test('a kimi review that never returns ends as a non-zero ERROR, not silence', {
   }
 });
 
-test('the prompt never rides in argv under a shell', () => {
+test('the prompt never rides in argv under a shell', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
   // The invariant behind three deaths, all verified against the real CLI:
   // (1) Node concatenates argv UNESCAPED under a shell (DEP0190), so cmd.exe
   // split the multi-word prompt and Kimi read its second word as a subcommand
@@ -206,9 +235,14 @@ test('the prompt never rides in argv under a shell', () => {
   // it to (`--input-format` does not exist); (3) flags invented from a newer
   // build's help text are rejected outright. So: prompt in argv, no shell — and
   // under a shell, a file reference instead of the payload.
-  const result = runGate({ args: ['--print-args'] });
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-shape-'));
+  const bin = posixStub(dir, strictStub(dir, {}));
+  const result = runGate({ args: ['--print-args'], env: { KIMI_GATE_BIN: bin } });
+  rmSync(dir, { recursive: true, force: true });
 
-  const { transport, shell, args, fallback, promptBytes } = JSON.parse(result.stdout);
+  const {
+    transport, shell, args, fallback, promptBytes,
+  } = JSON.parse(result.stdout);
   assert.equal(transport, 'argv');
   assert.equal(shell, false, 'a shell with a payload in argv is the bug itself');
   assert.ok(promptBytes > 100);
@@ -345,6 +379,7 @@ test('a bare-name .cmd shim on PATH is resolved and drives a completed review', 
     writeFileSync(impl, [
       "const argv = process.argv.slice(2);",
       "if (argv.includes('--version')) { process.stdout.write('stub 1.0'); process.exit(0); }",
+      "if (argv.includes('--help')) { process.stdout.write('Usage: kimi [options]\\n\\nOptions:\\n  -p, --prompt <p>  prompt\\n  --output-format <f>  fmt\\n'); process.exit(0); }",
       "process.stdout.write('STUB REVIEW: APPROVE — resolved via PATH');",
       '',
     ].join('\n'));
@@ -369,23 +404,99 @@ test('a bare-name .cmd shim on PATH is resolved and drives a completed review', 
 // the gate reported "produced no final message" forever. A stub that accepts
 // anything cannot catch a flag the CLI refuses, so this one refuses too.
 
-/** The documented headless surface: `-p <prompt>` and `--output-format <fmt>`. */
-function strictStub(dir, { record, body = "process.stdout.write('STUB REVIEW: APPROVE — no findings');" } = {}) {
+// Each stub answers `--help` with ONE dialect and then accepts only that
+// dialect's flags. The gate now derives its argv from that answer, so a stub
+// that answered every flag list would make an invalid composition invisible —
+// the same blindness that let `--quiet` ride a green suite, moved one level up.
+//
+// `prompt` is captured shape: @moonshot-ai/kimi-code, commander. The two print
+// dialects are HYPOTHETICAL — kimi-cli 1.43.0 is not installable here, so their
+// help layout is authored from the design and only their rejection wording is
+// reported. What they pin is the composition, not the product.
+const HELP = {
+  prompt: [
+    'Usage: kimi [options] [command]',
+    '',
+    'Options:',
+    '  -V, --version                 output the version number',
+    '  -p, --prompt <prompt>         Run one prompt non-interactively.',
+    '  --output-format <format>      Output format for prompt mode.',
+    '  -h, --help                    Show help.',
+  ].join('\n'),
+  print: [
+    'Usage: kimi [OPTIONS] [PROMPT]...',
+    '',
+    'Options:',
+    '  -p, --prompt TEXT           Run one prompt non-interactively.',
+    '  --print                     Print the response and exit.',
+    '  --output-format TEXT        Output format for print mode.',
+    '  --final-message-only        Print only the final message.',
+  ].join('\n'),
+  'print-positional': [
+    'Usage: kimi [OPTIONS] [PROMPT]...',
+    '',
+    'Options:',
+    '  -p, --print                 Print the response and exit.',
+    '  --output-format TEXT        Output format for print mode.',
+    '  --final-message-only        Print only the final message.',
+  ].join('\n'),
+  // A CLI that documents a boolean print flag and a subcommand slot: there is
+  // no way to hand it a brief, and guessing the positional is the death this
+  // gate already died once.
+  'no-transport': [
+    'Usage: kimi [options] [command]',
+    '',
+    'Options:',
+    '  -p, --print                   Print the response and exit.',
+    '  --output-format <format>      Output format.',
+  ].join('\n'),
+};
+
+const TAKES_VALUE = {
+  prompt: ['-p', '--prompt', '--output-format'],
+  print: ['-p', '--prompt', '--output-format'],
+  'print-positional': ['--output-format'],
+  'no-transport': ['--output-format'],
+};
+
+/**
+ * A stub CLI that answers `--help` with `dialect` and refuses anything that
+ * dialect does not document.
+ *
+ * `rejectOutputFormatWithoutPrint` reproduces kimi-cli 1.43.0's reported
+ * behaviour — a rejected VALUE rather than an unknown option — which is the
+ * wording the drift diagnosis has to recognise.
+ */
+function strictStub(dir, {
+  record, body = "process.stdout.write('STUB REVIEW: APPROVE — no findings');",
+  dialect = 'prompt', version = '0.29.1', rejectOutputFormatWithoutPrint = false,
+  rejectsDespiteDocumenting = [], help = HELP[dialect],
+} = {}) {
   const impl = join(dir, 'strict-stub.mjs');
   writeFileSync(impl, [
     "import { readFileSync, writeFileSync } from 'node:fs';",
-    "const argv = process.argv.slice(2);",
-    "if (argv.includes('--version')) { process.stdout.write('0.29.1'); process.exit(0); }",
-    "const TAKES_VALUE = new Set(['-p', '--prompt', '--output-format']);",
-    "for (let i = 0; i < argv.length; i += 1) {",
-    "  const arg = argv[i];",
+    'const argv = process.argv.slice(2);',
+    `if (argv.includes('--version')) { process.stdout.write(${JSON.stringify(version)}); process.exit(0); }`,
+    // The probe comes first now, and it must be answerable without the review
+    // branch running at all.
+    `if (argv.includes('--help')) { process.stdout.write(${JSON.stringify(help)}); process.exit(0); }`,
+    `const TAKES_VALUE = new Set(${JSON.stringify(TAKES_VALUE[dialect])});`,
+    'for (let i = 0; i < argv.length; i += 1) {',
+    '  const arg = argv[i];',
     "  if (!arg.startsWith('-')) continue;",
-    "  if (TAKES_VALUE.has(arg)) { i += 1; continue; }",
+    '  if (TAKES_VALUE.has(arg)) { i += 1; continue; }',
+    `  if (${JSON.stringify(help)}.includes(arg)) continue;`,
     // Commander's own wording, so the gate's drift diagnosis is matched against
-    // the string the real CLI emits rather than one invented here.
+    // the string a real CLI emits rather than one invented here.
     "  process.stderr.write(`error: unknown option '${arg}'\\n`);",
-    "  process.exit(1);",
-    "}",
+    '  process.exit(1);',
+    '}',
+    ...rejectsDespiteDocumenting.map((flag) => `if (argv.includes(${JSON.stringify(flag)})) { process.stderr.write("error: unknown option '${flag}'\\n"); process.exit(1); }`),
+    rejectOutputFormatWithoutPrint
+      ? "if (argv.includes('--output-format') && !argv.includes('--print')) {\n"
+        + "  process.stderr.write('Invalid value for --output-format: Output format is only supported for print UI\\n');\n"
+        + '  process.exit(2);\n}'
+      : '',
     "let stdin = '';",
     "try { stdin = readFileSync(0, 'utf8'); } catch {}",
     record ? `writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv, stdin }));` : '',
@@ -400,6 +511,20 @@ function posixStub(dir, impl) {
   writeFileSync(bin, `#!${process.execPath}\nprocess.argv.splice(1, 1, ${JSON.stringify(impl)});\nawait import(${JSON.stringify(impl)});\n`);
   chmodSync(bin, 0o755);
   return bin;
+}
+
+/** Run the gate against a stub of `dialect` and return what it sent. */
+function argvSentTo(dialect, { args = ['--commit', TEST_COMMIT], env = {}, stubOpts = {} } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-dialect-'));
+  try {
+    const record = join(dir, 'record.json');
+    const bin = posixStub(dir, strictStub(dir, { record, dialect, ...stubOpts }));
+    const result = runGate({ args, env: { KIMI_GATE_BIN: bin, ...env } });
+    const sent = existsSync(record) ? JSON.parse(readFileSync(record, 'utf8')).argv : null;
+    return { result, argv: sent };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 test('the gate passes only flags this CLI documents', {
@@ -430,27 +555,40 @@ test('a rejected flag is reported as CLI drift, not as an empty review', {
   // The failure this whole change exists for: the gate said "kimi produced no
   // final message (exit 1)" on every single review, which reads as a broken
   // reviewer rather than a helper and a CLI that disagree about a flag name.
-  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-drift-'));
-  try {
-    const impl = strictStub(dir, {});
-    // A stub that refuses the very flag the gate is expected to send.
-    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
-      "const TAKES_VALUE = new Set(['-p', '--prompt', '--output-format']);",
-      "const TAKES_VALUE = new Set(['-p', '--prompt', '-m', '--model']);",
-    ));
-    const bin = posixStub(dir, impl);
+  // A CLI that documents a flag and rejects it anyway is the only way left to
+  // reach this branch, now that the argv is derived from the help text.
+  const { result } = argvSentTo('prompt', {
+    stubOpts: { rejectsDespiteDocumenting: ['--output-format'] },
+  });
 
-    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: bin } });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: not retryable —/, 'the driver keys its no-retry rule on this prefix');
+  assert.match(result.stdout, /--output-format/, 'the rejected flag must be named');
+  assert.match(result.stdout, /0\.29\.1/, 'the CLI version must be named');
+  assert.match(result.stdout, /dialect: prompt \(probe\)/i, 'and which dialect produced that argv');
+  assert.doesNotMatch(result.stdout, /produced no final message/);
+  assert.doesNotMatch(result.stdout, /SKIPPED/);
+});
 
-    assert.notEqual(result.status, 0);
-    assert.match(result.stdout, /ERROR: /);
-    assert.match(result.stdout, /--output-format/, 'the rejected flag must be named');
-    assert.match(result.stdout, /0\.29\.1/, 'the CLI version must be named');
-    assert.doesNotMatch(result.stdout, /produced no final message/);
-    assert.doesNotMatch(result.stdout, /SKIPPED/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test('a rejected VALUE is drift too, and names the override that forced it', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // kimi-cli 1.43.0 refuses `--output-format` unless `--print` accompanies it,
+  // and says so as a rejected value — wording no unknown-option pattern
+  // matches, so this arrived as a generic empty review and took a paid retry.
+  // Reached here by forcing the wrong group, which is also the case where the
+  // remedy must point at the variable rather than at `--help`.
+  const { result } = argvSentTo('print', {
+    env: { KIMI_GATE_DIALECT: 'prompt' },
+    stubOpts: { rejectOutputFormatWithoutPrint: true },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: not retryable —/);
+  assert.match(result.stdout, /only supported for print UI/, 'the CLI\'s own words');
+  assert.match(result.stdout, /dialect: prompt \(override\)/i);
+  assert.match(result.stdout, /KIMI_GATE_DIALECT/, 'the remedy is the forced dialect, not `--help`');
+  assert.doesNotMatch(result.stdout, /produced no final message/);
 });
 
 test('the forced shim transport replaces the primary spawn, never doubles it', {
@@ -508,11 +646,19 @@ test('a no-output failure names the version and the argv, whatever the CLI said'
   }
 });
 
-test('the forced transport is observable, not silent', () => {
+test('the forced transport is observable, not silent', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
   // The gate's own comment calls the invocation shape "part of the contract":
   // a seam that reported the primary shape while running the indirect one would
   // make every diagnosis of that path a guess.
-  const result = runGate({ args: ['--print-args'], env: { KIMI_GATE_FORCE_SHIM: '1' } });
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-forced-'));
+  const bin = posixStub(dir, strictStub(dir, {}));
+  const result = runGate({
+    args: ['--print-args'],
+    env: { KIMI_GATE_BIN: bin, KIMI_GATE_FORCE_SHIM: '1' },
+  });
+  rmSync(dir, { recursive: true, force: true });
 
   const { transport, shell, args } = JSON.parse(result.stdout);
   assert.equal(transport, 'brief-file');
@@ -527,9 +673,7 @@ test('a signal-killed kimi is an ERROR, never a partial verdict', {
 }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-sigkill-'));
   try {
-    const stub = join(dir, 'kimi-stub');
-    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.stdout.write('PARTIAL: the diff looks f'); process.kill(process.pid, 'SIGKILL'); }\n`);
-    chmodSync(stub, 0o755);
+    const stub = probeAnsweringStub(dir, "process.stdout.write('PARTIAL: the diff looks f'); process.kill(process.pid, 'SIGKILL');");
 
     const result = runGate({
       args: ['--commit', TEST_COMMIT],
@@ -551,9 +695,7 @@ test('output past the buffer bound is an ERROR naming the knob, not a verdict', 
 }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-enobufs-'));
   try {
-    const stub = join(dir, 'kimi-stub');
-    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.stdout.write('x'.repeat(8192)); }\n`);
-    chmodSync(stub, 0o755);
+    const stub = probeAnsweringStub(dir, "process.stdout.write('x'.repeat(8192));");
 
     const result = runGate({
       args: ['--commit', TEST_COMMIT],
@@ -574,13 +716,290 @@ test('a direct-path kimi review without a verdict line is an error, not a verdic
 }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-no-verdict-'));
   try {
-    const stub = join(dir, 'kimi-stub');
-    writeFileSync(stub, `#!${process.execPath}\nif (process.argv.includes('--version')) { process.stdout.write('stub'); } else { process.stdout.write('fluent text with no verdict line'); }\n`);
-    chmodSync(stub, 0o755);
+    const stub = probeAnsweringStub(dir, "process.stdout.write('fluent text with no verdict line');");
     const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: stub } });
     assert.notEqual(result.status, 0, result.stdout);
     assert.match(result.stdout, /ERROR: .*verdict/);
     assert.doesNotMatch(result.stdout, /fluent text/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── which CLI is installed decides the argv ─────────────────────────────────
+// Two products install a binary named `kimi`. Pinning either flag table breaks
+// the other install before the model call, and the version strings do not
+// separate them — so the argv is derived, and these assert what each dialect
+// composes, by exact composition rather than by the absence of a dead string.
+
+test('a commander CLI still receives exactly the argv this gate always sent', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const { result, argv } = argvSentTo('prompt');
+
+  assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, result.stderr);
+  assert.equal(argv.length, 4, JSON.stringify(argv));
+  assert.deepEqual([argv[0], argv[2], argv[3]], ['-p', '--output-format', 'text']);
+  assert.ok(argv[1].length > 100, 'the whole prompt arrived, not its first word');
+  for (const foreign of ['--print', '--final-message-only', '--quiet', '--input-format']) {
+    assert.ok(!argv.includes(foreign), `${foreign} belongs to another CLI`);
+  }
+});
+
+test('a print-mode CLI receives its own group, prompt still on the flag', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const { result, argv } = argvSentTo('print');
+
+  assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, result.stderr);
+  assert.deepEqual(argv.filter((a) => a.length < 40),
+    ['-p', '--print', '--output-format', 'text', '--final-message-only']);
+});
+
+test('a boolean print flag puts the brief in the documented positional', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // Never attached to the boolean flag: a CLI whose positional slot is a
+  // subcommand would read the prompt's second word as one — the death this
+  // gate already died once ("No such command 'are'").
+  const { result, argv } = argvSentTo('print-positional');
+
+  assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, result.stderr);
+  assert.deepEqual(argv.slice(0, 4), ['--print', '--output-format', 'text', '--final-message-only']);
+  assert.equal(argv.length, 5);
+  assert.ok(argv[4].length > 100, 'the prompt is the trailing positional');
+});
+
+test('a CLI with no way to receive a brief is a stop, not a skip', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // Present and answering, so this reviewer is not unavailable: a SKIP would
+  // hand the review to another family and hide the drift.
+  const { result, argv } = argvSentTo('no-transport');
+
+  assert.equal(argv, null, 'no review may be attempted');
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: not retryable —/);
+  assert.match(result.stdout, /KIMI_GATE_DIALECT/, 'the message carries its own remedy');
+  assert.doesNotMatch(result.stdout, /SKIPPED/);
+});
+
+test('a CLI that will not answer --help is unavailable, not drift', {
+  skip: process.platform === 'win32' ? 'needs a POSIX executable stub' : false,
+}, () => {
+  // The other half of the split: nothing was read, which says nothing about
+  // the flag list. Erroring here would wedge a run on a first-run unpack or a
+  // virus scanner; skipping falls back to another family, by design.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-probe-hang-'));
+  try {
+    const stub = join(dir, 'kimi-stub');
+    writeFileSync(stub, [
+      `#!${process.execPath}`,
+      "if (process.argv.includes('--version')) { process.stdout.write('stub'); process.exit(0); }",
+      'process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 60000);',
+      '',
+    ].join('\n'));
+    chmodSync(stub, 0o755);
+
+    const result = runGate({
+      args: ['--commit', TEST_COMMIT],
+      env: { KIMI_GATE_BIN: stub, KIMI_REVIEW_TIMEOUT_MS: '2000' },
+    });
+
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /SKIPPED: .*--help/, 'the reason names the probe, so a chronic hang is one line');
+    assert.doesNotMatch(result.stdout, /ERROR/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a CLI that would answer with a transcript is refused, not warned about', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // A print-mode CLI with no `--final-message-only` answers with its whole
+  // transcript, and `emitVerifiedReview` accepts any answer carrying a verdict
+  // word — which a transcript does. A stderr warning is not a control here:
+  // the skill tells the caller to keep STDOUT and read the marker block, so
+  // the transcript would arrive as a clean verdict. Refused before the call.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-transcript-'));
+  try {
+    const record = join(dir, 'record.json');
+    const impl = strictStub(dir, {
+      record,
+      dialect: 'print',
+      help: HELP.print.split('\n').filter((line) => !line.includes('--final-message-only')).join('\n'),
+    });
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
+
+    assert.equal(existsSync(record), false, 'no paid review may be attempted');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: not retryable —/);
+    assert.match(result.stdout, /transcript/i);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── the override ────────────────────────────────────────────────────────────
+
+test('KIMI_GATE_DIALECT replaces the probe rather than seeding it', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // It exists for a CLI whose help cannot be read at all, so it must not
+  // depend on having read one — and it must outrank what the help says.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-override-'));
+  try {
+    const record = join(dir, 'record.json');
+    const probes = join(dir, 'probes.log');
+    const impl = strictStub(dir, { record, dialect: 'print' });
+    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
+      "if (argv.includes('--help'))",
+      `import { appendFileSync } from 'node:fs';\nif (argv.includes('--help')) appendFileSync(${JSON.stringify(probes)}, 'help\\n');\nif (argv.includes('--help'))`,
+    ));
+
+    const result = runGate({
+      args: ['--commit', TEST_COMMIT],
+      env: { KIMI_GATE_BIN: posixStub(dir, impl), KIMI_GATE_DIALECT: 'print' },
+    });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, result.stderr);
+    assert.equal(existsSync(probes), false, 'a forced dialect must not spend a --help spawn');
+    assert.deepEqual(JSON.parse(readFileSync(record, 'utf8')).argv.filter((a) => a.length < 40),
+      ['-p', '--print', '--output-format', 'text', '--final-message-only']);
+    assert.match(result.stderr, /dialect -> print \(override\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an unrecognised KIMI_GATE_DIALECT stops, never silently probes', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const { result, argv } = argvSentTo('prompt', { env: { KIMI_GATE_DIALECT: 'prnt' } });
+
+  assert.equal(argv, null);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: not retryable —/);
+  assert.match(result.stdout, /prnt/, 'the typo is quoted back');
+  assert.doesNotMatch(result.stdout, /SKIPPED/);
+});
+
+// ── what the probe may and may not cost ─────────────────────────────────────
+
+test('the probe resolves a CLI found only through PATH', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // `env` REPLACES the environment in spawnSync, so a probe that passed a bare
+  // `{ COLUMNS }` would lose PATH, ENOENT, and — classified as unavailability —
+  // silently skip every review on a healthy machine.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-probe-path-'));
+  try {
+    const impl = strictStub(dir, {});
+    const bin = join(dir, 'kimi');
+    writeFileSync(bin, `#!${process.execPath}\nprocess.argv.splice(1, 1, ${JSON.stringify(impl)});\nawait import(${JSON.stringify(impl)});\n`);
+    chmodSync(bin, 0o755);
+
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: stubPath(dir, 'kimi') });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, `${result.stdout}\n${result.stderr}`);
+    assert.doesNotMatch(result.stdout, /SKIPPED/, 'a CLI on PATH is not "not installed"');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the probe costs one spawn, and the review one more', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-probe-count-'));
+  try {
+    const log = join(dir, 'calls.log');
+    const impl = strictStub(dir, {
+      body: `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(log)}, 'review\\n');\n`
+        + "process.stdout.write('APPROVE\\nSTUB REVIEW: APPROVE — no findings');",
+    });
+    // Counted in the probe branch itself, so a probe that also fell through to
+    // the review branch cannot pass by counting once.
+    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
+      "if (argv.includes('--help'))",
+      `import { appendFileSync as append } from 'node:fs';\nif (argv.includes('--help')) append(${JSON.stringify(log)}, 'help\\n');\nif (argv.includes('--help'))`,
+    ));
+
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, result.stderr);
+    assert.deepEqual(readFileSync(log, 'utf8').split('\n').filter(Boolean), ['help', 'review']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a run that will not review spawns nothing at all', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // The probe moved up the file, toward the exits that must stay free: a
+  // disabled gate, a reviewer that declines on independence, and the dry run
+  // that only prints the prompt.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-nospawn-'));
+  try {
+    const log = join(dir, 'calls.log');
+    const impl = strictStub(dir, {});
+    writeFileSync(impl, `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(log)}, 'spawn\\n');\n${readFileSync(impl, 'utf8')}`);
+    const bin = posixStub(dir, impl);
+
+    for (const [label, args, env] of [
+      ['disabled', ['--commit', TEST_COMMIT], { KIMI_REVIEW_GATE: 'off' }],
+      ['not independent', ['--commit', TEST_COMMIT, '--implementer', 'kimi'], {}],
+      ['--print-prompt', ['--commit', TEST_COMMIT, '--print-prompt'], {}],
+    ]) {
+      const result = runGate({ args, env: { KIMI_GATE_BIN: bin, ...env } });
+      assert.equal(result.status, 0, `${label}: ${result.stdout}`);
+      assert.equal(existsSync(log), false, `${label} must not spawn the CLI`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the probe reads one stream, so a warning on the other cannot blind it', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // Concatenated, a dash-leading warning line joins the option pool — and at
+  // column 0 it redefines the option column and drops every real option, which
+  // reads as "this CLI documents no prompt transport".
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-warned-'));
+  try {
+    const impl = strictStub(dir, {});
+    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
+      "if (argv.includes('--help'))",
+      "if (argv.includes('--help')) process.stderr.write('-Xss warning: deprecated flag\\n');\nif (argv.includes('--help'))",
+    ));
+
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, /dialect -> prompt/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a CLI that prints its help to stderr is still read', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-help-stderr-'));
+  try {
+    const impl = strictStub(dir, {});
+    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
+      'process.stdout.write(' + JSON.stringify(HELP.prompt) + '); process.exit(0);',
+      'process.stderr.write(' + JSON.stringify(HELP.prompt) + '); process.exit(0);',
+    ));
+
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, `${result.stdout}\n${result.stderr}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
