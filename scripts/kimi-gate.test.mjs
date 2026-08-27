@@ -955,3 +955,45 @@ test('a run that will not review spawns nothing at all', {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the probe reads one stream, so a warning on the other cannot blind it', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // Concatenated, a dash-leading warning line joins the option pool — and at
+  // column 0 it redefines the option column and drops every real option, which
+  // reads as "this CLI documents no prompt transport".
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-warned-'));
+  try {
+    const impl = strictStub(dir, {});
+    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
+      "if (argv.includes('--help'))",
+      "if (argv.includes('--help')) process.stderr.write('-Xss warning: deprecated flag\\n');\nif (argv.includes('--help'))",
+    ));
+
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr, /dialect -> prompt/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a CLI that prints its help to stderr is still read', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-help-stderr-'));
+  try {
+    const impl = strictStub(dir, {});
+    writeFileSync(impl, readFileSync(impl, 'utf8').replace(
+      'process.stdout.write(' + JSON.stringify(HELP.prompt) + '); process.exit(0);',
+      'process.stderr.write(' + JSON.stringify(HELP.prompt) + '); process.exit(0);',
+    ));
+
+    const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
+
+    assert.match(result.stdout, /STUB REVIEW: APPROVE — no findings/, `${result.stdout}\n${result.stderr}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

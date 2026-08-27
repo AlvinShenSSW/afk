@@ -228,8 +228,12 @@ if (!dialectOverride && !unavailable) {
     unavailable = `Kimi CLI could not be run to read its \`--help\` (${help.error.code || help.error.message}); this reviewer is unavailable.`;
   } else {
     // The TEXT is the answer, not the exit code: a CLI that prints its help and
-    // exits non-zero has still told the gate what it accepts.
-    helpText = `${help.stdout || ''}\n${help.stderr || ''}`;
+    // exits non-zero has still told the gate what it accepts. stdout when it
+    // said anything, else stderr — some CLIs print help there. Never both
+    // concatenated: one dash-leading warning line on the other stream would
+    // join the option pool and, being at column 0, redefine the option column
+    // and drop every real option.
+    helpText = (help.stdout || '').trim() ? help.stdout : (help.stderr || '');
   }
 }
 
