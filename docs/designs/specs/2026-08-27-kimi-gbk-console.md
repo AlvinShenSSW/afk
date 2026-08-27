@@ -358,7 +358,8 @@ an operator seeing that on every review is looking at.
 ## Test plan
 
 - `ansiCodePage`, over `reg query` output — NOT `chcp`'s, which D1 rejects:
-  `    ACP    REG_SZ    936` → 936; `    ACP    REG_DWORD    0x3a8` → `null`
+  a `REG_SZ` line whose value is `936` → 936; a `REG_DWORD` line printing
+  `0x3a8` → `null`
   (a base-10 parse would call it code page 0); a non-zero `reg` exit → `null`;
   garbage → `null`; off win32 → `null` and the probe is never called.
 - `needsAsciiPunctuation`: win32+936 → true; win32+65001 → false; win32+`null`
