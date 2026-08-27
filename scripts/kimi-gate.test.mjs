@@ -1004,3 +1004,169 @@ test('a CLI that prints its help to stderr is still read', {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ── a non-UTF-8 console must not silently destroy a paid review ─────────────
+// The reported failure: one character outside the machine's ANSI code page in
+// the model's answer kills the CLI mid-write, and the gate reports a reviewer
+// that gave no verdict. Forty minutes, paid, discarded, blamed on the reviewer.
+
+const CRASH = "UnicodeEncodeError: 'gbk' codec can't encode character '−' in position 41: illegal multibyte sequence";
+/** Every character measured as unencodable, plus the quotes the brief asks for. */
+const MAPPED = /[‐-―−‘’“”\u00A0…]/g;
+const SLOT_TOKEN = /\u0000/;
+
+test('an encoding crash is named as itself, not as an absent verdict', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const { result } = argvSentTo('prompt', {
+    stubOpts: { body: `process.stderr.write(${JSON.stringify(CRASH)});\nprocess.exit(1);` },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: kimi crashed while writing its answer/);
+  assert.match(result.stdout, /gbk/, "the CLI's own words");
+  assert.match(result.stdout, /NOT to a reviewer that failed to answer/);
+  assert.doesNotMatch(result.stdout, /produced no final message/, 'the wrong face this issue is about');
+});
+
+test('a review truncated mid-write is not a verdict, however complete it looks', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // The fail-open half: the protocol accepts any answer carrying a verdict
+  // WORD, and a fragment can carry one.
+  const { result } = argvSentTo('prompt', {
+    stubOpts: {
+      body: "process.stdout.write('P1 candidate: something\\nOverall verdict: REQUEST CHANGES\\n(truncated here');\n"
+        + `process.stderr.write(${JSON.stringify(CRASH)});\nprocess.exit(1);`,
+    },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /fragment of an aborted run/);
+  assert.match(result.stdout, /crashed while writing its answer/, 'and the true cause');
+  assert.doesNotMatch(result.stdout, /truncated here/, 'a fragment must never be emitted as a review');
+});
+
+test('a non-zero exit is never a verdict, even with no crash to blame', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  const { result } = argvSentTo('prompt', {
+    stubOpts: { body: "process.stdout.write('Looks fine.\\nOverall verdict: APPROVE');\nprocess.exit(3);" },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: kimi exited 3/);
+  assert.doesNotMatch(result.stdout, /Looks fine/);
+});
+
+test('the non-zero-exit rule does not swallow the auth skip or the drift stop', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // Both exit non-zero with EMPTY stdout and must keep their own disposition:
+  // a logged-out reviewer falls back to another family, and a rejected flag
+  // stops the round (#58's control, which this branch must not regress).
+  const loggedOut = argvSentTo('prompt', {
+    stubOpts: { body: "process.stderr.write('No model configured. Please run kimi login.');\nprocess.exit(1);" },
+  });
+  assert.equal(loggedOut.result.status, 0, loggedOut.result.stdout);
+  assert.match(loggedOut.result.stdout, /SKIPPED: Kimi not authenticated/);
+
+  const drifted = argvSentTo('prompt', { stubOpts: { rejectsDespiteDocumenting: ['--output-format'] } });
+  assert.notEqual(drifted.result.status, 0);
+  assert.match(drifted.result.stdout, /ERROR: not retryable /);
+});
+
+test('a decode failure on the shim path keeps the "brief never arrived" conclusion', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  // The gate writes that brief as UTF-8 and the CLI reads it under the locale
+  // encoding, so a decode error IS a brief that never arrived. Letting the
+  // encoding diagnosis simply outrank the shim one would swap a correct
+  // conclusion for a remedy that does nothing.
+  const { result } = argvSentTo('prompt', {
+    env: { KIMI_GATE_FORCE_SHIM: '1' },
+    stubOpts: {
+      body: 'process.stderr.write("UnicodeDecodeError: \'gbk\' codec can\'t decode byte 0xe2 in position 12");\nprocess.exit(1);',
+    },
+  });
+
+  assert.match(result.stdout, /could not decode/);
+  assert.match(result.stdout, /never arrived/);
+  assert.match(result.stdout, /native executable/, 'the remedy that actually helps');
+});
+
+// ── the prompt-side mitigation ──────────────────────────────────────────────
+
+const promptUnder = (env, args = ['--commit', TEST_COMMIT]) => runGate({
+  args: [...args, '--print-prompt'],
+  env: { ...NO_CLI, ...env },
+}).stdout;
+
+test('a constrained console adds the constraint and leaves the fixed prose ASCII', () => {
+  const prompts = {
+    diff: promptUnder({ KIMI_GATE_CONSOLE: 'legacy' }),
+    design: withDesignDoc('# Spec\n', (path) => promptUnder({ KIMI_GATE_CONSOLE: 'legacy' }, ['--design', path])),
+  };
+
+  for (const [mode, prompt] of Object.entries(prompts)) {
+    assert.match(prompt, /Output constraint \(a tooling limit on this machine/, mode);
+    assert.match(prompt, /CJK text is fine/, mode);
+    assert.match(prompt, /no-break space/, mode);
+    // The brief must not model the character class that crashes the CLI, and
+    // design mode is the hard case: three of its em dashes come from the
+    // SHARED brief, which this gate may not edit.
+    assert.deepEqual(prompt.match(MAPPED) || [], [], `${mode}: fixed prose still carries mapped characters`);
+  }
+});
+
+test('an unconstrained console changes nothing at all', () => {
+  const plain = promptUnder({});
+  const forcedOff = promptUnder({ KIMI_GATE_CONSOLE: 'utf8' });
+
+  assert.equal(plain, forcedOff, 'forcing utf8 off Windows is the same as not probing');
+  assert.doesNotMatch(plain, /Output constraint/);
+  assert.ok((plain.match(MAPPED) || []).length > 0, 'nothing is normalised when nothing needs to be');
+});
+
+test('the composed prompt never leaks a slot token', () => {
+  // spawnSync THROWS on a NUL in argv rather than returning an error, and the
+  // gate spawns at module top level - a leaked slot would exit with a stack
+  // trace and NO marker block. --print-prompt prints a NUL harmlessly, so only
+  // an explicit assertion catches it, and no --design test reaches a spawn.
+  for (const env of [{ KIMI_GATE_CONSOLE: 'legacy' }, {}]) {
+    assert.doesNotMatch(promptUnder(env), SLOT_TOKEN, JSON.stringify(env));
+    withDesignDoc('# Spec\n', (path) => {
+      assert.doesNotMatch(promptUnder(env, ['--design', path]), SLOT_TOKEN, JSON.stringify(env));
+    });
+  }
+});
+
+test('an operand survives normalisation and substitution byte-exact', () => {
+  // The regression this design exists to prevent twice over: normalising the
+  // composed prompt would rewrite a path AFTER validateTarget confirmed it, and
+  // String.replace would mangle a `$&` in it. The reviewer would then report it
+  // could not read the document, and the gate would blame the reviewer.
+  const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-operand-'));
+  try {
+    const path = join(dir, 'spec — v2 $&.md');
+    writeFileSync(path, '# Spec\n');
+
+    const prompt = promptUnder({ KIMI_GATE_CONSOLE: 'legacy' }, ['--design', path]);
+
+    assert.ok(prompt.includes(path), `the target was rewritten: ${prompt.split('\n')[1]}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an unrecognised KIMI_GATE_CONSOLE stops the round', () => {
+  const result = runGate({
+    args: ['--commit', TEST_COMMIT, '--print-prompt'],
+    env: { ...NO_CLI, KIMI_GATE_CONSOLE: 'legasy' },
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR: not retryable /);
+  assert.match(result.stdout, /legasy/);
+  assert.doesNotMatch(result.stdout, /SKIPPED/);
+});
