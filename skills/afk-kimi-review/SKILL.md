@@ -83,6 +83,18 @@ reported "produced no final message" on every review. Stop the round and report
 it; the message names the installed version, the exact argv, and the resolved
 dialect with its source. Key the rule on that prefix, not on any one sentence.
 
+**On a non-UTF-8 Windows machine** the gate adds an ASCII-punctuation
+constraint to the brief and normalises the brief's own prose, because one
+character the model writes that the machine's ANSI code page cannot encode
+kills the CLI mid-write and loses the whole paid review. Measured: on cp936 the
+crashers are the typographic minus and the no-break space — em dashes and curly
+quotes encode fine there, and cp932/949/950 reject a different set. The
+constraint is asked for, not enforced, so an `ERROR` that names an encoding
+crash is the real net: read it as a transport fault, never as a reviewer that
+failed to answer, and never as a reason to doubt the reviewer. Such an `ERROR`
+**is** worth one retry — unlike a flag disagreement, the crash depends on which
+characters the model happened to choose.
+
 **Two different CLIs are named `kimi`** — the npm Kimi Code CLI
 (`@moonshot-ai/kimi-code`) and MoonshotAI's Python Kimi CLI, whose headless
 flags disagree — so the gate reads the flag list from the installed CLI's own
@@ -150,3 +162,9 @@ Config knobs:
   headless flag group and **replaces** the `--help` probe. For an install whose
   help layout the parser cannot read; unset, the gate derives the group. An
   unrecognised value stops the round rather than falling back to probing.
+- `KIMI_GATE_CONSOLE` (`legacy` · `utf8`) — forces the encoding constraint on or
+  off and **replaces** the code-page probe. `legacy` is the remedy when a review
+  still dies with an encoding crash on a machine whose ANSI code page reads as
+  UTF-8; `utf8` opts out. Unset, the gate probes. An unrecognised value stops the
+  round. It also makes the Windows-only branch runnable off Windows, which is
+  the only way this repo can test it at all.
