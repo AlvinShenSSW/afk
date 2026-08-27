@@ -476,18 +476,30 @@ const review = out.trim();
 // stderr first, then stdout: a CLI that folds its traceback into its transcript
 // stream must not escape the diagnosis. The cost is that a review ABOUT
 // encodings could match its own text, on a path that is an ERROR either way.
-const crash = encodingCrash(`${err}\n${out}`);
+//
+// LAZY and BOUNDED, because this runs on every review: eager, it would scan and
+// line-split up to `maxBufferBytes` of a perfectly good answer for a fault that
+// is not there. A traceback lands at the END of the stream it aborts, so a
+// tail of stdout is the part worth reading.
+const CRASH_SCAN_TAIL = 64 * 1024;
+let crashCache;
+const crashInfo = () => {
+  if (crashCache === undefined) {
+    crashCache = encodingCrash(`${err}\n${out.length > CRASH_SCAN_TAIL ? out.slice(-CRASH_SCAN_TAIL) : out}`);
+  }
+  return crashCache;
+};
 const codePageNote = consoleEncoding.codePage ? ` (ANSI code page ${consoleEncoding.codePage})` : '';
 
 // Keyed on WHICH signature matched, because the two are different events with
 // different remedies. An output-punctuation constraint does nothing for a brief
 // the CLI could not read, and a decode failure on the shim path IS a brief that
 // never arrived — so that conclusion is kept, not displaced by this one.
-const encodingFailure = () => (crash.kind === 'decode'
-  ? `kimi could not decode text this gate handed it: ${crash.detail}.${briefPath
+const encodingFailure = () => (crashInfo().kind === 'decode'
+  ? `kimi could not decode text this gate handed it: ${crashInfo().detail}.${briefPath
     ? ` The brief was written to ${work} as UTF-8 and read back under this machine's own encoding${codePageNote}, so it most likely never arrived — which is what a missing verdict on this transport means. Point KIMI_GATE_BIN at a native executable so the brief travels in argv instead of through a file.`
     : ` The payload this gate sent could not be decoded by the CLI${codePageNote}.`}`
-  : `kimi crashed while writing its answer: ${crash.detail}. A character the model wrote cannot be encoded by this machine's ANSI code page${codePageNote}, so the CLI died mid-write: the review was lost to the transport, NOT to a reviewer that failed to answer.${consoleEncoding.constrain
+  : `kimi crashed while writing its answer: ${crashInfo().detail}. A character the model wrote cannot be encoded by this machine's ANSI code page${codePageNote}, so the CLI died mid-write: the review was lost to the transport, NOT to a reviewer that failed to answer.${consoleEncoding.constrain
     ? ' The ASCII-punctuation constraint was applied on this run, so the model wrote a character it was asked not to.'
     : ` The constraint was NOT applied on this run (${consoleEncoding.source === 'override' ? 'KIMI_GATE_CONSOLE forced it off' : 'the probe read the code page as UTF-8'}); force it with KIMI_GATE_CONSOLE=legacy.`}`);
 
@@ -498,7 +510,7 @@ if (!review && /no model configured|use \/login|\bkimi login\b|not (logged in|au
   emitSkip('Kimi not authenticated — run `kimi login`, or set KIMI_REVIEW_GATE=off to disable this gate.');
 }
 
-if (!review && crash) {
+if (!review && crashInfo()) {
   // The reported symptom: forty minutes of paid review, discarded, and the
   // gate blaming the reviewer for a fault in the transport.
   emitError(`${encodingFailure()} Transcript: ${logFile}`, res.status || 1);
@@ -562,7 +574,7 @@ if (!review) {
 if (res.status !== 0) {
   emitError(
     `kimi exited ${res.status} while stdout held a review-shaped answer, so that answer is a `
-    + `fragment of an aborted run, not a verdict.${crash ? ` ${encodingFailure()}` : ''} `
+    + `fragment of an aborted run, not a verdict.${crashInfo() ? ` ${encodingFailure()}` : ''} `
     + `Transcript: ${logFile}`,
     res.status,
   );
@@ -577,7 +589,7 @@ if (res.status !== 0) {
 emitVerifiedReview(review, {
   requireVerdict: true,
   missingVerdictMessage: (() => {
-    if (crash) return `${encodingFailure()} Transcript: ${logFile}`;
+    if (crashInfo()) return `${encodingFailure()} Transcript: ${logFile}`;
     if (briefPath) {
       return 'kimi answered without the verdict line its brief requires, so the brief handed to it '
         + `(written to ${work} for the duration of the call, then removed) was most likely never read. `
