@@ -292,18 +292,34 @@ gains the resolved dialect and prints the composed flags rather than a hardcoded
 string, and the shim path re-prints the argv it actually sent, since `sentArgs`
 is rewritten at `:280` after the first banner.
 
-### D8 — A print group without `--final-message-only` is announced
+### D8 — A CLI that would answer with a transcript is refused, not announced
 
-Without that flag the CLI prints a whole transcript, and `protocol.mjs:118` only
-requires a verdict *word* somewhere — which a transcript satisfies, so a
-transcript would be emitted as the review. Nothing here can detect that after
-the fact, so it is announced before the call: the label becomes
-`print-no-final-message` and the banner says so. A stderr line alone would be
-decoration — `SKILL.md:39-41` tells the caller to keep **stdout** and read the
-marker block — so the announcement gets a consumer in the same file: a
-`print-no-final-message` dialect means the block may be a transcript rather
-than a verdict, and that review is read as `OUTSTANDING`, never clean. Level 2
-artifact plus level 3 doctrine, stated as such.
+Without `--final-message-only` a print-mode CLI prints its whole transcript, and
+`protocol.mjs:118` accepts any answer containing a verdict *word* — which a
+transcript does. So the marker block would carry a transcript as a verdict and
+the round would read clean.
+
+Revisions 3–5 handled this with a stderr label plus a reading rule in
+`SKILL.md`. The Codex gate refuted that: `SKILL.md:39-41` tells the caller to
+redirect **stdout** and read the marker block, so nothing consumes the stderr
+line, and AGENTS.md's vocabulary rule forbids crediting a mechanism with a job
+nothing performs. A control is available here and is therefore mandatory: the
+dialect **resolves to nothing**, before the paid call, with the transcript
+hazard named and `KIMI_GATE_DIALECT` as the remedy — every override set carries
+`--final-message-only` wherever it carries `--print`, so the remedy cannot land
+the operator back in the hazard.
+
+This costs no working configuration: before this change the gate did not run on
+a print-mode CLI at all.
+
+**Precedence.** The refusal is emitted after the work directory is resolved:
+availability -> environment -> CLI interface. An absent reviewer is a skip
+whatever else is broken, and an environment that cannot hold a transcript is
+the more fundamental failure — reporting a flag disagreement while the gate has
+nowhere to write the evidence for it sends the operator after the wrong fault.
+(Found by a cross-file test: a gate pointed at `node`, whose help documents
+`-p, --print` and no `--final-message-only`, stopped reporting its missing
+`TMPDIR`.)
 
 ## Files to change
 
@@ -312,7 +328,7 @@ artifact plus level 3 doctrine, stated as such.
 | `lib/gate/cli-dialect.mjs` | new: `documentedFlags`, `resolveDialect`, the capability table, D5's named sets (pure) |
 | `lib/gate/cli-dialect.test.mjs` | new: parser units over the captured kimi-code and claude help texts |
 | `skills/afk-kimi-review/kimi-gate.mjs` | probe in preflight; compose argv; D2–D8; skip message names the npm product |
-| `skills/afk-kimi-review/SKILL.md` | dialect resolution, `KIMI_GATE_DIALECT`, the `not retryable —` prefix rule, product naming at `:3` and `:129`, the `:82` remedy (the flag list is derived now, not transcribed), and D8's reading rule |
+| `skills/afk-kimi-review/SKILL.md` | dialect resolution, `KIMI_GATE_DIALECT`, the `not retryable —` prefix rule, product naming at `:3` and `:129`, the `:82` remedy (the flag list is derived now, not transcribed), and D8's refusal |
 | `scripts/kimi-gate.test.mjs` | **every stub answers `--help` first** (it is now the first spawn); per-dialect stubs; exact-composition assertions; value-rejection drift; unresolvable-answer ERROR; probe-timeout SKIP; spawn count = 1 probe + 1 review |
 | `package.json` + manifests | patch bump via `scripts/sync-marketplace.mjs` |
 
@@ -359,6 +375,8 @@ outside it, in that product's real wording):
 - a stub that hangs on `--help` → `SKIPPED`, and no ERROR.
 - a stub rejecting `--output-format` by value, in 1.43.0's wording → drift
   `ERROR`, not "produced no final message".
+- a print-mode stub whose help documents no `--final-message-only` → `ERROR`
+  before any review spawn, and the review is never attempted (D8).
 - `KIMI_GATE_DIALECT=print` against a kimi-code-shaped stub → the print group
   and **no `--help` spawn**; an unrecognised value → `not retryable —` ERROR.
 - spawn accounting: exactly one probe and one review spawn, counted in the
@@ -415,6 +433,11 @@ claude fixture is the one hostile shape that is real.
   argparse renders options inline, so three of the five newly adopted words are
   ordinary option metavars. Refuted by executing it; prevented by dropping
   option and choice groups first, and pinned by three usage-line units.
+- *(Revisions 3–5) a stderr label plus a `SKILL.md` reading rule is enough for
+  the transcript hazard.* Refuted by the Codex gate: the caller is told to keep
+  stdout and read the marker block, so nothing consumes the label, and a
+  transcript carrying a verdict word would be emitted as a verdict. Prevented
+  by D8's refusal, and pinned by a test asserting no review is even attempted.
 - *"Unchanged: every existing kimi-gate test that does not assert argv."*
   Refuted: `--help` becomes the first spawn, so every stub that rejects unknown
   flags, hangs, or exits in a failure body changes disposition. The stub surface

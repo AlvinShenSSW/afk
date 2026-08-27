@@ -87,9 +87,10 @@ dialect with its source. Key the rule on that prefix, not on any one sentence.
 (`@moonshot-ai/kimi-code`) and MoonshotAI's Python Kimi CLI, whose headless
 flags disagree — so the gate reads the flag list from the installed CLI's own
 `--help` before each review rather than carrying a table. It reports the
-resolved dialect on stderr. A `print-no-final-message` dialect means that CLI
-documents no `--final-message-only`, so its answer may be a whole transcript
-rather than a verdict: read such a review as `OUTSTANDING`, never as clean.
+resolved dialect on stderr. A print-mode CLI documenting no
+`--final-message-only` is refused before the call, not warned about: its answer
+would be a whole transcript, and a transcript containing a verdict word cannot
+be told apart from a verdict, so such a review could read as clean.
 
 ## Handle findings (batch — minimise calls)
 

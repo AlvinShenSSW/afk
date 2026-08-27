@@ -814,22 +814,29 @@ test('a CLI that will not answer --help is unavailable, not drift', {
   }
 });
 
-test('a print group without --final-message-only is announced before the call', {
+test('a CLI that would answer with a transcript is refused, not warned about', {
   skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
 }, () => {
-  // Such a CLI answers with a whole transcript, and a transcript contains a
-  // verdict word — so the marker block would carry it as a review and nothing
-  // downstream could tell. The label is the only warning there can be.
+  // A print-mode CLI with no `--final-message-only` answers with its whole
+  // transcript, and `emitVerifiedReview` accepts any answer carrying a verdict
+  // word — which a transcript does. A stderr warning is not a control here:
+  // the skill tells the caller to keep STDOUT and read the marker block, so
+  // the transcript would arrive as a clean verdict. Refused before the call.
   const dir = mkdtempSync(join(tmpdir(), 'kimi-gate-transcript-'));
   try {
+    const record = join(dir, 'record.json');
     const impl = strictStub(dir, {
+      record,
       dialect: 'print',
       help: HELP.print.split('\n').filter((line) => !line.includes('--final-message-only')).join('\n'),
     });
     const result = runGate({ args: ['--commit', TEST_COMMIT], env: { KIMI_GATE_BIN: posixStub(dir, impl) } });
 
-    assert.match(result.stderr, /dialect -> print-no-final-message/);
-    assert.match(result.stderr, /OUTSTANDING/, 'and how to read such a review');
+    assert.equal(existsSync(record), false, 'no paid review may be attempted');
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: not retryable —/);
+    assert.match(result.stdout, /transcript/i);
+    assert.doesNotMatch(result.stdout, /SKIPPED/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

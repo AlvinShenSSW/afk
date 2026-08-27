@@ -283,6 +283,16 @@ if (printArgsOnly) {
 }
 
 if (unavailable) emitSkip(unavailable);
+const workDir = gateWorkDir('kimi-gate-');
+if (workDir.error) emitError(workDir.error, 1);
+const work = workDir.path;
+const logFile = join(work, 'kimi.log');
+
+// After the workdir, deliberately. Precedence runs availability -> environment
+// -> CLI interface: an absent reviewer is a skip whatever else is broken, and
+// an environment that cannot hold a transcript is the more fundamental failure
+// — reporting a flag disagreement while the gate has nowhere to write the
+// evidence for it would send the operator after the wrong fault.
 if (!dialect.ok) {
   // Not a skip: the CLI is present and answering, so this reviewer is not
   // unavailable — it is a helper and a CLI that disagree, and a skip would hand
@@ -295,11 +305,6 @@ if (!dialect.ok) {
   );
 }
 
-const workDir = gateWorkDir('kimi-gate-');
-if (workDir.error) emitError(workDir.error, 1);
-const work = workDir.path;
-const logFile = join(work, 'kimi.log');
-
 // No context-leaning for Kimi (intentional): thinking effort stays at its
 // default (KIMI_MODEL_THINKING_EFFORT applies only when a synthesized provider
 // is set), and project-doc injection is session-level, not per-turn.
@@ -307,13 +312,7 @@ process.stderr.write(
   `[kimi-gate] ${kimi} ${shown(promptArgs).join(' ')}`
   + `${forceShim ? ' (brief on disk, via shell)' : ' (no shell)'}\n`,
 );
-process.stderr.write(
-  `[kimi-gate] dialect -> ${dialect.dialect} (${dialect.source})`
-  + `${dialect.transcriptRisk
-    ? ' — this CLI documents no --final-message-only, so its answer may be a whole'
-      + ' transcript rather than a verdict; read such a review as OUTSTANDING, never clean'
-    : ''}\n`,
-);
+process.stderr.write(`[kimi-gate] dialect -> ${dialect.dialect} (${dialect.source})\n`);
 process.stderr.write(`[kimi-gate] timeout -> ${timeoutMs}ms\n`);
 process.stderr.write(`[kimi-gate] transcript -> ${logFile}\n`);
 
