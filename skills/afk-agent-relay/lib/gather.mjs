@@ -6,15 +6,17 @@
 // mocking.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
 import { readConfigSectionValue } from '../../../lib/config.mjs';
 import { issueCommand, resolveForge } from '../../../lib/forge.mjs';
+import { readConfinedUtf8File } from '../../../lib/gate/file-boundary.mjs';
+import { byteLength, truncateWithMarker } from '../../../lib/text-budget.mjs';
 import {
   filterDiffByExcludes,
   filterGrepByExcludes,
   isExcluded,
   redactSecrets,
 } from '../../../lib/secret.mjs';
+import { relayError } from './relay.mjs';
 
 export { filterDiffByExcludes, filterGrepByExcludes };
 
@@ -26,14 +28,6 @@ function defaultRun(cmd, args) {
     stderr: r.stderr || '',
     error: r.error,
   };
-}
-
-function defaultReadFile(p) {
-  try {
-    return existsSync(p) ? readFileSync(p, 'utf8') : null;
-  } catch {
-    return null;
-  }
 }
 
 function detectBase(run) {
@@ -59,19 +53,71 @@ function uncollectedComments(stdout) {
   return Number.isInteger(count) && count > 0 ? count : 0;
 }
 
+export function boundNotes(notes, maxInputBytes) {
+  const noteBudget = Math.min(8192, Math.floor(maxInputBytes / 4));
+  const unique = [];
+  const seen = new Set();
+  let oversized = 0;
+  for (const raw of notes) {
+    const note = redactSecrets(String(raw)).text;
+    if (seen.has(note)) continue;
+    seen.add(note);
+    if (byteLength(note) > 512) oversized++;
+    else unique.push(note);
+  }
+
+  for (let keep = Math.min(50, unique.length); keep >= 0; keep--) {
+    const omitted = oversized + unique.length - keep;
+    const candidate = unique.slice(0, keep);
+    if (omitted) candidate.push(`[${omitted} additional gather note(s) omitted]`);
+    if (byteLength(candidate.join(' ')) <= noteBudget) return candidate;
+  }
+  throw relayError('notes_unreportable', 'gather notes cannot fit the input budget');
+}
+
 export function gatherContext(sources = {}, opts = {}) {
+  const hasRepoRoot = Object.hasOwn(opts, 'repoRoot');
   const {
     maxBytes = 400000,
     excludeGlobs = [],
     redact = true,
     run = defaultRun,
-    readFile = defaultReadFile,
+    readFile,
     logTailLines = 200,
     configPath = null,
+    cwd = process.cwd(),
+    repoRoot = null,
   } = opts;
 
   const notes = [];
   const chunks = [];
+  let root = repoRoot;
+  if (!hasRepoRoot && ((sources.files || []).length || (sources.logs || []).length)) {
+    const resolved = run('git', ['rev-parse', '--show-toplevel']);
+    root = resolved.status === 0 && resolved.stdout.trim() ? resolved.stdout.trim() : '';
+  }
+
+  function load(kind, requested) {
+    if (readFile) {
+      if (isExcluded(requested, excludeGlobs)) return { excluded: true, label: requested };
+      try {
+        const body = readFile(requested);
+        return body == null ? { code: 'missing_file' } : { body, label: requested };
+      } catch {
+        return { code: 'unreadable_file' };
+      }
+    }
+    const loaded = readConfinedUtf8File(requested, {
+      root,
+      base: cwd,
+      approve: ({ relativePath }) => isExcluded(relativePath, excludeGlobs)
+        ? { ok: false, code: 'excluded' }
+        : { ok: true },
+    });
+    if (loaded.ok) return { body: loaded.content, label: loaded.relativePath };
+    if (loaded.code === 'excluded') return { excluded: true, label: loaded.relativePath };
+    return { code: loaded.code, kind };
+  }
 
   // git diff (only when --diff was passed; '' means "default base")
   if (sources.diff !== undefined) {
@@ -121,16 +167,16 @@ export function gatherContext(sources = {}, opts = {}) {
 
   // files
   for (const f of sources.files || []) {
-    if (isExcluded(f, excludeGlobs)) {
-      notes.push(`[excluded: ${f} (secret/binary exclude)]`);
+    const loaded = load('file', f);
+    if (loaded.excluded) {
+      notes.push(`[excluded: ${loaded.label} (secret/binary exclude)]`);
       continue;
     }
-    const body = readFile(f);
-    if (body == null) {
-      notes.push(`[skip: cannot read ${f}]`);
+    if (loaded.code) {
+      notes.push(`[skip: file ${loaded.code}]`);
       continue;
     }
-    chunks.push({ title: `file ${f}`, body });
+    chunks.push({ title: `file ${loaded.label}`, body: loaded.body });
   }
 
   // ripgrep hits
@@ -149,20 +195,20 @@ export function gatherContext(sources = {}, opts = {}) {
 
   // log tails
   for (const lg of sources.logs || []) {
-    if (isExcluded(lg, excludeGlobs)) {
-      notes.push(`[excluded: ${lg}]`);
+    const loaded = load('log', lg);
+    if (loaded.excluded) {
+      notes.push(`[excluded: ${loaded.label}]`);
       continue;
     }
-    const body = readFile(lg);
-    if (body == null) {
-      notes.push(`[skip: cannot read ${lg}]`);
+    if (loaded.code) {
+      notes.push(`[skip: log ${loaded.code}]`);
       continue;
     }
-    const lines = body.split(/\r?\n/);
+    const lines = loaded.body.split(/\r?\n/);
     if (lines.length > logTailLines) {
-      notes.push(`[note: ${lg} tailed to last ${logTailLines} lines]`);
+      notes.push(`[note: ${loaded.label} tailed to last ${logTailLines} lines]`);
     }
-    chunks.push({ title: `log ${lg} (tail)`, body: lines.slice(-logTailLines).join('\n') });
+    chunks.push({ title: `log ${loaded.label} (tail)`, body: lines.slice(-logTailLines).join('\n') });
   }
 
   // redact every chunk before anything is assembled for sending
@@ -178,47 +224,43 @@ export function gatherContext(sources = {}, opts = {}) {
     notes.push('[warning: secret redaction DISABLED (AGENT_RELAY_REDACT=off)]');
   }
 
-  // assemble under the byte cap — truncation is loud. The cap is named in
-  // bytes and bounds a paid model's input, so it is measured in bytes: a
-  // UTF-16 length lets CJK content past it by roughly three times.
-  const byteLength = (s) => Buffer.byteLength(s, 'utf8');
-
-  // Cut on a character boundary, never mid-sequence: slicing by code unit can
-  // leave a lone surrogate half, and slicing by byte can split a code point.
-  function sliceToBytes(text, limit) {
-    if (byteLength(text) <= limit) return text;
-    const buf = Buffer.from(text, 'utf8');
-    let end = limit;
-    // Step back off a UTF-8 continuation byte (0b10xxxxxx).
-    while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
-    return buf.subarray(0, end).toString('utf8');
-  }
-
-  let budget = maxBytes;
+  // Each segment owns its separator so every byte in the aggregate is charged.
+  let used = 0;
   let capped = false;
   const parts = [];
   for (const c of chunks) {
-    const header = `\n===== ${c.title} =====\n`;
+    const header = `${parts.length ? '\n\n' : '\n'}===== ${c.title} =====\n`;
     const headerBytes = byteLength(header);
-    if (capped || budget - headerBytes <= 0) {
+    const available = maxBytes - used - headerBytes;
+    if (capped || available <= 0) {
       capped = true;
       notes.push(`[dropped: ${c.title} — AGENT_RELAY_MAX_INPUT_BYTES reached]`);
       continue;
     }
-    let body = c.body;
-    const avail = budget - headerBytes;
-    if (byteLength(body) > avail) {
-      const original = byteLength(body);
-      body = sliceToBytes(body, avail);
-      const cut = original - byteLength(body);
-      body += `\n…[truncated ${cut} bytes of ${c.title}]`;
-      notes.push(`[truncated: ${c.title} (${cut} bytes) to fit cap]`);
+    const fitted = truncateWithMarker(
+      c.body,
+      available,
+      (omitted) => `\n…[truncated ${omitted} bytes of ${c.title}]`,
+    );
+    if (fitted.truncated && !fitted.markerFits) {
+      notes.push(`[dropped: ${c.title} — AGENT_RELAY_MAX_INPUT_BYTES reached]`);
+      capped = true;
+      continue;
+    }
+    if (fitted.truncated) {
+      notes.push(`[truncated: ${c.title} (${fitted.omittedBytes} bytes) to fit cap]`);
       capped = true;
     }
-    parts.push(header + body);
-    budget -= headerBytes + byteLength(body);
+    const part = header + fitted.text;
+    parts.push(part);
+    used += byteLength(part);
   }
 
-  const text = parts.join('\n');
-  return { text, notes, bytes: byteLength(text) };
+  const text = parts.join('');
+  const noteBudget = Math.min(8192, Math.floor(maxBytes / 4));
+  const omissionMarkerBytes = byteLength('[1 additional gather note(s) omitted]');
+  const reportableNotes = noteBudget < omissionMarkerBytes && notes.length
+    ? [...new Set(notes.map((note) => /dropped|truncated/.test(note) ? 'cap drop' : note))]
+    : notes;
+  return { text, notes: boundNotes(reportableNotes, maxBytes), bytes: byteLength(text) };
 }

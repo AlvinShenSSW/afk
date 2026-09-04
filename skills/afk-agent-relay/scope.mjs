@@ -38,10 +38,12 @@ export const config = {
   modelEnv: 'AGENT_RELAY_SCOPE_MODEL',
   systemPrompt: SYSTEM,
   validate: validateScope,
-  buildUser: (args, gctx) =>
-    `REQUEST: ${args.task}` +
-    (gctx.text ? `\n\n=== RELATED CONTEXT ===\n${gctx.text}` : '') +
-    (gctx.notes.length ? `\n\nGATHER NOTES: ${gctx.notes.join(' ')}` : ''),
+  buildInput: (args, gctx) => ({
+    prefix: `REQUEST: ${args.task}` +
+      (gctx.notes.length ? `\n\nGATHER NOTES: ${gctx.notes.join(' ')}` : '') +
+      (gctx.text ? '\n\n=== RELATED CONTEXT ===\n' : ''),
+    context: gctx.text || '',
+  }),
 };
 
 export function run(io) {

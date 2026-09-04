@@ -18,6 +18,8 @@ import { join } from 'node:path';
 import { spawnViaShell } from '../../../lib/gate/spawn.mjs';
 import { relayError } from './relay.mjs';
 
+const INPUT_SEPARATOR = '\n\n';
+
 function resolveCodex(env, isWin) {
   if (isWin && env.APPDATA) {
     const shim = join(env.APPDATA, 'npm', 'codex.cmd');
@@ -31,6 +33,7 @@ export function makeCodexProvider() {
     name: 'codex',
     kind: 'codex-cli',
     keyEnv: null,
+    inputSeparator: INPUT_SEPARATOR,
 
     available(env, spawnImpl, isWin = process.platform === 'win32') {
       const sp = spawnImpl || spawnSync;
@@ -92,7 +95,7 @@ export function makeCodexProvider() {
       // named "First Last", contains a space cmd.exe would split. spawnViaShell
       // quotes it, and moves the prompt off Node's `input` onto an inherited
       // descriptor — under a shell, `input` never returns when the timeout fires.
-      const prompt = `${system}\n\n${user}`;
+      const prompt = `${system}${INPUT_SEPARATOR}${user}`;
       const spawnOpts = {
         encoding: 'utf8',
         timeout: timeoutMs,
