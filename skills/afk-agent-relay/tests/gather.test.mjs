@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gatherContext, filterDiffByExcludes, filterGrepByExcludes } from '../lib/gather.mjs';
+import {
+  boundNotes, gatherContext, filterDiffByExcludes, filterGrepByExcludes,
+} from '../lib/gather.mjs';
 import { runRole } from '../lib/role.mjs';
 import { mainWorktree } from '../../../lib/gate/git.mjs';
 
@@ -26,7 +30,7 @@ test('byte cap truncates and emits a loud note', () => {
     { run: noRun, readFile: () => big, maxBytes: 1000 },
   );
   assert.ok(g.notes.some((n) => /truncated|dropped/.test(n)));
-  assert.ok(g.bytes <= 1200);
+  assert.ok(g.bytes <= 1000, `${g.bytes} bytes exceeded the 1000-byte cap`);
 });
 
 test('redaction note when secrets present', () => {
@@ -192,7 +196,7 @@ test('the role pipeline hands gather the main worktree config path', async () =>
       modelEnv: 'M',
       systemPrompt: 's',
       validate: () => ({ ok: true }),
-      buildUser: () => 'u',
+      buildInput: () => ({ prefix: 'u', context: '' }),
     },
     {
       argv: ['--manual', '--task', 't', '--issue', '1'],
@@ -326,4 +330,140 @@ test('an ascii payload under the cap is unchanged', () => {
   assert.match(g.text, /plain ascii body/);
   // redact:false adds its own warning; what matters is that the cap added none.
   assert.ok(!g.notes.some((n) => /truncated|dropped/.test(n)), g.notes.join(' | '));
+});
+
+test('file and log reads stay inside the canonical worktree', () => {
+  const root = mkdtempSync(join(tmpdir(), 'afk-gather-root-'));
+  const outside = mkdtempSync(join(tmpdir(), 'afk-gather-outside-'));
+  try {
+    writeFileSync(join(root, 'safe.txt'), 'safe file body');
+    writeFileSync(join(root, 'safe.log'), 'safe log body');
+    writeFileSync(join(outside, 'secret.txt'), 'outside secret body');
+    const g = gatherContext(
+      {
+        files: ['safe.txt', join(root, 'safe.txt'), join(outside, 'secret.txt')],
+        logs: ['safe.log', join(outside, 'secret.txt')],
+      },
+      { run: noRun, cwd: root, repoRoot: root },
+    );
+    assert.match(g.text, /safe file body/);
+    assert.match(g.text, /safe log body/);
+    assert.doesNotMatch(g.text, /outside secret body/);
+    assert.ok(g.notes.some((note) => note.includes('file') && note.includes('outside_path')));
+    assert.ok(g.notes.some((note) => note.includes('log') && note.includes('outside_path')));
+    assert.doesNotMatch(g.notes.join(' '), /afk-gather-outside-/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('file reads resolve the current worktree instead of the shared main tree', () => {
+  const root = mkdtempSync(join(tmpdir(), 'afk-gather-linked-'));
+  try {
+    writeFileSync(join(root, 'safe.txt'), 'linked worktree body');
+    let rootReads = 0;
+    const run = (cmd, args) => {
+      if (cmd === 'git' && args.join(' ') === 'rev-parse --show-toplevel') {
+        rootReads++;
+        return { status: 0, stdout: `${root}\n`, stderr: '', error: null };
+      }
+      return noRun();
+    };
+    const g = gatherContext({ files: ['safe.txt'] }, { run, cwd: root });
+    assert.match(g.text, /linked worktree body/);
+    assert.equal(rootReads, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('leaf and ancestor symlinks never enter gathered context', () => {
+  const root = mkdtempSync(join(tmpdir(), 'afk-gather-root-'));
+  const outside = mkdtempSync(join(tmpdir(), 'afk-gather-outside-'));
+  try {
+    writeFileSync(join(outside, 'secret.txt'), 'outside secret body');
+    symlinkSync(join(outside, 'secret.txt'), join(root, 'leaf.txt'));
+    symlinkSync(outside, join(root, 'linked-dir'), 'dir');
+    const g = gatherContext(
+      { files: ['leaf.txt', 'linked-dir/secret.txt'] },
+      { run: noRun, cwd: root, repoRoot: root },
+    );
+    assert.doesNotMatch(g.text, /outside secret body/);
+    assert.ok(g.notes.some((note) => note.includes('symlink')));
+    assert.ok(g.notes.some((note) => note.includes('ancestor_symlink_escape')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('irregular files and an unresolved worktree fail closed', () => {
+  const root = mkdtempSync(join(tmpdir(), 'afk-gather-root-'));
+  try {
+    mkdirSync(join(root, 'directory'));
+    writeFileSync(join(root, 'safe.txt'), 'must not be read without a root');
+    const irregular = gatherContext(
+      { files: ['directory'] },
+      { run: noRun, cwd: root, repoRoot: root },
+    );
+    assert.ok(irregular.notes.some((note) => note.includes('non_regular')));
+    const unresolved = gatherContext(
+      { files: [join(root, 'safe.txt')] },
+      { run: noRun, cwd: root, repoRoot: '' },
+    );
+    assert.equal(unresolved.text, '');
+    assert.ok(unresolved.notes.some((note) => note.includes('root_unresolved')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('aggregate context charges every inter-chunk separator', () => {
+  const first = '\n===== file a.txt =====\nx';
+  const second = '\n\n===== file b.txt =====\ny';
+  const cap = Buffer.byteLength(first + second, 'utf8') - 1;
+  const g = gatherContext(
+    { files: ['a.txt', 'b.txt'] },
+    { run: noRun, readFile: (path) => (path === 'a.txt' ? 'x' : 'y'), maxBytes: cap },
+  );
+  assert.ok(g.bytes <= cap, `${g.bytes} bytes exceeded the ${cap}-byte cap`);
+  assert.equal(g.bytes, Buffer.byteLength(g.text, 'utf8'));
+});
+
+test('a context cap smaller than its truncation marker is still strict', () => {
+  const g = gatherContext(
+    { files: ['a.txt'] },
+    { run: noRun, readFile: () => '需求'.repeat(100), maxBytes: 32 },
+  );
+  assert.ok(g.bytes <= 32, `${g.bytes} bytes exceeded the 32-byte cap`);
+  assert.ok(g.notes.some((note) => /drop|truncated/.test(note)));
+});
+
+test('notes are redacted, deduplicated, bounded, and report omissions', () => {
+  const token = `tp-${'A7b'.repeat(20)}`;
+  const notes = [
+    `[redact ${token}]`,
+    `[redact ${token}]`,
+    ...Array.from({ length: 10000 }, (_, i) => `[note ${i}]`),
+  ];
+  const bounded = boundNotes(notes, 10000);
+  assert.ok(bounded.length <= 51);
+  assert.ok(Buffer.byteLength(bounded.join(' '), 'utf8') <= 2500);
+  assert.equal(new Set(bounded).size, bounded.length);
+  assert.doesNotMatch(bounded.join(' '), /tp-/);
+  assert.match(bounded.at(-1), /additional gather note/);
+});
+
+test('an oversized multibyte note is dropped with a visible summary', () => {
+  const bounded = boundNotes([`[${'需求'.repeat(300)}]`, '[short note]'], 4000);
+  assert.deepEqual(bounded.slice(0, -1), ['[short note]']);
+  assert.match(bounded.at(-1), /1 additional gather note/);
+});
+
+test('an unreportable note omission fails closed', () => {
+  assert.throws(
+    () => boundNotes([`[${'x'.repeat(600)}]`], 64),
+    (error) => error?.code === 'notes_unreportable',
+  );
 });
