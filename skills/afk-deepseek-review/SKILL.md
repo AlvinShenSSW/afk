@@ -1,6 +1,6 @@
 ---
 name: afk-deepseek-review
-description: afk-deepseek-review: Part of the afk pipeline. Runs DeepSeek V4 Pro as an optional independent, read-only external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-deepseek-review", "run deepseek review", and "DeepSeek external gate".
+description: 'afk-deepseek-review: Part of the afk pipeline. Runs DeepSeek V4 Pro as an optional independent, read-only external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-deepseek-review", "run deepseek review", and "DeepSeek external gate".'
 ---
 
 # afk-deepseek-review

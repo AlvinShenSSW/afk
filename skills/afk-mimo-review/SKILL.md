@@ -1,6 +1,6 @@
 ---
 name: afk-mimo-review
-description: afk-mimo-review: Part of the afk pipeline. Runs Xiaomi MiMo V2.5 Pro as an optional independent, read-only external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-mimo-review", "run mimo review", and "MiMo external gate".
+description: 'afk-mimo-review: Part of the afk pipeline. Runs Xiaomi MiMo V2.5 Pro as an optional independent, read-only external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-mimo-review", "run mimo review", and "MiMo external gate".'
 ---
 
 # afk-mimo-review
