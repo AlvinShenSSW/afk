@@ -102,7 +102,7 @@ read-only is only requested in the prompt, which is the weaker guarantee.
 | `codex` | Codex CLI (`exec -s read-only`) | the CLI's own auth | 15 min |
 | `claude` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
 | `kimi` | Kimi CLI (drives git itself) | the CLI's own auth | 45 min |
-| `glm` | Z.ai `glm-5.2`, Anthropic-protocol API | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
+| `glm` | Z.ai `glm-5.3`, OpenAI-protocol API | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
 | `deepseek` | DeepSeek V4 Pro API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
 | `mimo` | Xiaomi MiMo V2.5 Pro API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
 
@@ -265,9 +265,11 @@ Secrets never belong in `.afk/config.md`; use environment variables or a
 gitignored `.env`. The API-backed gates call the provider directly and do not
 import credentials from any editor or extension.
 
-`GLM_REVIEW_BASE_URL` must be an Anthropic-protocol endpoint (the default is
-`https://api.z.ai/api/anthropic`); the OpenAI-compatible Z.ai URL is no longer
-auto-detected.
+GLM defaults to the OpenAI Chat Completion protocol at the Coding Plan endpoint
+`https://api.z.ai/api/coding/paas/v4`. Set `GLM_REVIEW_PROTOCOL=anthropic` to
+use the Anthropic Messages endpoint at `https://api.z.ai/api/anthropic`.
+`GLM_REVIEW_BASE_URL` overrides the selected default; the protocol is never
+inferred from the URL, so the two settings must agree.
 
 For the current shell, export only the provider you intend to use:
 

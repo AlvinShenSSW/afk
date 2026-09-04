@@ -1,11 +1,11 @@
 ---
 name: afk-glm-review
-description: Part of the afk pipeline. Runs GLM (Z.ai glm-5.2) as an independent, read-only fallback external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-glm-review", "run glm review", "glm gate", and "GLM external gate".
+description: Part of the afk pipeline. Runs GLM (Z.ai glm-5.3) as an independent, read-only fallback external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-glm-review", "run glm review", "glm gate", and "GLM external gate".
 ---
 
 # afk-glm-review
 
-An independent second-opinion review by Z.ai `glm-5.2`, used as a fallback role
+An independent second-opinion review by Z.ai `glm-5.3`, used as a fallback role
 after `afk-internal-review`. Run the ordered roles required by `.afk/config.md`,
 and never use a reviewer whose model matches the implementer or another role.
 
@@ -67,10 +67,13 @@ HTTP error, non-JSON or empty response, unsafe finish reason, or unverified
 response model yields a non-zero `ERROR` with no partial verdict — the shared
 skip-vs-error table decides the direction, the same as every lifecycle gate.
 
-`GLM_REVIEW_BASE_URL` must be an Anthropic-protocol endpoint (default
-`https://api.z.ai/api/anthropic`); the OpenAI-compatible Z.ai URL is no longer
-auto-detected — a wrong endpoint surfaces as the 404 model-unavailable skip
-naming both suspects. Use `--print-args` for resolved metadata or
+The default `openai` protocol uses the Coding Plan endpoint
+`https://api.z.ai/api/coding/paas/v4` and explicitly requests enabled reasoning
+at `max` effort. Set `GLM_REVIEW_PROTOCOL=anthropic` to use the Anthropic
+Messages endpoint at `https://api.z.ai/api/anthropic`. The protocol is never
+inferred from `GLM_REVIEW_BASE_URL`; an override must match the selected
+protocol, and a wrong pairing surfaces as the 404 model-unavailable skip naming
+both suspects. Use `--print-args` for the resolved protocol and metadata or
 `--print-prompt` for the redacted prompt without a provider call.
 
 ## Handle findings
@@ -121,9 +124,11 @@ or a gitignored `.env`. Disable with `GLM_REVIEW_GATE=off`.
 
 Config knobs:
 
-- `GLM_REVIEW_MODEL` (default `glm-5.2`)
-- `GLM_REVIEW_BASE_URL` (default `https://api.z.ai/api/anthropic`;
-  Anthropic-protocol endpoints only)
+- `GLM_REVIEW_MODEL` (default `glm-5.3`)
+- `GLM_REVIEW_PROTOCOL` (`openai` by default; `anthropic` is the other accepted
+  value)
+- `GLM_REVIEW_BASE_URL` (defaults to `https://api.z.ai/api/coding/paas/v4` for
+  `openai` and `https://api.z.ai/api/anthropic` for `anthropic`)
 - `GLM_REVIEW_MAX_CTX_BYTES` (default `400000`)
 - `GLM_REVIEW_MAX_OUTPUT_TOKENS` (default `8192`)
 - `GLM_REVIEW_EXCLUDE_GLOBS` (extra snapshot exclusions, comma/newline list)

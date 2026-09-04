@@ -33,8 +33,7 @@ const CASES = {
   },
 };
 
-// glm resolves here but stays out of CASES: that loop's header/body asserts
-// are OpenAI-protocol-specific, and glm speaks the Anthropic protocol.
+// glm stays out because its dual-protocol request shapes need separate asserts.
 const GATE_PATHS = {
   deepseek: CASES.deepseek.gate,
   mimo: CASES.mimo.gate,
