@@ -16,7 +16,9 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { verifyReviewerIdentity } from '../lib/gate/model-identity.mjs';
-import { gateTestEnv, nonMergeHead, spawnGate, stubPath } from './gate-test-env.mjs';
+import {
+  gateTestEnv, nonMergeHead, spawnGate, stubPath, tempEnv,
+} from './gate-test-env.mjs';
 
 const TEST_COMMIT = nonMergeHead();
 
@@ -38,12 +40,18 @@ function runGate({ args = [], env = {} } = {}) {
 
 // A stub `claude` that prints a fixed JSON envelope, so the gate's parsing is
 // tested without a model call.
-function withStub(envelope, fn) {
+function withStub(envelope, fn, { exitCode = 0, signal = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'claude-gate-stub-'));
   try {
     const payload = typeof envelope === 'string' ? envelope : JSON.stringify(envelope);
     const js = join(dir, 'stub.mjs');
-    writeFileSync(js, `process.stdout.write(${JSON.stringify(payload)});\n`);
+    writeFileSync(
+      js,
+      `process.stdout.write(${JSON.stringify(payload)});\n`
+        + (signal
+          ? `process.kill(process.pid, ${JSON.stringify(signal)});\n`
+          : `process.exit(${exitCode});\n`),
+    );
     const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
     writeFileSync(
       sh,
@@ -442,6 +450,93 @@ test('a successful envelope is emitted as the review', () => {
   });
 });
 
+test('a nonzero Claude child cannot turn a valid envelope into a review', () => {
+  const canary = mkdtempSync(join(tmpdir(), 'claude-abnormal-path-canary-'));
+  try {
+    withStub(
+      { is_error: false, result: 'APPROVE — must be discarded', modelUsage: usage(PINNED) },
+      (bin) => {
+        const result = runGate({
+          args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
+          env: { CLAUDE_GATE_BIN: bin, ...tempEnv(canary) },
+        });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stdout, /ERROR: Claude exited 7/);
+        assert.doesNotMatch(result.stdout, /must be discarded|claude-abnormal-path-canary/);
+      },
+      { exitCode: 7 },
+    );
+  } finally {
+    rmSync(canary, { recursive: true, force: true });
+  }
+});
+
+test('a signal-killed Claude child cannot emit its valid-looking envelope', {
+  skip: process.platform === 'win32' ? 'POSIX signal status is required' : false,
+}, () => {
+  withStub(
+    { is_error: false, result: 'APPROVE — signal fragment', modelUsage: usage(PINNED) },
+    (bin) => {
+      const result = runGate({
+        args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
+        env: { CLAUDE_GATE_BIN: bin },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout, /ERROR: Claude was terminated by SIGTERM/);
+      assert.doesNotMatch(result.stdout, /signal fragment/);
+    },
+    { signal: 'SIGTERM' },
+  );
+});
+
+test('only a literal nonzero Claude error envelope may keep an unavailable skip', () => {
+  const hostile = 'HOSTILE_CHILD_DETAIL_MUST_NOT_ESCAPE';
+  withStub(
+    { is_error: true, api_error_status: 429, result: hostile },
+    (bin) => {
+      const result = runGate({
+        args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
+        env: { CLAUDE_GATE_BIN: bin },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /SKIPPED: Claude is rate-limited/);
+      assert.doesNotMatch(result.stdout, new RegExp(hostile));
+    },
+    { exitCode: 9 },
+  );
+
+  for (const envelope of [
+    { is_error: 'false', api_error_status: 429, result: hostile },
+    { is_error: true, api_error_status: 500, result: hostile },
+  ]) {
+    withStub(envelope, (bin) => {
+      const result = runGate({
+        args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
+        env: { CLAUDE_GATE_BIN: bin },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout, /ERROR: Claude exited 9/);
+      assert.doesNotMatch(result.stdout, new RegExp(hostile));
+    }, { exitCode: 9 });
+  }
+});
+
+test('a clean child still requires a Boolean Claude envelope status', () => {
+  withStub({
+    is_error: 'false',
+    result: 'APPROVE — malformed flag must not pass',
+    modelUsage: usage(PINNED),
+  }, (bin) => {
+    const result = runGate({
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
+      env: { CLAUDE_GATE_BIN: bin },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: Claude result envelope has no Boolean is_error status/);
+    assert.doesNotMatch(result.stdout, /malformed flag must not pass/);
+  });
+});
+
 // ── the reviewer that actually ran ──────────────────────────────────────────
 // argv states intent; modelUsage states outcome. A gate that checks only the
 // first approves reviews written by a model it never asked for.
@@ -734,6 +829,28 @@ test('a bare-name claude.cmd on PATH is resolved', {
     });
 
     assert.equal(JSON.parse(result.stdout).bin, join(dir, 'claude.cmd'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Claude unsafe-shell errors never echo the rejected argument', {
+  skip: process.platform === 'win32' ? false : 'only a Windows script shim forces the shell path',
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-gate-unsafe-'));
+  try {
+    const bin = join(dir, 'claude.cmd');
+    writeFileSync(bin, '@echo off\r\nexit /b 0\r\n');
+    const result = runGate({
+      args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
+      env: {
+        CLAUDE_GATE_BIN: bin,
+        CLAUDE_REVIEW_MODEL: 'claude-opus-5-%USERNAME%',
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /argument cannot be represented safely/);
+    assert.doesNotMatch(result.stdout, /%USERNAME%|variable expansion/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -6,13 +6,17 @@
 // binary: that call is metered, and a test suite is not a place to spend it.
 
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { test } from 'node:test';
 
-import { gateTestEnv, nonMergeHead, spawnGate, stubPath } from './gate-test-env.mjs';
+import {
+  gateTestEnv, nonMergeHead, spawnGate, stubPath, tempEnv,
+} from './gate-test-env.mjs';
 
 const TEST_COMMIT = nonMergeHead();
 
@@ -70,6 +74,44 @@ if (process.argv.includes('status')) {
   }
 }
 
+function withOutcomeStub(options, fn) {
+  const {
+    authText = 'Logged in', authExit = 0, reviewText = '', reviewExit = 0,
+    reviewSignal = null, sleepDuringAuth = false,
+  } = options;
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-outcome-'));
+  const calls = join(dir, 'calls.txt');
+  try {
+    const js = join(dir, 'stub.mjs');
+    const authAction = sleepDuringAuth
+      ? 'setInterval(() => {}, 60000);'
+      : `process.stdout.write(${JSON.stringify(authText)}); process.exit(${authExit});`;
+    const reviewAction = reviewSignal
+      ? `process.kill(process.pid, ${JSON.stringify(reviewSignal)});`
+      : `process.exit(${reviewExit});`;
+    writeFileSync(js, `
+import { appendFileSync, writeFileSync } from 'node:fs';
+const preflight = process.argv.includes('status');
+appendFileSync(${JSON.stringify(calls)}, preflight ? 'preflight\\n' : 'review\\n');
+if (preflight) {
+  ${authAction}
+} else {
+  const i = process.argv.indexOf('-o');
+  if (i !== -1) writeFileSync(process.argv[i + 1], ${JSON.stringify(reviewText)});
+  ${reviewAction}
+}
+`);
+    const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
+    writeFileSync(sh, process.platform === 'win32'
+      ? `@echo off\r\n"${process.execPath}" "${js}" %*\r\n`
+      : `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+    if (process.platform !== 'win32') chmodSync(sh, 0o755);
+    return fn({ bin: sh, calls });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 test('codex gate disabled flag emits a clean skipped review', () => {
   const result = runGate({ args: ['--base', 'main'], env: { CODEX_REVIEW_GATE: 'off' } });
 
@@ -101,6 +143,113 @@ test('a Codex review that never returns ends as a non-zero timeout error', () =>
     assert.match(result.stdout, /ERROR: codex review timed out/);
     assert.doesNotMatch(result.stdout, /SKIPPED/);
   });
+});
+
+test('Codex preflight keeps known unavailability distinct from abnormal failure', () => {
+  const missing = runGate({
+    args: ['--commit', TEST_COMMIT],
+    env: {
+      CODEX_GATE_BIN: join(tmpdir(), 'definitely-missing-codex-binary-xyz'),
+      CODEX_GATE_NO_LOCK: '1',
+    },
+  });
+  assert.equal(missing.status, 0, missing.stderr);
+  assert.match(missing.stdout, /SKIPPED: Codex CLI not installed/);
+
+  for (const authExit of [0, 1]) {
+    withOutcomeStub({ authText: 'Not logged in', authExit }, ({ bin, calls }) => {
+      const result = runGate({
+        args: ['--commit', TEST_COMMIT],
+        env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /SKIPPED: Codex not authenticated/);
+      assert.equal(readFileSync(calls, 'utf8'), 'preflight\n');
+    });
+  }
+
+  withOutcomeStub({ authText: 'unexpected preflight failure', authExit: 4 }, ({ bin }) => {
+    const result = runGate({
+      args: ['--commit', TEST_COMMIT],
+      env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: Codex authentication preflight exited 4/);
+    assert.doesNotMatch(result.stdout, /unexpected preflight failure/);
+  });
+});
+
+test('a Codex authentication preflight timeout remains an unavailable skip', () => {
+  withOutcomeStub({ sleepDuringAuth: true }, ({ bin }) => {
+    const result = runGate({
+      args: ['--commit', TEST_COMMIT],
+      env: {
+        CODEX_GATE_BIN: bin,
+        CODEX_GATE_NO_LOCK: '1',
+        CODEX_REVIEW_TIMEOUT_MS: '3000',
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /SKIPPED: Codex CLI authentication preflight timed out/);
+  });
+});
+
+test('a nonzero Codex child cannot turn its final file into a review', () => {
+  const canary = mkdtempSync(join(tmpdir(), 'codex-abnormal-path-canary-'));
+  try {
+    withOutcomeStub({ reviewText: 'valid-looking final review', reviewExit: 7 }, ({ bin }) => {
+      const result = runGate({
+        args: ['--commit', TEST_COMMIT],
+        env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1', ...tempEnv(canary) },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout, /ERROR: codex exited 7/);
+      assert.doesNotMatch(result.stdout, /valid-looking final review|codex-abnormal-path-canary/);
+    });
+  } finally {
+    rmSync(canary, { recursive: true, force: true });
+  }
+});
+
+test('a signal-killed Codex child discards its final file without exposing paths', {
+  skip: process.platform === 'win32' ? 'POSIX signal status is required' : false,
+}, () => {
+  const canary = mkdtempSync(join(tmpdir(), 'codex-signal-path-canary-'));
+  try {
+    withOutcomeStub({ reviewText: 'signal fragment', reviewSignal: 'SIGTERM' }, ({ bin }) => {
+      const result = runGate({
+        args: ['--commit', TEST_COMMIT],
+        env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1', ...tempEnv(canary) },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout, /ERROR: codex was terminated by SIGTERM/);
+      assert.doesNotMatch(result.stdout, /signal fragment|codex-signal-path-canary/);
+    });
+  } finally {
+    rmSync(canary, { recursive: true, force: true });
+  }
+});
+
+test('post-preflight Codex ENOENT is a protocol error, not an availability skip', {
+  skip: process.platform === 'win32' ? 'self-removing POSIX stub' : false,
+}, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codex-gate-disappears-'));
+  try {
+    const bin = join(dir, 'codex');
+    writeFileSync(bin, `#!/bin/sh\nrm -- "$0"\necho Logged in\nexit 0\n`);
+    chmodSync(bin, 0o755);
+    const result = runGate({
+      args: ['--commit', TEST_COMMIT],
+      env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /===== CODEX REVIEW \(final message\) =====/);
+    assert.match(result.stdout, /ERROR: codex review process failed to start \(ENOENT\)/);
+    assert.match(result.stdout, /===== END CODEX REVIEW =====/);
+    assert.doesNotMatch(result.stdout, /SKIPPED|codex-gate-disappears/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('codex gate selftest acquires and releases its lock', () => {
@@ -381,9 +530,10 @@ test('an argument no shell can carry ends as a parseable gate ERROR, not a stack
 
     assert.match(result.stdout, /===== CODEX REVIEW/, 'the protocol block must still be emitted');
     assert.match(result.stdout, /ERROR: cannot review this target/);
-    assert.match(result.stdout, /variable expansion/);
+    assert.match(result.stdout, /argument cannot be represented safely/);
     assert.match(result.stdout, /===== END CODEX REVIEW =====/);
     assert.doesNotMatch(result.stdout, /SKIPPED/, 'operator input, not an unavailable reviewer');
+    assert.doesNotMatch(result.stdout, /%USERNAME%|variable expansion/);
     // The tell of the old behaviour: an uncaught throw prints a stack to stderr.
     assert.doesNotMatch(result.stderr, /at quoteForShell|Error: cannot pass an argument/);
     assert.notEqual(result.status, 0);
