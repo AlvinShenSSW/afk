@@ -10,19 +10,48 @@
 //   node glm-gate.mjs --print-args    # resolve and print the target; no API call
 //   node glm-gate.mjs --print-prompt  # print the exact prompts; no API call
 //
-// Opt out with GLM_REVIEW_GATE=off. GLM_REVIEW_BASE_URL must be an
-// Anthropic-protocol endpoint (the OpenAI-compatible Z.ai URL is no longer
-// auto-detected).
+// Opt out with GLM_REVIEW_GATE=off. Protocol selection is explicit because
+// endpoint guessing can spend a metered call on the wrong transport.
 
 import { runOpenAiSnapshotGate } from '../../lib/gate/openai-snapshot-gate.mjs';
+import { createProtocol } from '../../lib/gate/protocol.mjs';
 import { makeAnthropicProvider } from '../../lib/http/anthropic-provider.mjs';
+import { makeOpenAiProvider } from '../../lib/http/openai-provider.mjs';
 
-const provider = makeAnthropicProvider({
-  name: 'GLM',
-  keyEnv: 'ZAI_API_KEY',
-  baseUrlEnv: 'GLM_REVIEW_BASE_URL',
-  baseUrlDefault: 'https://api.z.ai/api/anthropic',
-});
+const modelDefault = 'glm-5.3';
+const protocolName = String(process.env.GLM_REVIEW_PROTOCOL ?? '').trim().toLowerCase() || 'openai';
+if (!['openai', 'anthropic'].includes(protocolName)) {
+  createProtocol({ label: 'GLM', slug: 'glm-gate' }).emitError(
+    'cannot review — GLM_REVIEW_PROTOCOL must be "openai" or "anthropic".',
+    1,
+  );
+}
+
+const baseUrlDefault = protocolName === 'anthropic'
+  ? 'https://api.z.ai/api/anthropic'
+  : 'https://api.z.ai/api/coding/paas/v4';
+
+const provider = protocolName === 'anthropic'
+  ? makeAnthropicProvider({
+      name: 'GLM',
+      keyEnv: 'ZAI_API_KEY',
+      baseUrlEnv: 'GLM_REVIEW_BASE_URL',
+      baseUrlDefault,
+    })
+  : makeOpenAiProvider({
+      name: 'GLM',
+      keyEnv: 'ZAI_API_KEY',
+      modelEnv: 'GLM_REVIEW_MODEL',
+      modelDefault,
+      baseUrlEnv: 'GLM_REVIEW_BASE_URL',
+      baseUrlDefault,
+      tokenParam: 'max_tokens',
+      tokenParamOverrideEnv: null,
+      buildExtraBody: () => ({
+        thinking: { type: 'enabled' },
+        reasoning_effort: 'max',
+      }),
+    });
 
 await runOpenAiSnapshotGate({
   family: 'glm',
@@ -31,9 +60,9 @@ await runOpenAiSnapshotGate({
   disableEnv: 'GLM_REVIEW_GATE',
   keyEnvs: ['ZAI_API_KEY', 'GLM_API_KEY'],
   modelEnv: 'GLM_REVIEW_MODEL',
-  modelDefault: 'glm-5.2',
+  modelDefault,
   baseUrlEnv: 'GLM_REVIEW_BASE_URL',
-  baseUrlDefault: 'https://api.z.ai/api/anthropic',
+  baseUrlDefault,
   maxContextEnv: 'GLM_REVIEW_MAX_CTX_BYTES',
   maxOutputEnv: 'GLM_REVIEW_MAX_OUTPUT_TOKENS',
   excludeGlobsEnv: 'GLM_REVIEW_EXCLUDE_GLOBS',

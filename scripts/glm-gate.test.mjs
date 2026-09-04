@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { gateTestEnv, nonMergeHead, spawnGate } from './gate-test-env.mjs';
 
 const TEST_COMMIT = nonMergeHead();
+const MODEL = 'glm-5.3';
 
 const repoRoot = new URL('..', import.meta.url);
 const GATE = 'skills/afk-glm-review/glm-gate.mjs';
@@ -59,6 +60,33 @@ test('glm gate disabled flag emits a clean skipped review', () => {
   assert.match(result.stdout, /===== END GLM REVIEW =====/);
 });
 
+test('glm defaults to GLM-5.3 over the OpenAI Coding Plan endpoint', () => {
+  const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.model, MODEL);
+  assert.equal(parsed.protocol, 'openai');
+  assert.equal(parsed.baseUrl, 'https://api.z.ai/api/coding/paas/v4');
+});
+
+test('glm diagnostics preserve explicit model, protocol, and endpoint overrides', () => {
+  const result = runGate({
+    args: ['--commit', TEST_COMMIT, '--print-args'],
+    env: {
+      GLM_REVIEW_MODEL: 'glm-5.3-20260904',
+      GLM_REVIEW_PROTOCOL: 'anthropic',
+      GLM_REVIEW_BASE_URL: 'https://example.test/anthropic',
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.model, 'glm-5.3-20260904');
+  assert.equal(parsed.protocol, 'anthropic');
+  assert.equal(parsed.baseUrl, 'https://example.test/anthropic');
+});
+
 test('a GLM response body that never finishes ends as a non-zero timeout error', async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
@@ -72,7 +100,7 @@ test('a GLM response body that never finishes ends as a non-zero timeout error',
       args: ['--commit', TEST_COMMIT],
       env: {
         ZAI_API_KEY: 'test-only',
-        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}/anthropic`,
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
         GLM_REVIEW_TIMEOUT_MS: '30',
       },
     });
@@ -119,9 +147,12 @@ test('a GLM successful response cannot echo the configured key', async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
-      model: 'glm-5.2',
-      stop_reason: 'end_turn',
-      content: [{ type: 'text', text: `APPROVE ${key}` }],
+      model: MODEL,
+      choices: [{
+        finish_reason: 'stop',
+        message: { reasoning_content: 'private reasoning', content: `APPROVE ${key}` },
+      }],
+      usage: {},
     }));
   });
   server.listen(0, '127.0.0.1');
@@ -258,7 +289,11 @@ test('a GLM non-JSON body is an error, not a skip', async () => {
 test('a GLM empty completion is an error, not a skip', async () => {
   await withGlmServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
-    response.end(JSON.stringify({ model: 'glm-5.2', stop_reason: 'end_turn', content: [] }));
+    response.end(JSON.stringify({
+      model: MODEL,
+      choices: [{ finish_reason: 'stop', message: { content: '' } }],
+      usage: {},
+    }));
   }, async (port) => {
     const result = await runGateAsync({
       args: ['--commit', TEST_COMMIT],
@@ -270,13 +305,13 @@ test('a GLM empty completion is an error, not a skip', async () => {
   });
 });
 
-test('a truncated GLM completion (stop_reason max_tokens) is discarded as an error', async () => {
+test('a truncated GLM completion is discarded as an error', async () => {
   await withGlmServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
-      model: 'glm-5.2',
-      stop_reason: 'max_tokens',
-      content: [{ type: 'text', text: 'partial review that ran out of tok' }],
+      model: MODEL,
+      choices: [{ finish_reason: 'length', message: { content: 'partial review that ran out of tok' } }],
+      usage: {},
     }));
   }, async (port) => {
     const result = await runGateAsync({
@@ -284,18 +319,18 @@ test('a truncated GLM completion (stop_reason max_tokens) is discarded as an err
       env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
     });
     assert.notEqual(result.status, 0, result.stdout);
-    assert.match(result.stdout, /finish_reason "max_tokens"/);
+    assert.match(result.stdout, /finish_reason "length"/);
     assert.doesNotMatch(result.stdout, /partial review/);
   });
 });
 
-test('a GLM reviewer identity outside the glm-5.2 lineage is discarded', async () => {
+test('a GLM reviewer identity outside the glm-5.3 lineage is discarded', async () => {
   await withGlmServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
       model: 'other-model-9',
-      stop_reason: 'end_turn',
-      content: [{ type: 'text', text: 'APPROVE' }],
+      choices: [{ finish_reason: 'stop', message: { content: 'APPROVE' } }],
+      usage: {},
     }));
   }, async (port) => {
     const result = await runGateAsync({
@@ -307,7 +342,28 @@ test('a GLM reviewer identity outside the glm-5.2 lineage is discarded', async (
   });
 });
 
-test('the GLM request is Anthropic-shaped with both auth headers and the output-token knob', async () => {
+test('an invalid GLM protocol fails before sending a request', async () => {
+  let requests = 0;
+  await withGlmServer((_request, response) => {
+    requests += 1;
+    response.writeHead(500, { 'Content-Type': 'application/json' });
+    response.end('{}');
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', TEST_COMMIT],
+      env: {
+        ZAI_API_KEY: 'test-only',
+        GLM_REVIEW_PROTOCOL: 'automatic',
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /ERROR: .*GLM_REVIEW_PROTOCOL/);
+    assert.equal(requests, 0);
+  });
+});
+
+test('the default GLM request is OpenAI-shaped with max reasoning', async () => {
   let seen;
   await withGlmServer((request, response) => {
     let body = '';
@@ -316,9 +372,9 @@ test('the GLM request is Anthropic-shaped with both auth headers and the output-
       seen = { url: request.url, headers: request.headers, body: JSON.parse(body) };
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({
-        model: 'glm-5.2',
-        stop_reason: 'end_turn',
-        content: [{ type: 'text', text: 'APPROVE — shape probe' }],
+        model: MODEL,
+        choices: [{ finish_reason: 'stop', message: { content: 'APPROVE — shape probe' } }],
+        usage: {},
       }));
     });
   }, async (port) => {
@@ -326,6 +382,42 @@ test('the GLM request is Anthropic-shaped with both auth headers and the output-
       args: ['--commit', TEST_COMMIT],
       env: {
         ZAI_API_KEY: 'shape-probe-key',
+        GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+        GLM_REVIEW_MAX_OUTPUT_TOKENS: '4096',
+      },
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.equal(seen.url, '/chat/completions');
+    assert.equal(seen.headers.authorization, 'Bearer shape-probe-key');
+    assert.equal(seen.body.max_tokens, 4096);
+    assert.deepEqual(seen.body.thinking, { type: 'enabled' });
+    assert.equal(seen.body.reasoning_effort, 'max');
+    assert.equal(seen.body.messages.length, 2);
+    assert.equal(seen.body.messages[0].role, 'system');
+    assert.equal(seen.body.messages[1].role, 'user');
+  });
+});
+
+test('the Anthropic GLM opt-in retains its provider-native request shape', async () => {
+  let seen;
+  await withGlmServer((request, response) => {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      seen = { url: request.url, headers: request.headers, body: JSON.parse(body) };
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        model: MODEL,
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'APPROVE — Anthropic shape probe' }],
+      }));
+    });
+  }, async (port) => {
+    const result = await runGateAsync({
+      args: ['--commit', TEST_COMMIT],
+      env: {
+        ZAI_API_KEY: 'shape-probe-key',
+        GLM_REVIEW_PROTOCOL: 'anthropic',
         GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
         GLM_REVIEW_MAX_OUTPUT_TOKENS: '4096',
       },
