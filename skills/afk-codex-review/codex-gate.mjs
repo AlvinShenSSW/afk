@@ -33,8 +33,6 @@
 // Override via CODEX_REVIEW_MODEL / CODEX_REVIEW_REASONING /
 // CODEX_REVIEW_PROJECT_DOC_MAX_BYTES.
 //
-// Exit code mirrors codex; 127 if the codex binary cannot be found.
-
 import {
   closeSync, existsSync, openSync,
   readFileSync, statSync, unlinkSync, writeSync,
@@ -45,6 +43,7 @@ import { join } from 'node:path';
 import {
   isGateDisabled, isSpawnTimeout, preflightTimeoutMs, reviewTimeoutMs,
 } from '../../lib/gate/env.mjs';
+import { classifyChildOutcome, describeChildOutcome } from '../../lib/gate/child-outcome.mjs';
 import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
@@ -388,7 +387,17 @@ if (auth.error && auth.error.code === 'ENOENT') {
   emitSkip('Codex CLI not installed (run: npm i -g @openai/codex && codex login).');
 }
 const authOut = `${auth.stdout || ''}${auth.stderr || ''}`;
-if (/not logged in/i.test(authOut) || !/logged in/i.test(authOut)) {
+const authOutcome = classifyChildOutcome(auth);
+if (authOutcome && authOutcome.kind !== 'nonzero') {
+  emitError(`${describeChildOutcome('Codex authentication preflight', authOutcome)}.`, 1);
+}
+if (authOutcome?.kind === 'nonzero' && /not logged in/i.test(authOut)) {
+  emitSkip('Codex not authenticated — run `codex login`, or set CODEX_REVIEW_GATE=off to disable this gate.');
+}
+if (authOutcome?.kind === 'nonzero') {
+  emitError(`${describeChildOutcome('Codex authentication preflight', authOutcome)}.`, 1);
+}
+if (!/logged in/i.test(authOut)) {
   emitSkip('Codex not authenticated — run `codex login`, or set CODEX_REVIEW_GATE=off to disable this gate.');
 }
 
@@ -435,7 +444,8 @@ releaseCodexLock(codexLock);
 if (isSpawnTimeout(res)) {
   emitError(
     `codex review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
-    + `Raise CODEX_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    + 'Raise CODEX_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. '
+    + 'Local transcript retained.',
     1,
   );
 }
@@ -445,31 +455,18 @@ if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
   // ERROR, so the round is unclean and the target gets fixed, rather than SKIP,
   // which would hand the review to the next family and hide the bad ref.
   emitError(
-    `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
-    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
-    + 'native binary so its arguments never pass through cmd.exe.',
+    'cannot review this target: an argument cannot be represented safely by the required '
+    + 'shell. Rename the ref or path, or install the CLI as a native binary.',
     1,
   );
 }
 
-if (res.error) {
-  if (res.error.code === 'ENOENT') {
-    process.stderr.write(
-      '[codex-gate] codex CLI not found. Install with: npm i -g @openai/codex (then `codex login`).\n',
-    );
-    process.exit(127);
-  }
-  process.stderr.write(`[codex-gate] failed to launch codex: ${res.error.message}\n`);
-  process.exit(1);
-}
-
-// A signal-killed child may have died mid-write: its partial verdict file is
-// not a verdict.
-if (res.signal) {
-  emitError(
-    `codex was killed by ${res.signal} before completing the review; any partial verdict file is not a verdict. Transcript: ${logFile}`,
-    1,
-  );
+const childOutcome = classifyChildOutcome(res);
+if (childOutcome) {
+  const subject = childOutcome.kind === 'launch_error'
+    ? 'codex review process'
+    : 'codex';
+  emitError(`${describeChildOutcome(subject, childOutcome)}; no review was accepted.`, 1);
 }
 
 if (existsSync(finalFile)) {
@@ -479,7 +476,7 @@ if (existsSync(finalFile)) {
     emptyMessage: `codex wrote an empty verdict file (exit ${res.status}) — an empty result is an error, not an empty approval. Transcript: ${logFile}`,
     exitCode: res.status || 1,
   });
-  process.exit(res.status ?? 1);
+  process.exit(0);
 }
 
 // No verdict file: the review failed. Still emit a parseable block; never exit 0

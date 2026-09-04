@@ -30,6 +30,7 @@ import { closeSync, openSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isGateDisabled, isSpawnTimeout, reviewTimeoutMs } from '../../lib/gate/env.mjs';
+import { classifyChildOutcome, describeChildOutcome } from '../../lib/gate/child-outcome.mjs';
 import { failureDirection, httpFailureCode } from '../../lib/gate/failure.mjs';
 import { git } from '../../lib/gate/git.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
@@ -319,7 +320,8 @@ try {
 if (isSpawnTimeout(res)) {
   emitError(
     `Claude review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `
-    + `Raise CLAUDE_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. Transcript: ${logFile}`,
+    + 'Raise CLAUDE_REVIEW_TIMEOUT_MS or AFK_REVIEW_TIMEOUT_MS, or narrow the target. '
+    + 'Local transcript retained.',
     1,
   );
 }
@@ -329,9 +331,8 @@ if (res.error && res.error.code === UNSAFE_SHELL_ARG) {
   // ERROR, so the round is unclean and the target gets fixed, rather than SKIP,
   // which would hand the review to the next family and hide the bad ref.
   emitError(
-    `cannot review this target: ${res.error.message}. This CLI is installed as a Windows `
-    + 'script shim, which forces a shell; rename the ref or path, or install the CLI as a '
-    + 'native binary so its arguments never pass through cmd.exe.',
+    'cannot review this target: an argument cannot be represented safely by the required '
+    + 'shell. Rename the ref or path, or install the CLI as a native binary.',
     1,
   );
 }
@@ -346,6 +347,11 @@ if (!out.trim() && /is not recognized as|command not found|no such file/i.test(e
   emitSkip('Claude CLI not installed (see https://claude.com/claude-code), or set CLAUDE_REVIEW_GATE=off to disable this gate.');
 }
 
+const childOutcome = classifyChildOutcome(res);
+if (childOutcome && childOutcome.kind !== 'nonzero') {
+  emitError(`${describeChildOutcome('Claude', childOutcome)}; no review was accepted.`, 1);
+}
+
 // The exit code is NOT the signal: `claude -p --output-format json` exits 0 on
 // an API error and reports it in the envelope. Reading the exit code alone
 // would report a failed review as a clean one.
@@ -353,10 +359,21 @@ let envelope;
 try {
   envelope = JSON.parse(out);
 } catch {
+  if (childOutcome?.kind === 'nonzero') {
+    emitError(`${describeChildOutcome('Claude', childOutcome)}; no review was accepted.`, 1);
+  }
   emitError(`Claude produced no parseable result (exit ${res.status}). Transcript: ${logFile}`, res.status || 1);
 }
 
-if (envelope?.is_error) {
+const isErrorEnvelope = envelope?.is_error === true;
+if (childOutcome?.kind === 'nonzero' && !isErrorEnvelope) {
+  emitError(`${describeChildOutcome('Claude', childOutcome)}; no review was accepted.`, 1);
+}
+if (typeof envelope?.is_error !== 'boolean') {
+  emitError('Claude result envelope has no Boolean is_error status; no review was accepted.', 1);
+}
+
+if (isErrorEnvelope) {
   const status = envelope.api_error_status;
   const detail = String(envelope.result || '').slice(0, 300);
   // Direction is table-owned (lib/gate/failure.mjs): auth, rate-limit, and
@@ -365,15 +382,19 @@ if (envelope?.is_error) {
   const code = status ? httpFailureCode(status) : 'http_error';
   if (failureDirection(code) === 'skip') {
     if (code === 'auth') {
-      emitSkip(`Claude not authenticated (HTTP ${status}) — log in with the Claude Code CLI, or set CLAUDE_REVIEW_GATE=off. ${detail}`);
+      emitSkip(`Claude not authenticated (HTTP ${status}) — log in with the Claude Code CLI, or set CLAUDE_REVIEW_GATE=off.${childOutcome ? '' : ` ${detail}`}`);
     }
     if (code === 'model_unavailable') {
-      emitSkip(`Configured model "${model}" is unavailable (HTTP 404) — set CLAUDE_REVIEW_MODEL to a model this account can use. ${detail}`);
+      const configured = childOutcome ? 'Configured Claude model' : `Configured model "${model}"`;
+      emitSkip(`${configured} is unavailable (HTTP 404) — set CLAUDE_REVIEW_MODEL to a model this account can use.${childOutcome ? '' : ` ${detail}`}`);
     }
     if (code === 'rate_limit') {
-      emitSkip(`Claude is rate-limited or out of quota (HTTP 429) — this gate cannot run right now; the next gate in priority should take its place. ${detail}`);
+      emitSkip(`Claude is rate-limited or out of quota (HTTP 429) — this gate cannot run right now; the next gate in priority should take its place.${childOutcome ? '' : ` ${detail}`}`);
     }
-    emitSkip(`Claude is unavailable (HTTP ${status}). ${detail}`);
+    emitSkip(`Claude is unavailable (HTTP ${status}).${childOutcome ? '' : ` ${detail}`}`);
+  }
+  if (childOutcome?.kind === 'nonzero') {
+    emitError(`${describeChildOutcome('Claude', childOutcome)}; no review was accepted.`, 1);
   }
   emitError(`Claude review failed${status ? ` (HTTP ${status})` : ''}: ${detail} Transcript: ${logFile}`, res.status || 1);
 }
