@@ -1,6 +1,7 @@
 # afk-skills
 
 [![validate](https://github.com/AlvinShenSSW/afk/actions/workflows/validate.yml/badge.svg)](https://github.com/AlvinShenSSW/afk/actions/workflows/validate.yml)
+[![plugin version](https://img.shields.io/github/package-json/v/AlvinShenSSW/afk?label=plugin)](plugin.json)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **Away-From-Keyboard autonomous execution for AI coding agents.** Hand your
@@ -92,19 +93,27 @@ The plugin never deploys.
 
 ## External review roles
 
-Each role is an independent model reading the diff, bounded by a timeout, and
-read-only. Codex, Claude, GLM, DeepSeek, and MiMo are read-only *by
-construction* (sandbox flag, tool allow-list, or a tool-less API call); Kimi's
-read-only is only requested in the prompt, which is the weaker guarantee.
+Each role is an independent model reading the diff and bounded by a timeout.
+Claude is constrained to read-only tools, while GLM, DeepSeek, and MiMo receive
+a bounded snapshot through a tool-less API call. Codex uses its read-only
+sandbox on macOS and Linux; on Windows the CLI cannot launch that sandbox under
+a normal user token, so the helper uses Codex's built-in review workflow without
+OS sandbox enforcement. Kimi drives git itself, so its read-only behaviour is
+requested in the prompt rather than constrained by the helper.
 
-| Role | Runs via | Credential | Default timeout |
-|------|----------|-----------|-----------------|
-| `codex` | Codex CLI (`exec -s read-only`) | the CLI's own auth | 15 min |
-| `claude` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
-| `kimi` | Kimi CLI (drives git itself) | the CLI's own auth | 45 min |
-| `glm` | Z.ai `glm-5.3`, OpenAI-protocol API | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
-| `deepseek` | DeepSeek V4 Pro API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
-| `mimo` | Xiaomi MiMo V2.5 Pro API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
+| Role | Default model | Runs via | Credential | Timeout |
+|------|---------------|----------|------------|---------|
+| `codex` | `gpt-5.6-terra` | Codex CLI | the CLI's own auth | 15 min |
+| `claude` | `claude-opus-5` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
+| `kimi` | CLI-selected | Kimi Code CLI or Kimi CLI | the CLI's own auth | 45 min |
+| `glm` | `glm-5.3` | Z.ai REST API (OpenAI protocol by default) | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
+| `deepseek` | `deepseek-v4-pro` | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
+| `mimo` | `mimo-v2.5-pro` | Xiaomi MiMo REST API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
+
+The Kimi helper supports both CLIs named `kimi`. It derives the installed CLI's
+headless argument group from `--help` and constrains legacy Windows console
+encoding only when the probe says it is needed, so the same gate works across
+the current npm and Python CLI families.
 
 Kimi gets longer because it drives git itself rather than receiving a
 pre-injected diff. CLI availability and authentication probes are capped at 30
