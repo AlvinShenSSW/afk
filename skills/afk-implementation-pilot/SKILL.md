@@ -44,6 +44,14 @@ than skip silently. Report results verbatim; never suppress a failure. Resolve
 `git worktree list --porcelain` — never the current directory, or work in a
 linked worktree reads a different `.afk/` than the one `afk-init` wrote.
 
+Record `ENVIRONMENT-BLOCKED` only when evidence shows that the environment
+denied a prerequisite before the relevant assertion or contract behavior ran.
+Do not infer it from a permission-looking string when the product selected the
+path or assertions also ran. It is neither RED nor green. Preserve the worktree
+unchanged and hand the exact command, output, refused resource, and causal
+evidence to a driver that can rerun the unchanged command in an authorized
+environment; that rerun supplies the classification.
+
 ### 5 — Self-review loop
 
 Self-review against the checklist, triage every finding against the frozen
@@ -90,6 +98,13 @@ Summarize what was built, the acceptance-criteria status, deviations from the
 plan, files changed, tests added, the lens-by-lens results of the two clean
 rounds, and final check results. Suggest running
 `afk-internal-review` next. Do not merge, push, or open a PR unless asked.
+
+If the executor can edit a linked worktree but cannot write its linked-worktree
+Git metadata under the main checkout, stop retrying the commit. Record the dirty
+tree's diff identity and exact check results. The driver must inspect that diff
+and rerun the declared checks outside the restricted executor before it creates
+the commit. This hands back commit work only: push, PR, and merge remain separate
+authorized actions.
 
 ### 7 — CI watch (only when asked to push / open a PR)
 

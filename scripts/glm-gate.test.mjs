@@ -68,6 +68,8 @@ test('glm defaults to GLM-5.3 over the OpenAI Coding Plan endpoint', () => {
   assert.equal(parsed.model, MODEL);
   assert.equal(parsed.protocol, 'openai');
   assert.equal(parsed.baseUrl, 'https://api.z.ai/api/coding/paas/v4');
+  assert.equal(parsed.maxContextBytes, 160000);
+  assert.equal(parsed.maxTokens, 65536);
 });
 
 test('glm diagnostics preserve explicit model, protocol, and endpoint overrides', () => {
@@ -300,7 +302,7 @@ test('a GLM empty completion is an error, not a skip', async () => {
       env: { ZAI_API_KEY: 'test-only', GLM_REVIEW_BASE_URL: `http://127.0.0.1:${port}` },
     });
     assert.notEqual(result.status, 0, result.stdout);
-    assert.match(result.stdout, /ERROR: .*empty/);
+    assert.match(result.stdout, /ERROR: .*empty.*retry once.*GLM_REVIEW_MAX_CTX_BYTES.*GLM_REVIEW_MAX_OUTPUT_TOKENS/i);
     assert.doesNotMatch(result.stdout, /SKIPPED/);
   });
 });
@@ -339,6 +341,8 @@ test('a GLM reviewer identity outside the glm-5.3 lineage is discarded', async (
     });
     assert.notEqual(result.status, 0, result.stdout);
     assert.match(result.stdout, /identity unverified/);
+    assert.match(result.stdout, /GLM_REVIEW_MODEL/);
+    assert.match(result.stdout, /GLM_REVIEW_BASE_URL/);
   });
 });
 
