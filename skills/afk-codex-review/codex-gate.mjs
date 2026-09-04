@@ -391,7 +391,7 @@ const authOutcome = classifyChildOutcome(auth);
 if (authOutcome && authOutcome.kind !== 'nonzero') {
   emitError(`${describeChildOutcome('Codex authentication preflight', authOutcome)}.`, 1);
 }
-if (authOutcome?.kind === 'nonzero' && /not logged in/i.test(authOut)) {
+if (/not logged in/i.test(authOut)) {
   emitSkip('Codex not authenticated — run `codex login`, or set CODEX_REVIEW_GATE=off to disable this gate.');
 }
 if (authOutcome?.kind === 'nonzero') {

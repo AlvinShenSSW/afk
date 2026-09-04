@@ -156,15 +156,17 @@ test('Codex preflight keeps known unavailability distinct from abnormal failure'
   assert.equal(missing.status, 0, missing.stderr);
   assert.match(missing.stdout, /SKIPPED: Codex CLI not installed/);
 
-  withOutcomeStub({ authText: 'Not logged in', authExit: 1 }, ({ bin, calls }) => {
-    const result = runGate({
-      args: ['--commit', TEST_COMMIT],
-      env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+  for (const authExit of [0, 1]) {
+    withOutcomeStub({ authText: 'Not logged in', authExit }, ({ bin, calls }) => {
+      const result = runGate({
+        args: ['--commit', TEST_COMMIT],
+        env: { CODEX_GATE_BIN: bin, CODEX_GATE_NO_LOCK: '1' },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /SKIPPED: Codex not authenticated/);
+      assert.equal(readFileSync(calls, 'utf8'), 'preflight\n');
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /SKIPPED: Codex not authenticated/);
-    assert.equal(readFileSync(calls, 'utf8'), 'preflight\n');
-  });
+  }
 
   withOutcomeStub({ authText: 'unexpected preflight failure', authExit: 4 }, ({ bin }) => {
     const result = runGate({
