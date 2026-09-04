@@ -85,6 +85,23 @@ architectural preference may not. Anything else is `OUT-OF-SCOPE`: record it for
 the operator, do not implement it, and do not create a follow-up issue
 automatically.
 
+**Restricted executor handoff.** A separate implementation model may be able to
+edit a linked worktree while its sandbox cannot write the linked-worktree Git
+metadata stored under the main checkout. That is a valid dirty-tree handoff, not
+a reason to broaden its filesystem authority. The executor records the actual
+diff identity and every command result, then returns control without claiming a
+commit. Before committing, the driver inspects the diff itself and reruns the
+declared checks in an environment authorized for the required Git metadata and
+test resources. Commit authority does not imply push, PR, or merge authority;
+each remains a separate operator-controlled action.
+
+Classify a command as `ENVIRONMENT-BLOCKED` only when evidence shows that the
+execution environment denied a prerequisite before the relevant assertion or
+contract behavior ran. A denial-looking message is insufficient when the
+product chose the refused path or assertions also executed. This state is
+neither RED nor green: rerun the unchanged command in an authorized environment,
+without an intervening content edit, and classify only that result.
+
 ## Adversarial debate (the design-stage check)
 
 The critic is a subagent, usually the driver's own model. It is cheap, so it runs

@@ -37,6 +37,7 @@ const provider = protocolName === 'anthropic'
       keyEnv: 'ZAI_API_KEY',
       baseUrlEnv: 'GLM_REVIEW_BASE_URL',
       baseUrlDefault,
+      emptyHint: 'retry once after lowering GLM_REVIEW_MAX_CTX_BYTES and/or raising GLM_REVIEW_MAX_OUTPUT_TOKENS',
     })
   : makeOpenAiProvider({
       name: 'GLM',
@@ -51,6 +52,7 @@ const provider = protocolName === 'anthropic'
         thinking: { type: 'enabled' },
         reasoning_effort: 'max',
       }),
+      emptyHint: 'retry once after lowering GLM_REVIEW_MAX_CTX_BYTES and/or raising GLM_REVIEW_MAX_OUTPUT_TOKENS',
     });
 
 await runOpenAiSnapshotGate({
@@ -64,7 +66,9 @@ await runOpenAiSnapshotGate({
   baseUrlEnv: 'GLM_REVIEW_BASE_URL',
   baseUrlDefault,
   maxContextEnv: 'GLM_REVIEW_MAX_CTX_BYTES',
+  maxContextDefault: 160000,
   maxOutputEnv: 'GLM_REVIEW_MAX_OUTPUT_TOKENS',
+  maxOutputDefault: 65536,
   excludeGlobsEnv: 'GLM_REVIEW_EXCLUDE_GLOBS',
   provider,
 });

@@ -71,6 +71,12 @@ Output, in this shape:
   that you guessed.
 - **Approach** — the chosen approach and why, over the obvious alternatives.
 - **Files to change** — a table of path / change type / reason.
+- **Execution surface** — distinguish allowed writes from files and tools that
+  are read or executed. For every generated output, name its generator, exact
+  production command, required inputs and configuration, output, and expected
+  side effects. Every participant needed by the data flow must be present, but
+  listing it does not authorize modification: read, execute, and write are
+  separate capabilities.
 - **Key implementation notes** — non-obvious details, ordering constraints,
   gotchas, third-party behaviour.
 - **Risk assessment** — risk / likelihood / impact / mitigation.

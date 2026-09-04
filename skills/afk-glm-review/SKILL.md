@@ -64,8 +64,11 @@ Read the verdict between the `===== GLM REVIEW (final message) =====` markers. T
 endpoint, or disabled via `GLM_REVIEW_GATE=off`) is not a failure; record it
 and continue according to the `afk` gate-selection rule. A timeout, upstream
 HTTP error, non-JSON or empty response, unsafe finish reason, or unverified
-response model yields a non-zero `ERROR` with no partial verdict — the shared
-skip-vs-error table decides the direction, the same as every lifecycle gate.
+response model yields a non-zero `ERROR` with no partial verdict. An empty
+completion names the input and output budget knobs; one adjusted retry is
+eligible under the shared transient-retry rule, while an unchanged blind retry
+is not. The shared skip-vs-error table decides the direction, the same as every
+lifecycle gate.
 
 The default `openai` protocol uses the Coding Plan endpoint
 `https://api.z.ai/api/coding/paas/v4` and explicitly requests enabled reasoning
@@ -129,8 +132,8 @@ Config knobs:
   value)
 - `GLM_REVIEW_BASE_URL` (defaults to `https://api.z.ai/api/coding/paas/v4` for
   `openai` and `https://api.z.ai/api/anthropic` for `anthropic`)
-- `GLM_REVIEW_MAX_CTX_BYTES` (default `400000`)
-- `GLM_REVIEW_MAX_OUTPUT_TOKENS` (default `8192`)
+- `GLM_REVIEW_MAX_CTX_BYTES` (default `160000`)
+- `GLM_REVIEW_MAX_OUTPUT_TOKENS` (default `65536`)
 - `GLM_REVIEW_EXCLUDE_GLOBS` (extra snapshot exclusions, comma/newline list)
 - `GLM_REVIEW_TIMEOUT_MS` (default `900000`; shared fallback
   `AFK_REVIEW_TIMEOUT_MS`)

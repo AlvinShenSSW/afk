@@ -14,6 +14,7 @@ const provider = makeOpenAiProvider({
   tokenParam: 'max_tokens',
   tokenParamOverrideEnv: null,
   normalizeUsage: deepseekUsage,
+  emptyHint: 'retry once after lowering DEEPSEEK_REVIEW_MAX_CTX_BYTES and/or raising DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS',
   buildExtraBody: (env) => ({
     thinking: { type: isGateDisabled('DEEPSEEK_REVIEW_THINKING', env) ? 'disabled' : 'enabled' },
   }),
@@ -30,7 +31,9 @@ await runOpenAiSnapshotGate({
   baseUrlEnv: 'DEEPSEEK_REVIEW_BASE_URL',
   baseUrlDefault: 'https://api.deepseek.com',
   maxContextEnv: 'DEEPSEEK_REVIEW_MAX_CTX_BYTES',
+  maxContextDefault: 160000,
   maxOutputEnv: 'DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS',
+  maxOutputDefault: 65536,
   excludeGlobsEnv: 'DEEPSEEK_REVIEW_EXCLUDE_GLOBS',
   provider,
 });

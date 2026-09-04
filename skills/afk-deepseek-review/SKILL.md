@@ -44,8 +44,10 @@ config line.
 The bounded snapshot excludes secret-bearing paths, redacts secret-shaped
 values, and rejects unsafe design inputs before the request. A missing or
 invalid `--design` target is `ERROR`, not a skip. A timeout, unsafe finish
-reason, or unverified response model also yields a non-zero `ERROR` with no
-partial verdict. Auth failures, rate limits, and an unavailable model or
+reason, empty completion, or unverified response model also yields a non-zero
+`ERROR` with no partial verdict. An empty completion names the two budget knobs;
+one adjusted retry is eligible under the shared transient-retry rule, while an
+unchanged blind retry is not. Auth failures, rate limits, and an unavailable model or
 endpoint (HTTP 404) are `SKIPPED` — the reviewer is unavailable and the next
 family takes its place, per the shared skip-vs-error table. A successful review that omitted entries carries a bounded
 `SNAPSHOT_NOTE` count; redacted excluded paths stay in local stderr only.
@@ -102,8 +104,8 @@ Config knobs:
 - `DEEPSEEK_REVIEW_MODEL` (default `deepseek-v4-pro`)
 - `DEEPSEEK_REVIEW_BASE_URL` (default `https://api.deepseek.com`)
 - `DEEPSEEK_REVIEW_THINKING` (`off` disables thinking; enabled by default)
-- `DEEPSEEK_REVIEW_MAX_CTX_BYTES` (default `400000`)
-- `DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS` (default `8192`)
+- `DEEPSEEK_REVIEW_MAX_CTX_BYTES` (default `160000`)
+- `DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS` (default `65536`)
 - `DEEPSEEK_REVIEW_EXCLUDE_GLOBS` (comma- or newline-separated additions;
   built-in exclusions remain)
 - `DEEPSEEK_REVIEW_TIMEOUT_MS` (default `900000`; shared fallback

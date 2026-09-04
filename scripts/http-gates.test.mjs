@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import {
-  mkdtempSync, rmSync, symlinkSync, writeFileSync,
+  mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -23,6 +23,7 @@ const CASES = {
     baseEnv: 'DEEPSEEK_REVIEW_BASE_URL',
     model: 'deepseek-v4-pro',
     marker: 'DEEPSEEK',
+    defaultMaxTokens: 65536,
   },
   mimo: {
     gate: join(repoRoot, 'skills/afk-mimo-review/mimo-gate.mjs'),
@@ -30,6 +31,7 @@ const CASES = {
     baseEnv: 'MIMO_REVIEW_BASE_URL',
     model: 'mimo-v2.5-pro',
     marker: 'MIMO',
+    defaultMaxTokens: 8192,
   },
 };
 
@@ -47,6 +49,14 @@ function runGate(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = rep
     env: gateTestEnv(env),
   });
 }
+
+test('DeepSeek exposes its tuned default budgets without a provider call', () => {
+  const result = runGate('deepseek', { args: ['--commit', TEST_COMMIT, '--print-args'] });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.maxContextBytes, 160000);
+  assert.equal(parsed.maxTokens, 65536);
+});
 
 async function runGateAsync(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = repoRoot } = {}) {
   const child = spawn(process.execPath, [GATE_PATHS[family], ...args], {
@@ -148,12 +158,12 @@ for (const [family, config] of Object.entries(CASES)) {
       assert.equal(captured.body.model, config.model);
       if (family === 'deepseek') {
         assert.equal(captured.headers.authorization, `Bearer ${key}`);
-        assert.equal(captured.body.max_tokens, 8192);
+        assert.equal(captured.body.max_tokens, config.defaultMaxTokens);
         assert.deepEqual(captured.body.thinking, { type: 'enabled' });
       } else {
         assert.equal(captured.headers['api-key'], key);
         assert.equal(captured.headers.authorization, undefined);
-        assert.equal(captured.body.max_completion_tokens, 8192);
+        assert.equal(captured.body.max_completion_tokens, config.defaultMaxTokens);
       }
     });
   });
@@ -280,6 +290,8 @@ test('reviewer model mismatch discards the verdict', async () => {
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stdout, /reviewer identity unverified/);
+    assert.match(result.stdout, /DEEPSEEK_REVIEW_MODEL/);
+    assert.match(result.stdout, /DEEPSEEK_REVIEW_BASE_URL/);
     assert.doesNotMatch(result.stdout, /APPROVE/);
   });
 });
@@ -348,7 +360,7 @@ test('started reviews reject malformed bodies, empty content, and unsafe finish 
     },
     {
       json: { choices: [{ finish_reason: 'stop', message: { content: '' } }] },
-      expected: /empty/,
+      expected: /empty.*retry once.*DEEPSEEK_REVIEW_MAX_CTX_BYTES.*DEEPSEEK_REVIEW_MAX_OUTPUT_TOKENS/i,
     },
     {
       json: { choices: [{ message: { content: 'partial' } }] },
@@ -378,6 +390,38 @@ test('started reviews reject malformed bodies, empty content, and unsafe finish 
       assert.doesNotMatch(result.stdout, /\npartial\n/);
     });
   }
+});
+
+test('accepted snapshot reviews report referenced files omitted by the byte budget', async () => {
+  await withRepo(async ({ dir }) => {
+    mkdirSync(join(dir, 'docs'));
+    writeFileSync(join(dir, 'docs', 'context.md'), 'x'.repeat(4000));
+    execFileSync('git', ['add', 'docs/context.md'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'context'], { cwd: dir });
+    writeFileSync(join(dir, 'safe.txt'), 'review docs/context.md\n');
+
+    await withServer((_request, response) => {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        model: CASES.deepseek.model,
+        choices: [{ finish_reason: 'stop', message: { content: 'APPROVE' } }],
+        usage: {},
+      }));
+    }, async (port) => {
+      const result = await runGateAsync('deepseek', {
+        args: ['--uncommitted'],
+        cwd: dir,
+        env: {
+          DEEPSEEK_REVIEW_API_KEY: 'test-only',
+          DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+          DEEPSEEK_REVIEW_MAX_CTX_BYTES: '800',
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /SNAPSHOT_NOTE referenced_files=0 budget_omitted_references=1/);
+      assert.match(result.stdout, /docs\/context\.md/);
+    });
+  });
 });
 
 test('the gate request excludes secret files, symlinks, and secret-shaped values', async () => {

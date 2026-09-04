@@ -294,6 +294,12 @@ their payload before it leaves the machine: secret-bearing paths (`.env`, keys,
 credential and secret files) are dropped from the snapshot, and known token
 shapes are redacted from what is sent.
 
+GLM and DeepSeek default to a 160000-byte input snapshot and 65536 output
+tokens; MiMo retains the shared 400000-byte / 8192-token defaults. Code-review
+snapshots place exact referenced tracked files ahead of full changed-file
+contents and report references omitted by the byte budget. Each family keeps
+environment overrides for both limits.
+
 ### Which forge
 
 `forge` decides which tracker an issue id is read from. Left unset it is detected
