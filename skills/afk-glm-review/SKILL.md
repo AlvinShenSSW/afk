@@ -1,6 +1,6 @@
 ---
 name: afk-glm-review
-description: Part of the afk pipeline. Runs GLM (Z.ai glm-5.3) as an independent, read-only fallback external review role for an ordered .afk/config.md gate profile. Triggers include "/afk-glm-review", "run glm review", "glm gate", and "GLM external gate".
+description: "afk-glm-review: Part of the afk pipeline. Runs GLM (Z.ai glm-5.3) as an independent, read-only fallback external review role for an ordered .afk/config.md gate profile. Triggers include \"/afk-glm-review\", \"run glm review\", \"glm gate\", and \"GLM external gate\"."
 ---
 
 # afk-glm-review
@@ -26,8 +26,8 @@ disposition together at the end without editing a clean revision.
 The bundled helper `glm-gate.mjs` sits beside this SKILL.md. Locate its directory
 as `${CLAUDE_PLUGIN_ROOT}/skills/afk-glm-review` if the env var is set, else
 `<pluginRoot>/skills/afk-glm-review` from `.afk/config.md`, else this skill's own
-directory. Resolve `.afk/` from the repository's main working tree — the first
-`worktree` line of `git worktree list --porcelain` — never the current directory,
+directory. Resolve `.afk/` from the repository's main working tree — the first non-bare
+`worktree` record of `git worktree list --porcelain` — never the current directory,
 or a run from a linked worktree reads a different `.afk/` than the one `afk-init`
 wrote. If `.afk/` is absent, the `afk-init` bootstrap runs automatically first:
 

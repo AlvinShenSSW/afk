@@ -1,6 +1,6 @@
 ---
 name: afk-init
-description: Part of the afk pipeline. One-time, idempotent bootstrap for a repository — detect build/test/lint commands, write .afk/config.md, ignore .afk/, and record the forge and plugin root. Run once per repo before the other afk skills. Triggers include "/afk-init", "set up afk", "initialise afk".
+description: "afk-init: Part of the afk pipeline. One-time, idempotent bootstrap for a repository — detect build/test/lint commands, write .afk/config.md, ignore .afk/, and record the forge and plugin root. Run once per repo before the other afk skills. Triggers include \"/afk-init\", \"set up afk\", \"initialise afk\"."
 ---
 
 # afk-init
@@ -15,7 +15,7 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
 1. **Confirm the repo.** Require a git working tree with a remote; stop with a
    clear message if either is absent.
 2. **Create `.afk/`** (with `runs/` inside) if missing, in the repository's main
-   working tree — the first `worktree` line of `git worktree list --porcelain` —
+   working tree — the first non-bare `worktree` record of `git worktree list --porcelain` —
    so every linked worktree resolves the same `.afk/`.
 3. **Write `.afk/config.md`** from the plugin's `templates/afk-config.example.md`
    only when it does not already exist — never clobber an existing config.
@@ -47,8 +47,8 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
    ```
 
    It prints `{ action, root, reason }`: `record` (nothing recorded yet),
-   `refresh` (the recorded value is a superseded version of this same install —
-   write the resolved one), or `keep` (a custom or manual root, which is a
+   `refresh` (a superseded same-install version or a missing recognized afk
+   cache with a verified live replacement — write the resolved one), or `keep` (a custom or manual root, which is a
    deliberate choice and survives). Report the reason either way.
 7. **Ignore local AFK state and credentials.** Append the missing entries from
    the plugin's `templates/gitignore-snippet.txt` to `info/exclude` under
@@ -77,8 +77,8 @@ rarely needs invoking by hand — `/afk-init` is for an explicit re-detect.
 ## Rules
 
 - Idempotent and non-destructive: existing values win; re-runs only fill gaps.
-  The one exception is a `pluginRoot` that names a superseded version of the
-  install now running — a stale cache path is an expired fact, not a choice.
+  A superseded same-install version or missing recognized afk cache with a
+  verified live replacement is an expired fact, not a custom-root choice.
 - Secrets never enter `.afk/config.md`; keys stay in the environment or the
   ignored local `.env` installed by the same bootstrap rule.
 - A blank or absent `config.md` is valid — the pipeline resolves safe defaults.

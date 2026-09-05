@@ -16,17 +16,11 @@
 //
 // Contract: reads the hook JSON from stdin, writes at most one JSON object to
 // stdout, and ALWAYS exits 0. It never blocks or crashes a session — any error
-// is swallowed and produces no output. Pure no-op outside an afk repo.
+// emits a bounded stderr skip without session context. Pure no-op outside an afk repo.
 
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { readConfigValue } from '../lib/config.mjs';
-import { mainWorktree } from '../lib/gate/git.mjs';
-import { buildContext, collectResumable, normalizeMode } from '../lib/resume/detect.mjs';
-import { prepareGateProfileNotice } from '../scripts/gate-profile-notice.mjs';
-import { resolveUpdateNotice } from '../scripts/update-check.mjs';
 
 async function readStdin() {
   let raw = '';
@@ -35,6 +29,12 @@ async function readStdin() {
 }
 
 async function main() {
+  // A partially upgraded install must not crash the host before the catch runs.
+  const [{ readConfigValue }, { mainWorktree }, { buildContext, collectResumable, normalizeMode },
+    { prepareGateProfileNotice }, { resolveUpdateNotice }] = await Promise.all([
+    import('../lib/config.mjs'), import('../lib/gate/git.mjs'), import('../lib/resume/detect.mjs'),
+    import('../scripts/gate-profile-notice.mjs'), import('../scripts/update-check.mjs'),
+  ]);
   let data = {};
   try {
     data = JSON.parse(await readStdin()) || {};
@@ -86,5 +86,7 @@ async function main() {
 }
 
 main()
-  .catch(() => {}) // never crash a session
+  .catch((error) => {
+    process.stderr.write(`[afk-resume-detect] SKIPPED: hook dependency or execution failure (${error.code || error.name || 'unknown'})\n`);
+  })
   .finally(() => process.exit(0));

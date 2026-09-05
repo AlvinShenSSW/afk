@@ -1,6 +1,6 @@
 ---
 name: afk-codex-review
-description: Part of the afk pipeline. Runs Codex (OpenAI Codex CLI) as the default outer independent, read-only external review role, then triages and fixes findings before later ordered roles. Subject to .afk/config.md gates and fallback priority. Triggers include "/afk-codex-review", "run codex review", "codex gate".
+description: "afk-codex-review: Part of the afk pipeline. Runs Codex (OpenAI Codex CLI) as the default outer independent, read-only external review role, then triages and fixes findings before later ordered roles. Subject to .afk/config.md gates and fallback priority. Triggers include \"/afk-codex-review\", \"run codex review\", \"codex gate\"."
 ---
 
 # afk-codex-review
@@ -27,7 +27,7 @@ The bundled helper `codex-gate.mjs` sits beside this SKILL.md. Locate its
 directory as `${CLAUDE_PLUGIN_ROOT}/skills/afk-codex-review` if the env var is
 set, else `<pluginRoot>/skills/afk-codex-review` from `.afk/config.md`, else this
 skill's own directory (the helper is its sibling). Resolve `.afk/` from the
-repository's main working tree — the first `worktree` line of
+repository's main working tree — the first non-bare `worktree` record of
 `git worktree list --porcelain` — never the current directory, or a run from a
 linked worktree reads a different `.afk/` than the one `afk-init` wrote. If
 `.afk/` is absent, the `afk-init` bootstrap runs automatically first:

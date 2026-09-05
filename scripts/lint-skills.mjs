@@ -167,6 +167,10 @@ export function lintSkills(skillsDir) {
         `${dirName}: description length ${front.description.length} outside [${DESC_MIN}, ${DESC_MAX}]`,
       );
     }
+    if (front.description && (!front.description.startsWith(`${dirName}: `)
+      || !/part of the afk pipeline\b/i.test(front.description))) {
+      errors.push(`${dirName}: description must lead with "${dirName}: " and identify "Part of the afk pipeline"`);
+    }
   }
 
   return errors;

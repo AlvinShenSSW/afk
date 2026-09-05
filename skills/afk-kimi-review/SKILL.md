@@ -1,6 +1,6 @@
 ---
 name: afk-kimi-review
-description: Part of the afk pipeline. Runs Kimi (Kimi Code CLI or Kimi CLI) as the default final independent, read-only (prompt-requested) external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include "/afk-kimi-review", "run kimi review", "kimi gate".
+description: "afk-kimi-review: Part of the afk pipeline. Runs Kimi (Kimi Code CLI or Kimi CLI) as the default final independent, read-only (prompt-requested) external review role after outer findings are resolved. Subject to ordered .afk/config.md gates and fallback priority. Triggers include \"/afk-kimi-review\", \"run kimi review\", \"kimi gate\"."
 ---
 
 # afk-kimi-review
@@ -27,7 +27,7 @@ The bundled helper `kimi-gate.mjs` sits beside this SKILL.md. Locate its
 directory as `${CLAUDE_PLUGIN_ROOT}/skills/afk-kimi-review` if the env var is set,
 else `<pluginRoot>/skills/afk-kimi-review` from `.afk/config.md`, else this
 skill's own directory (the helper is its sibling). Resolve `.afk/` from the
-repository's main working tree — the first `worktree` line of
+repository's main working tree — the first non-bare `worktree` record of
 `git worktree list --porcelain` — never the current directory, or a run from a
 linked worktree reads a different `.afk/` than the one `afk-init` wrote. If
 `.afk/` is absent, the `afk-init` bootstrap runs automatically first:

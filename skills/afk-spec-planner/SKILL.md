@@ -1,6 +1,6 @@
 ---
 name: afk-spec-planner
-description: Part of the afk pipeline. Reads a tracked issue and produces a complete, reviewable implementation plan — spec review, approach, file-level breakdown, risks, and a test plan — then stops before any code. Hands off to afk-implementation-pilot. Triggers include "/afk-spec-planner", "plan issue N", "spec this out".
+description: "afk-spec-planner: Part of the afk pipeline. Reads a tracked issue and produces a complete, reviewable implementation plan — spec review, approach, file-level breakdown, risks, and a test plan — then stops before any code. Hands off to afk-implementation-pilot. Triggers include \"/afk-spec-planner\", \"plan issue N\", \"spec this out\"."
 ---
 
 # afk-spec-planner
@@ -87,7 +87,7 @@ Output, in this shape:
 
 Save the plan where the project keeps design docs (default
 `docs/designs/specs/`, overridable in `.afk/config.md`). Resolve `.afk/` from the
-repository's main working tree — the first `worktree` line of
+repository's main working tree — the first non-bare `worktree` record of
 `git worktree list --porcelain` — never the current directory.
 
 ## Hard rules

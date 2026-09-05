@@ -1,6 +1,6 @@
 ---
 name: afk
-description: Away-From-Keyboard autonomous execution. Use when the operator hands off a PRE-SCOPED, pre-reviewed set of issues/PRs for full autonomous execution until the queue is done. Requires an operator-provided scope — never pick work from the tracker yourself. Triggers include "/afk", "AFK mode", "go AFK on …".
+description: "afk: Part of the afk pipeline. Away-From-Keyboard autonomous execution. Use when the operator hands off a PRE-SCOPED, pre-reviewed set of issues/PRs for full autonomous execution until the queue is done. Requires an operator-provided scope — never pick work from the tracker yourself. Triggers include \"/afk\", \"AFK mode\", \"go AFK on …\"."
 ---
 
 # afk
@@ -237,15 +237,13 @@ never-scale-down-gates rule, which governs PR gates only.
   would mean no independent review happened at all.
 - **Independence is from the design's AUTHOR.** The guard's `--implementer` here
   identifies whoever wrote the *design*, not the code implementer a PR-gate
-  `--implementer` names. In the usual case the driver authors the design, so it is
-  omitted (the driver is assumed) and a same-model gate self-skips — unless
-  `.afk/config.md` carries a persistent `implementer:` line: that names the code
-  implementer and may only block, so in design mode it can wrongly block that
-  family's review of a driver-authored design; declare the design's author
-  explicitly then (the per-run flag outranks the config line). Only when
-  another model authored the design (a design relay) declare that model — do NOT
-  pass the eventual code implementer, or a driver-authored design could be
-  reviewed by the driver's own model, defeating this step.
+  `--implementer` names. Declare the design author explicitly: `CLAUDECODE`
+  identifies only a Claude host, not a generic driver, and a persistent config
+  declaration can instead name the eventual code implementer. Exclude every
+  family that authored content in the current design revision, including a
+  driver that rewrote a relayed design, before choosing its reviewer. The
+  single-family helper declaration cannot validate that complete author set;
+  recording and applying it is driver doctrine.
 - **Exactly one gate per design evaluation, regardless of PR `gates` length or
   legacy `min-pass`.** Those fields govern the PR gate; one independent role is
   the whole point here. A design-invalidating finding restarts the design step;
@@ -371,7 +369,7 @@ external-gate profile fields (`AFK_GATE_PROFILE_NOTICE=off` opts out).
 ### Assignment, availability, and outcomes
 
 Resolve every stable role before a paid verdict. Walk roles left-to-right; for
-each, deduplicate `[preferred, ...priority]`, exclude the declared implementer
+each, deduplicate `[preferred, ...priority]`, exclude every current content-author family
 and already-used families, then choose the first locally plausible candidate.
 The implementer must be known; a relay declares it. A missing complete plan is
 recorded at kickoff but blocks **ready**, not safe implementation work. Recheck
@@ -385,14 +383,17 @@ requires `DEEPSEEK_REVIEW_API_KEY`/`DEV_DEEPSEEK_API_KEY`, and MiMo requires
 `.env` locations. Remote auth, credit, network, and model identity may still
 fail on first invocation.
 
-- **Declare the implementer when it is not the driver.** Pass
-  `--implementer <family>` to the gate whenever another model wrote the change —
-  most often after `afk-agent-relay`. Each gate applies the no-self-review rule
-  **on the runs routed through its helper** and, absent a declaration, assumes
-  the driver is the implementer; under a Claude Code driver `afk-claude-review`
-  therefore self-skips and the next gate in `priority` takes its place. That is
-  correct behaviour, and it is why the flag matters: without it, a Codex-driven
-  relay to Claude would let Claude review its own work.
+- **Record every content author.** The revision's ledger holds the families
+  that authored content still present in the diff. A driver-authored fix adds
+  the driver's family; it never replaces or erases the executor's authorship.
+  Exclude all recorded authors and already-used reviewers when filling roles.
+  A removed contribution may be removed from the set only with recorded diff
+  evidence. Unknown authorship prevents a ready declaration until resolved.
+  Pass `--implementer <family>` whenever work was relayed or the driver is not
+  Claude. `CLAUDECODE` detects only a Claude host; it does not identify Codex,
+  Kimi, or API-driven authors. The single-family helper guard applies only to
+  the declaration/host evidence it receives, not the complete authorship set.
+  The driver owns that set and the corresponding role exclusion as doctrine.
   A helper cannot constrain a round it was never asked to run — the rule that
   the gate runs at all is doctrine (see AGENTS.md, "What this plugin can and
   cannot enforce").
@@ -619,8 +620,8 @@ that run produces: `ledger.md`, updated in place, and the per-PR final reports
 written beside it. If the ledger is missing, reconstruct it from the state checks
 below.
 
-Resolve `.afk/` against the repository's **main working tree** — the first
-`worktree` line of `git worktree list --porcelain` — never against the current
+Resolve `.afk/` against the repository's **main working tree** — the first non-bare
+`worktree` record of `git worktree list --porcelain` — never against the current
 directory, and never by taking the parent of the common git dir (under
 `--separate-git-dir`, or in a submodule, that parent is git metadata rather than
 a working tree). The directory is per **run**, never per worktree: one run

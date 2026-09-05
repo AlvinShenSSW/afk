@@ -70,7 +70,8 @@ jobs:
       # drift). A hand-drift push to main is EXPECTED to show a red validate
       # run while this job self-heals with an uncheckable commit — the red
       # run is the alarm, not flakiness. Self-healing covers PARSEABLE drift
-      # only: corrupt JSON in a managed file crashes the regenerate step and
+      # only: corrupt JSON in the Claude marketplace, package.json, or Codex
+      # manifest crashes the regenerate step and
       # fails this job red before any commit — deliberate, so hand-set fields
       # (codex policy/category) are never silently discarded by a blind
       # rewrite; the same push's validate run goes red on its JSON step too.

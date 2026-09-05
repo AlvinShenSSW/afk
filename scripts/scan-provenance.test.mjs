@@ -49,6 +49,25 @@ function writeUntracked(name, content) {
 }
 
 describe('scanProvenance', () => {
+  test('inherited Git repository selectors cannot redirect the scan', () => {
+    writeFixture('selected-root.txt', `${fakeEmail}\n`);
+    const other = mkdtempSync(join(tmpdir(), 'scan-provenance-other-'));
+    execFileSync('git', ['init', '-q'], { cwd: other });
+    const saved = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE, GIT_INDEX_FILE: process.env.GIT_INDEX_FILE };
+    try {
+      process.env.GIT_DIR = join(other, '.git');
+      process.env.GIT_WORK_TREE = other;
+      process.env.GIT_INDEX_FILE = join(other, '.git', 'index');
+      assert.ok(scanProvenance(root).some((f) => f.file.endsWith('selected-root.txt')));
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
   test('flags a plausible email address', () => {
     writeFixture('email.txt', `contact ${fakeEmail} for access\n`);
     const findings = scanProvenance(root);
