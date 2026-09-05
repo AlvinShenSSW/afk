@@ -336,20 +336,20 @@ test('codex gate pins the reviewer model instead of inheriting the session one',
   const result = runGate({ args: ['--commit', TEST_COMMIT, '--print-args'] });
 
   const { args, model } = JSON.parse(result.stdout);
-  assert.equal(model, 'gpt-5.6-terra');
-  assert.ok(args.includes('model=gpt-5.6-terra'), `no pinned model in ${JSON.stringify(args)}`);
+  assert.equal(model, 'gpt-5.6-sol');
+  assert.ok(args.includes('model=gpt-5.6-sol'), `no pinned model in ${JSON.stringify(args)}`);
 });
 
 test('codex gate honours an explicit CODEX_REVIEW_MODEL', () => {
   const result = runGate({
     args: ['--commit', TEST_COMMIT, '--print-args'],
-    env: { CODEX_REVIEW_MODEL: 'gpt-5.6-sol' },
+    env: { CODEX_REVIEW_MODEL: 'gpt-6-astra' },
   });
 
   const { args, model } = JSON.parse(result.stdout);
-  assert.equal(model, 'gpt-5.6-sol');
-  assert.ok(args.includes('model=gpt-5.6-sol'));
-  assert.equal(args.includes('model=gpt-5.6-terra'), false);
+  assert.equal(model, 'gpt-6-astra');
+  assert.ok(args.includes('model=gpt-6-astra'));
+  assert.equal(args.includes('model=gpt-5.6-sol'), false);
 });
 
 test('codex gate treats every inherit spelling as "add no model override"', () => {
@@ -375,12 +375,12 @@ test('codex gate keeps the pinned model ahead of an operator -c override', () =>
   // Codex applies later -c overrides last, so the pin must not outrank a
   // deliberate per-run choice made on the command line.
   const result = runGate({
-    args: ['--commit', TEST_COMMIT, '-c', 'model=gpt-5.6-sol', '--print-args'],
+    args: ['--commit', TEST_COMMIT, '-c', 'model=gpt-6-astra', '--print-args'],
   });
 
   const { args } = JSON.parse(result.stdout);
   const models = args.filter((a) => String(a).startsWith('model='));
-  assert.deepEqual(models, ['model=gpt-5.6-terra', 'model=gpt-5.6-sol']);
+  assert.deepEqual(models, ['model=gpt-5.6-sol', 'model=gpt-6-astra']);
 });
 
 test('codex design mode pins the same reviewer model as diff mode', () => {
@@ -389,7 +389,7 @@ test('codex design mode pins the same reviewer model as diff mode', () => {
   withDesignDoc('# Spec\n', (path) => {
     const result = runGate({ args: ['--design', path, '--print-args'] });
     const { args } = JSON.parse(result.stdout);
-    assert.ok(args.includes('model=gpt-5.6-terra'), JSON.stringify(args));
+    assert.ok(args.includes('model=gpt-5.6-sol'), JSON.stringify(args));
   });
 });
 

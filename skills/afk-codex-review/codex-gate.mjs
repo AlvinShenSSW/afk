@@ -27,7 +27,7 @@
 //
 // Lean context: overrides config per run via `-c` (the operator's interactive
 // Codex config is untouched):
-//   - model=gpt-5.6-terra       (pinned reviewer, never the session model)
+//   - model=gpt-5.6-sol         (pinned reviewer, never the session model)
 //   - model_reasoning_effort=medium
 //   - project_doc_max_bytes=0  (skip the project doc chain)
 // Override via CODEX_REVIEW_MODEL / CODEX_REVIEW_REASONING /
@@ -289,7 +289,7 @@ const projectDocMaxBytes = (
 //   - CODEX_REVIEW_MODEL=inherit (or default/config, or empty) restores
 //     inheritance — the escape hatch for a CLI too old for the pinned id, which
 //     the API rejects outright rather than degrading.
-const DEFAULT_REVIEW_MODEL = 'gpt-5.6-terra';
+const DEFAULT_REVIEW_MODEL = 'gpt-5.6-sol';
 const INHERIT_MODEL = new Set(['inherit', 'default', 'config']);
 const requestedModel = (process.env.CODEX_REVIEW_MODEL ?? DEFAULT_REVIEW_MODEL).trim();
 const reviewModel = INHERIT_MODEL.has(requestedModel.toLowerCase()) ? '' : requestedModel;

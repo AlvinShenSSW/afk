@@ -99,12 +99,16 @@ read-only is only requested in the prompt, which is the weaker guarantee.
 
 | Role | Runs via | Credential | Default timeout |
 |------|----------|-----------|-----------------|
-| `codex` | Codex CLI (`exec -s read-only`) | the CLI's own auth | 15 min |
+| `codex` | Codex CLI, default `gpt-5.6-sol` | the CLI's own auth | 15 min |
 | `claude` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
 | `kimi` | Kimi CLI (drives git itself) | the CLI's own auth | 45 min |
 | `glm` | Z.ai `glm-5.3`, OpenAI-protocol API | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
 | `deepseek` | DeepSeek V4 Pro API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
 | `mimo` | Xiaomi MiMo V2.5 Pro API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
+
+The Codex reviewer stays on `gpt-5.6-sol` independently of the interactive
+session model. `CODEX_REVIEW_MODEL=gpt-6-astra` selects Astra for an explicitly
+assigned review; `--print-args` shows the resolved choice before a paid call.
 
 Kimi gets longer because it drives git itself rather than receiving a
 pre-injected diff. CLI availability and authentication probes are capped at 30
