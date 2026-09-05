@@ -403,6 +403,22 @@ test('codex gate keeps the pinned model ahead of an operator -c override', () =>
   assert.deepEqual(models, ['model=gpt-5.6-sol', 'model=gpt-6-astra']);
 });
 
+test('codex design raw overrides match reported selection without forwarding unsafe options', () => {
+  withDesignDoc('# Spec\n', (path) => {
+    const result = runGate({ args: ['--design', path, '--model=sol', '--effort=low',
+      '-c', 'model="gpt-6-astra"', '--config=model_reasoning_effort="max"',
+      '--dangerously-bypass-approvals-and-sandbox', '--print-args'] });
+    assert.equal(result.status, 0, result.stderr);
+    const { args, model, effort } = JSON.parse(result.stdout);
+    assert.equal(model, 'gpt-6-astra');
+    assert.equal(effort, 'max');
+    assert.deepEqual(args.filter((a) => a.startsWith('model=')), [`model=${model}`]);
+    assert.deepEqual(args.filter((a) => a.startsWith('model_reasoning_effort=')), [`model_reasoning_effort=${effort}`]);
+    assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+    assert.equal(args[args.indexOf('-s') + 1], 'read-only');
+  });
+});
+
 test('codex design mode pins the same reviewer model as diff mode', () => {
   // Design mode builds its own argv; a pin applied on only one path leaves the
   // other inheriting, which is the defect this fixes.

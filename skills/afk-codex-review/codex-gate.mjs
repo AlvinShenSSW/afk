@@ -278,7 +278,7 @@ if (!guard.run) {
 
 // Lean-context overrides (review THE DIFF, not the project doc corpus):
 //   - model_reasoning_effort: default `medium`. Override via
-//     CODEX_REVIEW_REASONING (minimal|low|medium|high|xhigh).
+//     CODEX_REVIEW_REASONING (minimal|low|medium|high|xhigh|max).
 //   - project_doc_max_bytes: default 0 (skip the project doc chain).
 //     Override via CODEX_REVIEW_PROJECT_DOC_MAX_BYTES. Parsed as TOML by `-c`.
 const projectDocMaxBytes = (
@@ -300,8 +300,12 @@ const reviewModel = selection.model || '';
 // Shared by both argv builders: a pin applied on one path only would leave the
 // other inheriting, which is the defect this prevents.
 const leanConfig = [];
-if (selection.configModel) leanConfig.push('-c', `model=${selection.configModel}`);
-leanConfig.push('-c', `model_reasoning_effort=${selection.configEffort}`);
+// Design mode omits passthrough to preserve its sandbox, so apply only the
+// validated selection there; diff mode retains native config ordering.
+const argvModel = isDesign ? selection.model : selection.configModel;
+const argvEffort = isDesign ? selection.effort : selection.configEffort;
+if (argvModel) leanConfig.push('-c', `model=${argvModel}`);
+leanConfig.push('-c', `model_reasoning_effort=${argvEffort}`);
 leanConfig.push('-c', `project_doc_max_bytes=${projectDocMaxBytes}`);
 
 const workDir = gateWorkDir('codex-gate-');
