@@ -63,10 +63,12 @@ read-only on every OS. A missing or unreadable `--design` path fails loudly
 `AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
 never a partial verdict; it follows the role's transient retry rule.
 
-**The reviewer's model is pinned**, not inherited from `~/.codex/config.toml`: an
+**The reviewer's model defaults to `gpt-5.6-sol`**, pinned independently of
+`~/.codex/config.toml`: an
 interactive session tuned for speed or cost would otherwise decide the gate's
 model, and a downgraded reviewer reads exactly like a thorough one.
-`CODEX_REVIEW_MODEL=<id>` pins a different one for the call;
+`CODEX_REVIEW_MODEL=<id>` pins an explicitly assigned model for the call,
+including `gpt-6-astra` when requested;
 `CODEX_REVIEW_MODEL=inherit` restores inheritance — the escape hatch when the
 installed CLI is too old for the pinned id and rejects it outright. `--print-args`
 reports the resolved model without spending a call.
