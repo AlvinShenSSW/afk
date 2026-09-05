@@ -33,11 +33,11 @@ function assertFrontmatterError(dirName, category) {
   );
 }
 
-const VALID_DESCRIPTION = 'Does one well-scoped thing across several agent surfaces reliably.';
+const VALID_DESCRIPTION = 'afk-demo — Part of the afk pipeline. Does one well-scoped thing reliably.';
 
 describe('lintSkills', () => {
   test('valid skill produces no errors', () => {
-    writeSkill('afk-demo', `---\nname: afk-demo\ndescription: ${VALID_DESCRIPTION}\n---\nBody.\n`);
+    writeSkill('afk-demo', `---\nname: afk-demo\ndescription: "afk-demo: Part of the afk pipeline. Does one well-scoped thing reliably."\n---\nBody.\n`);
     const errors = lintSkills(skillsDir).filter((e) => e.startsWith('afk-demo:'));
     assert.deepEqual(errors, []);
   });
@@ -118,7 +118,7 @@ describe('lintSkills', () => {
   test('accepts the same mapping delimiter inside a quoted scalar', () => {
     writeSkill(
       'afk-quoted-colon',
-      "---\nname: afk-quoted-colon\ndescription: 'afk-quoted-colon: Part of the pipeline.'\n---\n",
+      "---\nname: afk-quoted-colon\ndescription: 'afk-quoted-colon: Part of the afk pipeline.'\n---\n",
     );
     const errors = lintSkills(skillsDir).filter((e) => e.startsWith('afk-quoted-colon:'));
     assert.deepEqual(errors, []);
@@ -174,7 +174,7 @@ describe('lintSkills', () => {
   test('accepts YAML single-quote escaping', () => {
     writeSkill(
       'afk-single-quote',
-      "---\nname: afk-single-quote\ndescription: 'A sufficiently long value with YAML''s escaping.'\n---\n",
+      "---\nname: afk-single-quote\ndescription: 'afk-single-quote: Part of the afk pipeline with YAML''s escaping.'\n---\n",
     );
     const errors = lintSkills(skillsDir).filter((e) => e.startsWith('afk-single-quote:'));
     assert.deepEqual(errors, []);
@@ -204,7 +204,7 @@ describe('lintSkills', () => {
   test('validates Unicode scalar values and raw YAML characters', () => {
     writeSkill(
       'afk-paired-surrogate',
-      '---\nname: afk-paired-surrogate\ndescription: "A sufficiently long escaped value \\uD83D\\uDE00."\n---\n',
+      '---\nname: afk-paired-surrogate\ndescription: "afk-paired-surrogate: Part of the afk pipeline \\uD83D\\uDE00."\n---\n',
     );
     writeSkill(
       'afk-lone-surrogate',

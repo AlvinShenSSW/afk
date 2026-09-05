@@ -1,6 +1,6 @@
 ---
 name: afk-internal-review
-description: Part of the afk pipeline. The deep internal production-readiness review of a PR, run BEFORE the ordered independent external roles. Emits APPROVE / APPROVE-WITH-COMMENTS / BLOCK as a concise, agent-actionable handoff; the full report is produced only once internal review and every configured external role are clean. Triggers include "/afk-internal-review", "internal review PR N", "review before merge".
+description: "afk-internal-review: Part of the afk pipeline. The deep internal production-readiness review of a PR, run BEFORE the ordered independent external roles. Emits APPROVE / APPROVE-WITH-COMMENTS / BLOCK as a concise, agent-actionable handoff; the full report is produced only once internal review and every configured external role are clean. Triggers include \"/afk-internal-review\", \"internal review PR N\", \"review before merge\"."
 ---
 
 # afk-internal-review
@@ -110,8 +110,8 @@ reviewed, residual risk, and the production-readiness checklist.
   shared directory. Give it a `ledger.md` header too — `run-id`, `scope` (the PR
   you reviewed), `state`, `heartbeat` — and set `state: complete` when the review
   ends: `afk` reads a ledgerless directory as a run mid-claim and would wait on
-  yours forever. Resolve `.afk/` against the main working tree (the first
-  `worktree` line of `git worktree list --porcelain`), never the current
+  yours forever. Resolve `.afk/` against the main working tree (the first non-bare
+  `worktree` record of `git worktree list --porcelain`), never the current
   directory, so a review from a linked worktree still writes to the run's one
   directory. The filename leads with `PR#<n>-<title>`;
   sanitize the title for the filesystem (illegal characters and whitespace

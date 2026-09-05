@@ -1,6 +1,6 @@
 ---
 name: afk-claude-review
-description: Part of the afk pipeline. Runs Claude (Claude Code CLI) as an independent, read-only fallback external role, and the default outer fallback when Codex implemented the change. It declines to review its own work and follows ordered .afk/config.md gates. Triggers include "/afk-claude-review", "run claude review", "claude gate".
+description: "afk-claude-review: Part of the afk pipeline. Runs Claude (Claude Code CLI) as an independent, read-only fallback external role, and the default outer fallback when Codex implemented the change. It declines to review its own work and follows ordered .afk/config.md gates. Triggers include \"/afk-claude-review\", \"run claude review\", \"claude gate\"."
 ---
 
 # afk-claude-review

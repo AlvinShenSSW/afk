@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// This repo is published open source; any operator email, home IP, or
+// This repo is published open source; any operator email, private IPv4, or
 // local username baked into a skill/doc leaks that operator's identity
 // to every downstream installer. Catch it before merge, not after.
 
@@ -31,7 +31,9 @@ const POSIX_PATH_RE = /\/(?:home|Users)\/[^\s"'`<>]*/g;
 function trackedEntries(rootDir) {
   let raw;
   try {
-    raw = execFileSync('git', ['ls-files', '-z', '-s'], { cwd: rootDir, encoding: 'utf8' });
+    // Enumeration belongs to rootDir, never a caller-selected repository/index.
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_')));
+    raw = execFileSync('git', ['ls-files', '-z', '-s'], { cwd: rootDir, encoding: 'utf8', env });
   } catch (err) {
     throw new Error(`cannot enumerate tracked files in ${rootDir}: ${err.message}`);
   }

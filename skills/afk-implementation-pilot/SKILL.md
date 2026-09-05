@@ -1,6 +1,6 @@
 ---
 name: afk-implementation-pilot
-description: Part of the afk pipeline. Executes an approved implementation plan — writes code, runs the project's checks, and self-reviews in a loop until two consecutive clean rounds, then prepares the branch for internal review. Requires a plan from afk-spec-planner or equivalent. Triggers include "/afk-implementation-pilot", "implement the plan".
+description: "afk-implementation-pilot: Part of the afk pipeline. Executes an approved implementation plan — writes code, runs the project's checks, and self-reviews in a loop until two consecutive clean rounds, then prepares the branch for internal review. Requires a plan from afk-spec-planner or equivalent. Triggers include \"/afk-implementation-pilot\", \"implement the plan\"."
 ---
 
 # afk-implementation-pilot
@@ -40,7 +40,7 @@ create a follow-up issue automatically.
 Run the project's checks from `.afk/config.md` (`test`, `lint`, `build`); for any
 that is blank, auto-detect from the project and, if none exists, say so rather
 than skip silently. Report results verbatim; never suppress a failure. Resolve
-`.afk/` from the repository's main working tree — the first `worktree` line of
+`.afk/` from the repository's main working tree — the first non-bare `worktree` record of
 `git worktree list --porcelain` — never the current directory, or work in a
 linked worktree reads a different `.afk/` than the one `afk-init` wrote.
 

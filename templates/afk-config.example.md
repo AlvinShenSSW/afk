@@ -1,9 +1,12 @@
 # afk config — all optional; omit a line to auto-detect. Personal, gitignored.
 
 ## commands
-test:  <cmd>
-lint:  <cmd>
-build: <cmd>
+test:
+lint:
+build:
+
+## plugin
+pluginRoot:
 
 ## external gate
 gates:    codex
@@ -44,4 +47,4 @@ policy: leave-open       # leave-open · merge-to-unblock · merge-when-green
 ## resume
 auto-resume: notify      # off: silent · notify (default): surface a paused run · auto: resume one
 
-## invariants            # must-check rules a reviewer applies — one per line
+## invariants
