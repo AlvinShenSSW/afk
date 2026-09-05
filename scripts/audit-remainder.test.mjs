@@ -38,12 +38,12 @@ function manifest(root, version, name = 'afk') {
 test('mainWorktree skips the bare entry and agrees from both linked trees', (t) => {
   const root = scratch(t);
   const bare = join(root, 'bare.git');
-  git(root, 'init', '--bare', '-q', bare);
+  git(root, 'init', '--bare', '-q', '-b', 'main', bare);
   const first = join(root, 'first');
   const second = join(root, 'second');
   git(bare, 'worktree', 'add', '-b', 'main', first);
   git(first, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-qm', 'init');
-  git(bare, 'worktree', 'add', '-b', 'second', second);
+  git(bare, 'worktree', 'add', '-b', 'second', second, 'main');
   assert.equal(mainWorktree({ cwd: first }), first);
   assert.equal(mainWorktree({ cwd: second }), first);
 });
