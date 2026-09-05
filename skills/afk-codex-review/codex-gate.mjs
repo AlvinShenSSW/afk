@@ -48,6 +48,7 @@ import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { resolveReviewSelection } from '../../lib/gate/model-select.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import {
@@ -56,6 +57,12 @@ import {
 
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CODEX', slug: 'codex-gate' });
+let selection;
+try {
+  selection = resolveReviewSelection({ family: 'codex', argv: process.argv.slice(2) });
+} catch (error) {
+  emitError(`cannot review — ${error.message}`, 1);
+}
 
 // ── Machine-wide serialization of `codex exec` runs ──────────────────────────
 // Advisory lockfile in the OS temp dir, shared across repos/worktrees (the
@@ -194,7 +201,7 @@ function resolveCodex() {
   return resolveCliBin('codex');
 }
 
-const userArgs = process.argv.slice(2);
+const userArgs = selection.argv;
 
 // Hidden self-test for the lock only (no codex call): --selftest-lock[=holdMs].
 // Acquires, optionally holds holdMs, releases, reports wait time.
@@ -274,7 +281,6 @@ if (!guard.run) {
 //     CODEX_REVIEW_REASONING (minimal|low|medium|high|xhigh).
 //   - project_doc_max_bytes: default 0 (skip the project doc chain).
 //     Override via CODEX_REVIEW_PROJECT_DOC_MAX_BYTES. Parsed as TOML by `-c`.
-const reasoning = (process.env.CODEX_REVIEW_REASONING || 'medium').trim();
 const projectDocMaxBytes = (
   process.env.CODEX_REVIEW_PROJECT_DOC_MAX_BYTES || '0'
 ).trim();
@@ -289,16 +295,13 @@ const projectDocMaxBytes = (
 //   - CODEX_REVIEW_MODEL=inherit (or default/config, or empty) restores
 //     inheritance — the escape hatch for a CLI too old for the pinned id, which
 //     the API rejects outright rather than degrading.
-const DEFAULT_REVIEW_MODEL = 'gpt-5.6-sol';
-const INHERIT_MODEL = new Set(['inherit', 'default', 'config']);
-const requestedModel = (process.env.CODEX_REVIEW_MODEL ?? DEFAULT_REVIEW_MODEL).trim();
-const reviewModel = INHERIT_MODEL.has(requestedModel.toLowerCase()) ? '' : requestedModel;
+const reviewModel = selection.model || '';
 
 // Shared by both argv builders: a pin applied on one path only would leave the
 // other inheriting, which is the defect this prevents.
 const leanConfig = [];
-if (reviewModel) leanConfig.push('-c', `model=${reviewModel}`);
-leanConfig.push('-c', `model_reasoning_effort=${reasoning}`);
+if (selection.configModel) leanConfig.push('-c', `model=${selection.configModel}`);
+leanConfig.push('-c', `model_reasoning_effort=${selection.configEffort}`);
 leanConfig.push('-c', `project_doc_max_bytes=${projectDocMaxBytes}`);
 
 const workDir = gateWorkDir('codex-gate-');
@@ -364,6 +367,8 @@ if (printArgsOnly) {
   process.stdout.write(`${JSON.stringify({
     bin: codex,
     model: reviewModel || 'inherit',
+    effort: selection.effort,
+    selectionSources: selection.sources,
     hasExplicitTarget: hasTarget,
     promptOnStdin: isDesign,
     stdinBytes: designPayload ? Buffer.byteLength(designPayload, 'utf8') : 0,

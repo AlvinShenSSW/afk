@@ -359,6 +359,18 @@ test('the default reviewer is a pinned full model ID, not an alias', () => {
   assert.equal(set[set.indexOf('--effort') + 1], 'high');
 });
 
+test('explicit Claude aliases and effort override environment and retain pinned argv', () => {
+  const result = runGate({
+    args: ['--commit', TEST_COMMIT, '--model=fable', '--effort=high', '--print-args'],
+    env: { CLAUDE_REVIEW_MODEL: 'opus', CLAUDE_REVIEW_EFFORT: 'low' },
+  });
+  assert.equal(result.status, 0, result.stdout);
+  const out = JSON.parse(result.stdout);
+  assert.equal(out.model, 'claude-fable-5');
+  assert.equal(out.effort, 'high');
+  assert.equal(out.args[out.args.indexOf('--model') + 1], 'claude-fable-5');
+});
+
 test('an alias model is refused before any call is spent', () => {
   // --print-args calls no model, so an error here proves the refusal happens
   // during resolution rather than after a metered call.

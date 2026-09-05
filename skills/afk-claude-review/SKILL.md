@@ -5,6 +5,14 @@ description: Part of the afk pipeline. Runs Claude (Claude Code CLI) as an indep
 
 # afk-claude-review
 
+Per-run `--model <alias-or-id>` and `--effort <level>` override
+`CLAUDE_REVIEW_MODEL` and `CLAUDE_REVIEW_EFFORT` independently. The shared
+`../../lib/gate/model-select.mjs` expands explicit `opus`, `fable`, `sonnet`,
+and `haiku` aliases to pinned IDs; environment model values still require full
+IDs. Efforts are `low`, `medium`, `high`, `xhigh`, and `max`. Defaults remain
+`claude-opus-5` and `medium`; `--print-args` reports the effective selection.
+Response identity verification still applies after alias expansion.
+
 An independent second-opinion review by Claude, used as a fallback external role
 after `afk-internal-review`; it is the default outer fallback when Codex is the
 implementer. Run the ordered roles required by `.afk/config.md`, and never use a

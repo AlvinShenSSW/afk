@@ -35,6 +35,7 @@ import { failureDirection, httpFailureCode } from '../../lib/gate/failure.mjs';
 import { git } from '../../lib/gate/git.mjs';
 import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
+import { resolveReviewSelection } from '../../lib/gate/model-select.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
@@ -43,6 +44,12 @@ import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/
 
 const isWin = process.platform === 'win32';
 const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CLAUDE', slug: 'claude-gate' });
+let selection;
+try {
+  selection = resolveReviewSelection({ family: 'claude', argv: process.argv.slice(2) });
+} catch (error) {
+  emitError(`cannot review — ${error.message}`, 1);
+}
 
 // A target that could not be parsed is a caller error, and it must surface even
 // when the gate is switched off — placed after that exit, this check would be
@@ -62,7 +69,7 @@ if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
   emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
 }
 
-const userArgs = process.argv.slice(2);
+const userArgs = selection.argv;
 const printArgsOnly = userArgs.includes('--print-args');
 // Prints the exact prompt the reviewer would receive, and calls no model. The
 // argv is not the review: asserting flags proved nothing about whether the
@@ -199,8 +206,7 @@ if (isDesign) {
 // while the pipeline required a current generation, and nothing in the run said
 // so. Refused here rather than after the call — an alias is no more verifiable
 // afterwards, so accepting one would only spend a metered call to learn it.
-const model = (process.env.CLAUDE_REVIEW_MODEL || 'claude-opus-5').trim();
-const effort = (process.env.CLAUDE_REVIEW_EFFORT || 'medium').trim();
+const { model, effort } = selection;
 const timeoutMs = reviewTimeoutMs('claude');
 
 if (!isPinnedModelId(model)) {
@@ -249,6 +255,9 @@ if (printArgsOnly) {
   // able to report which base it resolved.
   process.stdout.write(`${JSON.stringify({
     bin,
+    model,
+    effort,
+    selectionSources: selection.sources,
     kind: target.kind,
     base: target.base ?? null,
     commit: target.commit ?? null,
