@@ -73,6 +73,14 @@ including `gpt-6-astra` when requested;
 installed CLI is too old for the pinned id and rejects it outright. `--print-args`
 reports the resolved model without spending a call.
 
+Per-run `--model <alias-or-id>` and `--effort <level>` override their environment
+values independently. Model aliases `sol`, `terra`, and `astra` resolve through
+`../../lib/gate/model-select.mjs`; the default remains Sol at medium effort.
+Efforts are `low`, `medium`, `high`, `xhigh`, and `max`; legacy `minimal` is
+rejected for GPT-5.6 and GPT-6. Explicit Codex `-c model=...` and
+`-c model_reasoning_effort=...` retain last-wins precedence, with the effective
+values shown by `--print-args`. Invalid selections fail before a paid call.
+
 Read the verdict between the `===== CODEX REVIEW (final message) =====` markers. Treat only column-0 marker lines as markers; the last END marker wins.
 `SKIPPED: …` (Codex absent, logged out, or disabled via `CODEX_REVIEW_GATE=off`)
 is not a failure — report it and continue. `ERROR: …` means the review itself

@@ -352,6 +352,26 @@ test('codex gate honours an explicit CODEX_REVIEW_MODEL', () => {
   assert.equal(args.includes('model=gpt-5.6-sol'), false);
 });
 
+test('codex model and effort flags resolve aliases and are consumed before CLI dispatch', () => {
+  const result = runGate({
+    args: ['--commit', TEST_COMMIT, '--model=astra', '--effort', 'max', '--print-args'],
+    env: { CODEX_REVIEW_MODEL: 'gpt-5.6-sol', CODEX_REVIEW_REASONING: 'low' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const out = JSON.parse(result.stdout);
+  assert.equal(out.model, 'gpt-6-astra');
+  assert.equal(out.effort, 'max');
+  assert.ok(out.args.includes('model=gpt-6-astra'));
+  assert.ok(out.args.includes('model_reasoning_effort=max'));
+  assert.ok(!out.args.some((arg) => /^--(?:model|effort)(?:=|$)/.test(arg)));
+});
+
+test('codex invalid explicit selection fails even when disabled', () => {
+  const result = runGate({ args: ['--model=asrta', '--print-args'], env: { CODEX_REVIEW_GATE: 'off' } });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /ERROR:.*model/);
+});
+
 test('codex gate treats every inherit spelling as "add no model override"', () => {
   // The escape hatch for a CLI too old for the pinned id. It must emit no `-c
   // model=` at all — an empty value would select a nameless model, not the
@@ -381,6 +401,22 @@ test('codex gate keeps the pinned model ahead of an operator -c override', () =>
   const { args } = JSON.parse(result.stdout);
   const models = args.filter((a) => String(a).startsWith('model='));
   assert.deepEqual(models, ['model=gpt-5.6-sol', 'model=gpt-6-astra']);
+});
+
+test('codex design raw overrides match reported selection without forwarding unsafe options', () => {
+  withDesignDoc('# Spec\n', (path) => {
+    const result = runGate({ args: ['--design', path, '--model=sol', '--effort=low',
+      '-c', 'model="gpt-6-astra"', '--config=model_reasoning_effort="max"',
+      '--dangerously-bypass-approvals-and-sandbox', '--print-args'] });
+    assert.equal(result.status, 0, result.stderr);
+    const { args, model, effort } = JSON.parse(result.stdout);
+    assert.equal(model, 'gpt-6-astra');
+    assert.equal(effort, 'max');
+    assert.deepEqual(args.filter((a) => a.startsWith('model=')), [`model=${model}`]);
+    assert.deepEqual(args.filter((a) => a.startsWith('model_reasoning_effort=')), [`model_reasoning_effort=${effort}`]);
+    assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+    assert.equal(args[args.indexOf('-s') + 1], 'read-only');
+  });
 });
 
 test('codex design mode pins the same reviewer model as diff mode', () => {

@@ -340,6 +340,26 @@ legacy-, or built-in-sourced profile keeps live-config behavior: editing the
 always. A mid-run message that mentions a flag token without re-entering
 kickoff is conversation, never a silent re-resolve.
 
+**Per-run qualifiers.** Codex and Claude role flags may carry adjacent model
+and effort tokens in either order. Resolve them with
+`node "<plugin-root>/lib/gate/model-select.mjs" --family <family> --qualifiers
+<tokens...>`; resolve the plugin root by `CLAUDE_PLUGIN_ROOT`, then the recorded
+`pluginRoot`, then two directories above this skill's directory. The helper's `remaining`
+tokens are prose, never silently interpreted as qualifiers. Forward the returned
+`argv` as the gate's explicit `--model`/`--effort` options. Unknown explicit
+options fail; unknown free-text words end the qualifier run. Alias expansion
+belongs to the helper, so a driver never guesses which version a nickname means.
+
+Qualifiers bind to the preferred family. On fallback, discard them visibly and
+resolve the substitute's own defaults/environment. A repeated family retains
+its first selection; conflicting later qualifiers are a driver error, identical
+ones reaffirm it. At kickoff and before each call, record effective model,
+effort and sources in the existing role ledger entry alongside the profile hash.
+These are separate selection receipts: a changed selection invalidates that
+role and downstream stamps on the same content revision, while a content change
+still invalidates every stamp. Resume reuses recorded qualifiers; an identical
+role list alone does not erase them or validate a changed selection.
+
 Do not rewrite an existing legacy config. Emit one bounded notice with the exact
 opt-in snippet. An existing no/profileless config gets a
 one-time default-change notice; `gates: codex > kimi` in config, or
