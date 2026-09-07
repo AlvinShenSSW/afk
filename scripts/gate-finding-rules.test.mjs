@@ -38,11 +38,10 @@ const TRIAGE_SENTENCE = [
 ].join('\n');
 
 const BATCH_SENTENCE = [
-  'When an admitted P1 already requires a content pass, batch-fix a verified',
-  'lower-severity item only when it is in scope, shares that root cause or touched',
-  'surface, adds no dependency, migration, public contract, or product choice, and',
-  'needs no gate round beyond the P1 re-review. Otherwise record its disposition',
-  'without editing; a lower-severity-only verdict never reopens a clean revision.',
+  'Record P2/minor observations without implementation; a lower-severity-only',
+  'verdict never reopens a clean revision. An inseparable correction may accompany',
+  'the minimal P1 fix only with recorded causal necessity, not merely a shared',
+  'file or an available review cycle.',
 ].join('\n');
 
 const countMatches = (text, re) => (text.match(new RegExp(re, 'g')) ?? []).length;
@@ -99,8 +98,8 @@ test('stable finding identity prevents evidence-free reopening and oscillation',
   assert.match(afkSkill, /executable check|reproducible verification artifact/i);
   assert.match(afkSkill, /different (role|provider)/i);
   assert.match(afkSkill, /bars? (the role stamp and )?auto-merge/i);
-  assert.match(afkSkill, /re-verifies\s+the pinned disproof against the current revision/i);
-  assert.match(afkSkill, /admits\s+the finding on new\s+evidence/i);
+  assert.match(afkSkill, /previous verification no longer applies/i);
+  assert.match(afkSkill, /new evidence/i);
   assert.match(afkSkill, /A→B→A/);
 });
 
@@ -124,12 +123,10 @@ test('all gate skills carry the identical triage sentence', () => {
   }
 });
 
-test('valuable lower-severity work batches only into an already-required P1 pass', () => {
-  assert.match(afkSkill, /admitted P1 already\s+requires a content pass/i);
-  assert.match(afkSkill, /shares that root cause or touched\s+surface/i);
-  assert.match(afkSkill, /adds no dependency,\s+migration, public contract, or product choice/i);
-  assert.match(afkSkill, /needs no gate round beyond the\s+P1 re-review/i);
-  assert.match(afkSkill, /lower-severity-only verdict never reopens a clean\s+revision/i);
+test('lower-severity work requires inseparable causal necessity', () => {
+  assert.match(afkSkill, /P2\/minor observations without implementation/i);
+  assert.match(afkSkill, /inseparable correction/i);
+  assert.match(afkSkill, /recorded causal necessity/i);
 });
 
 test('all gate skills carry the identical value-aware batch rule', () => {
@@ -143,25 +140,22 @@ test('all gate skills carry the identical value-aware batch rule', () => {
   }
 });
 
-test('implementation and internal review apply the same value boundary', () => {
+test('implementation and internal review share the minimal-fix boundary', () => {
   for (const text of [pilot, internalReview]) {
-    assert.match(text, /admitted P1 already\s+requires a\s+content pass/i);
-    assert.match(text, /root cause or touched\s+surface/i);
-    assert.match(text, /no dependency, migration,\s+(?:public contract|public\s+contract), or product choice/i);
-    assert.match(text, /no review round beyond the P1\s+re-review/i);
-    assert.match(text, /lower-severity-only (?:round|verdict)\s+never reopens a\s+clean revision/i);
+    assert.match(text, /P2\/minor observations without implementation/i);
+    assert.match(text, /recorded causal necessity/i);
+    assert.match(text, /lower-severity-only[\s\S]*?never reopens a clean revision/i);
   }
 });
 
-test('suppression closes evidence-free repeats, not the already-refuted finding', () => {
-  assert.match(afkSkill, /Two evidence-free repeats of a pinned-Refuted finding/i);
+test('evidence-free repeats stay closed across reviewer identities', () => {
   assert.match(afkSkill, /recorded `Suppressed` without reopening it/i);
-  assert.match(afkSkill, /for this PR only/i);
-  assert.doesNotMatch(afkSkill, /repeating a Refuted finding twice without new evidence may\s+close it/i);
+  assert.match(afkSkill, /different role\/provider.*alone/s);
+  assert.match(afkSkill, /no edit, reopening, or extra paid review/i);
 });
 
-test('only an unfixed structural P2 remains operator-owned', () => {
-  assert.match(afkSkill, /structural P2 not admitted to the batch remains\s+operator-owned/i);
+test('structural P2 remains operator-owned', () => {
+  assert.match(afkSkill, /structural P2 remains operator-owned/i);
 });
 
 test('the retired shape-only verification standard does not return', () => {

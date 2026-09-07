@@ -30,8 +30,8 @@ test('afk SKILL.md defines the design-stage gate step and its placement', () => 
   assert.match(afkSkill, /--design/, 'the selector the step uses must appear');
 });
 
-test('design-stage review uses progress convergence instead of a counter permission gate', () => {
-  assert.match(afkSkill, /later evaluations follow the debate's material-progress/i);
+test('design-stage review shares the issue allowance without a permission loop', () => {
+  assert.match(afkSkill, /later evaluations share the issue's review-cycle allowance/i);
   assert.doesNotMatch(afkSkill, /hard cap 2 per\s+issue|cap(?:ped)?\s+(?:at|of)\s+2/i);
 });
 

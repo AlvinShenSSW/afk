@@ -16,8 +16,7 @@ The helper `codex-gate.mjs` ships with this skill and travels with the plugin.
 
 ## Metering
 
-Codex calls are metered — keep invocations to a minimum. Batch admitted P1 and
-eligible lower-severity fixes into one content pass, self-review, then re-run
+Codex calls are metered — keep invocations to a minimum. Batch minimal admitted P1 fixes into one content pass, self-review, then re-run
 once. Record every other disposition together at the end without editing a clean
 revision. Never spend a round-trip on a small or doc-only observation.
 
@@ -92,10 +91,10 @@ failed — read the transcript it names; never report an errored run as clean.
    the P1 admission standard below, and identify duplicates or scope proposals.
 2. **Verify before trusting.** Push back with evidence on anything disproved or
    unverified; severity proposed by the reviewer is not authority to edit.
-3. **Fix admitted P1 findings in one batch**, sweep the same demonstrated
-   pattern, and include only lower-severity work eligible under the rule below.
+3. **Fix admitted P1 findings in one batch**, include only inseparable
+   corrections with recorded causal necessity.
 4. **Self-review once** over your fixes.
-5. **Re-run the gate once.** Repeat until the stop rule holds.
+5. **Re-run the gate once.** Continue only within the issue allowance.
 6. **Record remaining dispositions once, at the end.** Do not edit the clean
    revision or re-run the gate for lower-severity-only observations.
 
@@ -106,11 +105,20 @@ advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
 record structural P2 for the operator-owned merge boundary, and defer minor or
 out-of-scope items without expanding the PR.
 
-When an admitted P1 already requires a content pass, batch-fix a verified
-lower-severity item only when it is in scope, shares that root cause or touched
-surface, adds no dependency, migration, public contract, or product choice, and
-needs no gate round beyond the P1 re-review. Otherwise record its disposition
-without editing; a lower-severity-only verdict never reopens a clean revision.
+Record P2/minor observations without implementation; a lower-severity-only
+verdict never reopens a clean revision. An inseparable correction may accompany
+the minimal P1 fix only with recorded causal necessity, not merely a shared
+file or an available review cycle.
+
+Use the issue-wide allowance and finding record in `../afk/SKILL.md`
+("Review-cycle allowance"). Initial review is comprehensive; re-review checks
+accepted findings, the intervening diff, and affected regression paths. Broader
+investigation requires specific evidence of an affected area. New evidenced
+in-scope blockers remain reportable. Supply prior findings and verification
+through supported context; missing context is unavailable, never invented.
+Reviewer identity alone does not reopen a closed finding. Exhaustion leaves
+unresolved work `OUTSTANDING`; finish the current cycle's validation without
+starting another repair or requesting another round automatically.
 
 Apply any invariant in `.afk/config.md` as an extra must-check lens.
 

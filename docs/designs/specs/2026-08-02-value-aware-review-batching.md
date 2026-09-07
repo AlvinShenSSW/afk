@@ -1,5 +1,8 @@
 # Value-Aware Review Batching
 
+Review iteration, batching and reopening are superseded by
+[Bounded review iteration](2026-09-07-bounded-review-iteration.md).
+
 ## Problem
 
 The evidence-driven convergence rules correctly prevent a reviewer from turning

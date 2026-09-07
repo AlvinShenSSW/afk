@@ -1,6 +1,6 @@
 ---
 name: afk-implementation-pilot
-description: "afk-implementation-pilot: Part of the afk pipeline. Executes an approved implementation plan — writes code, runs the project's checks, and self-reviews in a loop until two consecutive clean rounds, then prepares the branch for internal review. Requires a plan from afk-spec-planner or equivalent. Triggers include \"/afk-implementation-pilot\", \"implement the plan\"."
+description: "afk-implementation-pilot: Part of the afk pipeline. Executes an approved implementation plan — writes code, runs the project's checks, and reviews the initial diff and verifies accepted fixes, then prepares the branch for internal review. Requires a plan from afk-spec-planner or equivalent. Triggers include \"/afk-implementation-pilot\", \"implement the plan\"."
 ---
 
 # afk-implementation-pilot
@@ -54,23 +54,20 @@ environment; that rerun supplies the classification.
 
 ### 5 — Self-review loop
 
-Self-review against the checklist, triage every finding against the frozen
-contract, and fix admitted defects. When an admitted P1 already requires a
-content pass, also batch a verified lower-severity item only if it is in scope,
-shares the root cause or touched surface, adds no dependency, migration, public
-contract, or product choice, and needs no review round beyond the P1 re-review.
-Record structural P2 for the operator-owned merge boundary; defer every other
-ineligible lower-severity or out-of-scope proposal. A lower-severity-only round
-never reopens a clean revision. Then
-re-run affected checks, and repeat until **two consecutive clean rounds**. A
-round is **clean** only if
-every checklist lens below was applied to the full diff and reported a result —
-"lens applied, nothing found" is a statement; a skipped or silent lens voids the
-round — and every finding from an earlier round has its fix verified: by
-re-running the affected checks where one applies, otherwise by a recorded
-verification step; a fix's absence from later rounds verifies
-nothing. Two consecutive clean rounds bound the **effort**, not correctness —
-the reason internal review and the ordered external roles still follow.
+The initial review applies every lens below to the full diff and records its
+result, including no finding. Record findings and dispositions before editing.
+Record P2/minor observations without implementation; a lower-severity-only
+verdict never reopens a clean revision. An inseparable correction may accompany
+the minimal P1 fix only with recorded causal necessity, not merely a shared
+file or an available review cycle.
+
+Re-review checks accepted findings, the intervening diff, and affected regression paths.
+Verify every fix with affected checks or a recorded verification step. Silence
+about a prior finding verifies nothing. Broader investigation requires specific
+evidence of another affected area; newly demonstrated in-scope blockers remain
+reportable. Apply the issue-wide "Review-cycle allowance" in `../afk/SKILL.md`;
+no extra clean-only full sweep is required. Exhaustion leaves remaining repairs
+outstanding while the current cycle's validation completes.
 
 - **Spec:** every acceptance criterion met; nothing out-of-scope added.
 - **Correctness:** edge cases, error paths, off-by-one, concurrency.
@@ -86,17 +83,17 @@ the reason internal review and the ordered external roles still follow.
   reversible.
 
 Track decisions as well as findings. If the same decision changes A→B→A, stop
-editing, run a whole-diff root-cause pass, and pin the contract-and-test-backed
+editing, investigate the affected decision, and pin the contract-and-test-backed
 choice. Change it again only on new evidence.
 
-Stop condition: two consecutive clean rounds. Record both round numbers in the
-handoff.
+Stop when the initial review and any required focused closure leave no open
+blocker; otherwise report `OUTSTANDING` within the issue allowance.
 
 ### 6 — Handoff
 
 Summarize what was built, the acceptance-criteria status, deviations from the
-plan, files changed, tests added, the lens-by-lens results of the two clean
-rounds, and final check results. Suggest running
+plan, files changed, tests added, the lens-by-lens results of the initial review and focused closure
+results, and final check results. Suggest running
 `afk-internal-review` next. Do not merge, push, or open a PR unless asked.
 
 If the executor can edit a linked worktree but cannot write its linked-worktree
@@ -122,7 +119,7 @@ commit.
 
 ## Hard rules
 
-- Requires a plan. Two consecutive clean self-review rounds is the minimum bar.
+- Requires a plan. Initial review and meaningful fix verification are required.
 - Never merge, push, or open a PR unless explicitly asked.
 - Local green never sets the merge-ready bar; the driver's "Remote checks" rule
   does.

@@ -32,7 +32,13 @@ checks"), never this review's.
 
 ## 2 — Deep review
 
-Evaluate every dimension; do not skip one because it seems unlikely:
+For the initial review, evaluate every dimension. Subsequent review checks
+accepted findings, the intervening diff, and affected regression paths. Broader
+investigation requires specific evidence; new in-scope blockers remain reportable.
+Use the issue-wide "Review-cycle allowance" in `../afk/SKILL.md`; no extra
+clean-only sweep is required.
+
+Initial dimensions:
 
 - **Correctness** — meets the spec and acceptance criteria; logic, edge cases,
   error handling.
@@ -86,11 +92,13 @@ blocker is open. A reported concern begins `UNTRIAGED`; admit it as a blocker on
 after every blocker field above is demonstrated. Otherwise classify it P2,
 minor, or out-of-scope without changing scope. Put a demonstrated structural P2
 under risks so it cannot disappear into suggestions; minor and out-of-scope
-items go under suggestions. If an admitted P1 already requires a content pass,
-recommend batching a verified lower-severity item only when it is in scope,
-shares the same root cause or touched surface, adds no dependency, migration,
-public contract, or product choice, and needs no review round beyond the P1
-re-review. A lower-severity-only verdict never reopens a clean revision.
+items go under suggestions. Record P2/minor observations without implementation; a lower-severity-only
+verdict never reopens a clean revision. An inseparable correction may accompany
+the minimal P1 fix only with recorded causal necessity, not merely a shared
+file or an available review cycle.
+
+Complete validation included in the current cycle. Exhaustion leaves unresolved
+repairs `OUTSTANDING` and does not authorize another automatic content pass.
 
 ### Final report — only when internal review AND all configured roles are clean
 

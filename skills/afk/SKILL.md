@@ -37,7 +37,9 @@ self-contained spec.
    `merge-to-unblock` / `merge-when-green`) and any constraints (branches not to
    touch, naming, safe-direction-only, deploy is the operator's job, summary
    language, explicit gate choice).
-6. **Restate the scope and the effective gate profile with its source**
+6. **Resolve the review-cycle allowance** ("Review-cycle allowance") and record
+   its source before reviewing any issue.
+7. **Restate the scope and the effective gate profile with its source**
    (`flags` / `config` / `legacy` / `built-in`), and the resolved forge with
    its source (`config` / `remote` / `default`), in one or two lines, then
    start. The restatement is what makes a misread flag or a template-written
@@ -56,14 +58,14 @@ checkpoint — never a stopping point and never an operator handoff. "Next:
 operator runs the review" is a bug, not an end state.
 
 design doc with a frozen issue contract → adversarial debate (rules below;
-evidence and material progress govern convergence, never round count) →
+the shared review-cycle allowance governs repairs) →
 design-stage external gate (opt-in pilot, default off; one role per evaluation —
 "Design-stage external gate" below) → tests
 first (targeted) → implementation → adversarial sweep →
 commit → push early → open the PR as not-ready → read the revision's checks
 (fix a failure now) → **internal review** (`afk-internal-review`) → triage
 every finding and
-batch-fix admitted P1s plus eligible lower-severity work →
+batch-fix admitted P1s with only inseparable corrections →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
 the final commit → declare it ready → merge per policy. The design doc matters more
@@ -101,6 +103,50 @@ contract behavior ran. A denial-looking message is insufficient when the
 product chose the refused path or assertions also executed. This state is
 neither RED nor green: rerun the unchanged command in an authorized environment,
 without an intervening content edit, and classify only that result.
+
+## Review-cycle allowance
+
+Default to **two review-driven fix/re-review cycles per issue**. A cycle is a
+batch of review-driven content changes followed by closure and regression review.
+Initial implementation and initial reviews do not consume cycles. Resolve the
+allowance at kickoff: explicit operator instruction, else `## review` →
+`max-fix-cycles` in `.afk/config.md`, else the default. Blank means default;
+valid explicit values are nonnegative integers. Invalid values are a reported
+config error and permit no automatic repair until resolved. The driver cannot
+increase its own allowance mid-run.
+
+Use the existing run ledger, keyed by issue, for allowance/source, consumed
+cycles, accepted finding IDs and dispositions, repair revision, validation and
+net-progress results. Reserve the next cycle before the first review-driven content edit.
+An unfinished reserved cycle resumes its existing validation; a later batch of
+review-driven edits consumes the next cycle. The allowance is shared across
+design, self-review, internal/external roles, provider changes, sequence restarts, scheduled ticks, and resumes.
+Neither provider retries without content edits nor fresh initial reviews consume
+a fix cycle, but all attempts remain recorded. Reconstruct missing consumption
+from saved revisions and findings; if you cannot reconstruct it, mark further
+repairs `OUTSTANDING`, never assume zero. A new tick never replenishes the budget.
+
+Freeze accepted findings and dispositions before editing. Initial review covers
+the full acceptance criteria, relevant invariants and concrete risks. Re-review
+checks accepted finding closure, the intervening diff, and affected regression
+paths; broader investigation needs specific evidence of another affected area.
+New evidence of an in-scope blocker remains reportable and cannot be hidden by
+this focus. Carry stable IDs and previous verification through every reviewer
+and resume. Supply that record through supported review context or an inspectable
+target artifact; if unavailable, record the missing context and obtain it before
+claiming closure. Do not invent history or reuse a stale approval unchanged.
+Codex native diff review accepts no custom focus prompt: its driver applies this
+triage boundary and records that reviewer-focus limitation.
+
+Complete the current cycle's checks even when it consumes the final allowance;
+it may finish clean without an extra empty review. Do not start a third automatic cycle
+under the default. If further repair is needed, leave the PR not ready with
+`OUTSTANDING`, unresolved findings, attempts and a suggested next action; continue
+independent queued work. Never auto-merge or downgrade a verified blocker to fit
+the allowance. There is no automatic approval request loop. Readiness still
+requires valid current-revision reviews, the final full suite and remote checks.
+Any checkpoint repair uses the same allowance; exhaustion cannot grant an extra
+cycle. These are level 3 workflow rules, not runtime enforcement.
 
 ## Adversarial debate (the design-stage check)
 
@@ -167,10 +213,10 @@ Repeating it in the same environment is not independent confirmation.
 is: the critic reports — first
 the status of every finding still open from earlier rounds, each by name, then
 anything new — the author validates each finding independently, then resolves it.
-A supported P1 is always resolved by revising the design. A supported P2 is
-resolved one of two ways — revise, or mark it `Deferred` with its reason, design
-untouched. Deferring closes the finding without blocking the next stage; revising
-does not: a finding resolved by revision stays **open** until a later round
+A supported P1 requires revision within the allowance, else an outstanding
+handoff. For a supported P2, mark it `Deferred` with its reason, design untouched.
+Deferring closes the finding without blocking the next stage. A finding resolved
+by an inseparable revision stays **open** until a later round
 revalidates the revised design against it, by name, and reports it resolved.
 Critics are stochastic and miss things, so silence about an open finding is not
 closure — an omitted finding is unexamined, not resolved. Then one of:
@@ -183,18 +229,19 @@ closure — an omitted finding is unexamined, not resolved. Then one of:
   discharged by editing the doc — only by a round that revalidates it by name
   and reports it resolved.
 
-**Exit criteria — evidence and progress, never a counter.** Ask only: has the
+**Exit criteria — verified closure within the allowance.** Ask only: has the
 design in front of you had a clean round? If yes, advance. If no — an untriaged
 finding or admitted P1 is open, a claim the design depends on remains unverified,
 or the design was revised after its last clean round — **do not start
-implementing**. Continue while a round closes an admitted P1, turns a check green,
-reduces a demonstrated shared root cause, a design version lands with its frozen
-contract and a named next validation, or the waterfall cleanly advances.
+implementing**. Continue repairs only within the shared allowance and the net
+material-progress rule below. A design version lands with its frozen contract
+and a named next validation as initial progress; review-driven revisions consume
+the issue allowance.
 
 Two consecutive unfinished rounds without material progress trigger an automatic
 root-cause checkpoint: cluster the stable finding IDs, remove duplicates and
-unsupported scope, sweep the whole design against the contract, and make one
-minimal batch revision. A clean terminal round never counts as stalled. If the
+unsupported scope, inspect accepted findings and the affected design, and
+make a minimal revision only within the remaining allowance. A clean terminal round never counts as stalled. If the
 checkpoint still cannot progress, mark the issue `OUTSTANDING` and continue
 independent queued work. Escalate only if the task depends on scope expansion, an
 unavailable external capability, or a product choice with no safe default. Round
@@ -247,8 +294,8 @@ never-scale-down-gates rule, which governs PR gates only.
 - **Exactly one gate per design evaluation, regardless of PR `gates` length or
   legacy `min-pass`.** Those fields govern the PR gate; one independent role is
   the whole point here. A design-invalidating finding restarts the design step;
-  later evaluations follow the debate's material-progress and automatic
-  root-cause checkpoint, with no invocation counter that requests permission.
+  later evaluations share the issue's review-cycle allowance and net-progress
+  checkpoint, with no invocation counter that requests permission.
 - **Findings close under the same vocabulary** the PR gate uses ("External gate":
   fixed / refuted / deferred / suppressed / contested); no design-stage finding is closed by silence. A
   `fixed` whose fix is "a test the implementation must carry" is recorded in the
@@ -305,7 +352,7 @@ Resolve the effective profile as one total function:
    flag but naming no family (`-gemini`, `-kim`) selects nothing and is
    recorded in the ledger as an ignored lookalike; ordinary options like
    `--implementer` are not lookalikes. Quoted or declined mentions ("skip
-   -kimi this time") are not selections — intent governs, and the step-6
+   -kimi this time") are not selections — intent governs, and the step-7
    restatement makes any misread visible before paid work. Flags never mutate
    `.afk/config.md` and override a config `gates` value for this run only.
 2. Otherwise a present `gates` key selects ordered roles. It uses `>` separators, ignores
@@ -326,13 +373,13 @@ value) is a blocking config error at every step — flags select roles; they
 never mask a broken config, and it is never a fallback to one gate.
 
 **Effective-profile lifetime.** The profile is resolved at kickoff, recorded
-in the ledger with its source, and restated (step 6). A flag-derived profile
+in the ledger with its source, and restated (step 7). A flag-derived profile
 is per-run and ledger-held: ticks and resumes read it from the ledger;
 flag absence in a later kickoff-bearing handoff is no statement, deferring to
 the recorded profile; a flag statement resolving to an identical role list is a
 ledger-recorded affirmation (no source switch, nothing stales). Only a
 *differing* resolved list is a profile edit — every stamp stales and
-assignment re-derives, announced by the step-6 restatement first. A config-,
+assignment re-derives, announced by the step-7 restatement first. A config-,
 legacy-, or built-in-sourced profile keeps live-config behavior: editing the
 `## external gate` section stales stamps via the role-profile hash, as
 always. A mid-run message that mentions a flag token without re-entering
@@ -455,17 +502,15 @@ history:
   visible. None blocks the role stamp. A structural P2 bars auto-merge until the
   operator owns it at the merge boundary; deferred minor and out-of-scope
   findings do not bar auto-merge. A P1 cannot be deferred.
-- **Suppressed** — two evidence-free repeats of a pinned-Refuted finding may be
-  recorded `Suppressed` without reopening it for this PR only when the disproof
-  is pinned by an executable check or reproducible verification artifact and the
-  repeats come from the same role/provider. New
-  evidence still reopens it.
-- **Contested** — a different role/provider independently repeats a Refuted
-  finding, or the existing disproof is not pinned. It authorizes no edit, appears
-  in the end-of-run report, and bars the role stamp and auto-merge until a
-  root-cause pass resolves it. Close the contest only when that pass re-verifies
-  the pinned disproof against the current revision or admits the finding on new
-  evidence; otherwise leave the PR `OUTSTANDING`.
+- **Suppressed** — an evidence-free repeat of a pinned-Refuted finding may be
+  recorded `Suppressed` without reopening it. A different role/provider or new
+  wording alone causes no edit, reopening, or extra paid review. Preserve the
+  prior executable check or reproducible verification artifact.
+- **Contested** — new evidence, a distinct demonstrated consequence, or proof
+  that previous verification no longer applies challenges a closed finding.
+  Identity alone is insufficient. Re-verify the affected proof or admit the
+  finding on the new evidence; otherwise leave it `OUTSTANDING`. A contest
+  authorizes no edit and bars the role stamp and auto-merge until classified.
 
 Rewording the same consequence is the same finding. Silence closes nothing: a
 later round omitting an open finding has not resolved it. The open-findings
@@ -473,19 +518,17 @@ record is run-scoped and survives provider switches and sequence restarts. When
 the reviewed artifact is a design doc, a required future test closes only once
 recorded in that design; the record is the closure, not the future test.
 
-A finding the driver can neither confirm nor refute remains untriaged. First
-narrow the change, choose a fail-safe default, or use a default-off guard.
-Escalate only when the task depends on the unresolved choice and there is no safe
-default.
+A finding the driver can neither confirm nor refute remains untriaged. Use a
+focused test, trace, or code investigation to verify it. Do not add abstractions, switches, compatibility branches, or fallbacks
+solely to make an unverified concern disappear. An unresolved load-bearing
+concern prevents safe completion: retain `OUTSTANDING`, without manufacturing
+certainty or accepting the risk.
 
-**Batch lower-severity work by value, not by label.** When an admitted P1 already
-requires a content pass, batch-fix a verified lower-severity item only when it is
-in scope, shares that root cause or touched surface, adds no dependency,
-migration, public contract, or product choice, and needs no gate round beyond the
-P1 re-review. Otherwise record its disposition without editing; a
-lower-severity-only verdict never reopens a clean revision. This is not authority
-to fix every P2 or minor: a structural P2 not admitted to the batch remains
-operator-owned at the merge boundary, and unrelated polish remains deferred.
+**Keep the minimal causal fix.** Record P2/minor observations without implementation; a lower-severity-only
+verdict never reopens a clean revision. An inseparable correction may accompany
+the minimal P1 fix only with recorded causal necessity, not merely a shared
+file or an available review cycle.
+An unfixed structural P2 remains operator-owned at the merge boundary.
 
 **The loop ends** as soon as triage leaves no `UNTRIAGED`, `Contested`, or open
 admitted P1 finding, and every lower-severity item has a recorded disposition
@@ -514,22 +557,27 @@ ordered sequence again at outer. Finding identity is PR-scoped. A role keeps the
 same provider across sequences unless availability/independence forces a
 recorded substitution.
 
-Convergence follows evidence and material progress, not a finding or sequence
-counter. A round makes material progress only when it closes an admitted P1,
-turns a failing check green, reduces a demonstrated shared root cause, or earns a
-clean stage stamp that advances the waterfall. A design version lands with its
-frozen contract and a named next validation also counts. A clean terminal
-round never counts as stalled. Each role still gets **one transient retry** per sequence;
+Convergence requires net material progress inside the shared allowance. At each
+cycle record closed blockers, newly introduced blockers, acceptance-criterion coverage,
+and expansion of the causal boundary. Closing one blocker alone is insufficient:
+new defects or growing complexity are regression/churn, not an automatic reset.
+Simplify or narrow the demonstrated fix within the allowance, else hand off
+outstanding. Line count alone is not a correctness metric.
+
+Material progress means demonstrated defect reduction without offsetting
+regressions or unsupported boundary expansion, a check turning green, or a clean
+stage stamp advancing the waterfall. A design version lands with its frozen
+contract and a named next validation also counts. During initial implementation,
+a contract-mapped RED test or implementation slice with a named next verification
+counts; commits, pushes and diff growth alone do not. A clean terminal round never
+counts as stalled. Each role still gets one transient retry per sequence;
 retries, skips, finding verdicts, and paid attempts remain visible in the ledger.
-During implementation, a contract-mapped RED test or implementation slice with
-a named next verification also counts as material progress; ordinary commits,
-pushes, and diff growth do not.
 
 The no-progress streak crosses debate rounds, paid role verdicts, role
 substitutions, and sequence restarts. A stage is unfinished only while it has an
 untriaged or contested finding, an open admitted P1, an unresolved check
 reading, or
-an unstamped current role. The streak resets only on material progress; a role
+an unstamped current role. The streak resets only on net material progress; a role
 change or sequence restart never resets it by itself.
 
 After final is clean, run the full native suite once on the same commit. A test
@@ -588,8 +636,9 @@ PR-gate record only; design-stage findings have their own section.
 Two consecutive unfinished rounds without material progress trigger an
 automatic root-cause checkpoint, never an operator permission prompt. Pause paid
 gates, cluster stable IDs, remove duplicates and unsupported scope, sweep the
-whole diff against the contract, apply one minimal batch fix, and run affected
-checks. If the checkpoint still cannot progress, leave the PR not ready with
+affected repair against the contract, apply a minimal fix only within the
+remaining allowance, and run affected checks. Broader investigation requires
+specific evidence of another affected area. If the checkpoint still cannot progress, leave the PR not ready with
 `OUTSTANDING`, continue independent queued work, and report the blocker. If one
 decision changed A→B→A, pin the contract-and-test-backed choice; it changes again
 only on new evidence. The disposition record lives in the run ledger, PR thread,
@@ -603,8 +652,8 @@ batching, and metering rules; they load when the gate runs.
 ## Autonomy
 
 Decide with best-practice defaults and record each decision; do not block on
-in-scope work. Risky changes ship safe-direction (behind a default-off flag,
-fail-safe, additive). Only stop for: out-of-scope work, a destructive or
+in-scope work. In-scope risky changes use a justified safe direction; uncertainty alone never
+authorizes a new guard or fallback. Only stop for: out-of-scope work, a destructive or
 outward-facing action without authorization, or genuine ambiguity with no safe
 default. Never merge a PR that is not green or has an open finding — open
 meaning `UNTRIAGED`, `Contested`, or an admitted P1 without a closing

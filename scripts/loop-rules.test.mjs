@@ -57,10 +57,10 @@ test('the driver defines finding closure once, as recorded dispositions', () => 
   }
 });
 
-test('an unverifiable load-bearing finding narrows safely before escalation', () => {
+test('uncertainty receives investigation without speculative implementation', () => {
   assert.match(afkSkill, /neither confirm nor refute/);
-  assert.match(afkSkill, /fail-safe default|default-off guard/i);
-  assert.match(afkSkill, /task depends on the unresolved choice/i);
+  assert.match(afkSkill, /Do not add abstractions, switches, compatibility branches, or fallbacks/i);
+  assert.match(afkSkill, /load-bearing.*OUTSTANDING/s);
 });
 
 test('all gate skills carry the identical stop sentence', () => {
@@ -98,21 +98,17 @@ test('every gate round ends in an affirmative report', () => {
   }
 });
 
-test('the pilot defines the clean round its stop condition counts', () => {
-  // "Two consecutive rounds produce no new findings" counted rounds where
-  // lenses were skipped or a prior fix was never re-verified.
-  assert.match(pilot, /A\s+round is \*\*clean\*\* only if/);
-  assert.match(pilot, /skipped or silent lens voids the\s+round/);
-  assert.match(pilot, /verifies\s+nothing/);
-  assert.match(pilot, /bound the \*\*effort\*\*, not correctness/);
-  assert.doesNotMatch(pilot, /produce no new findings/);
+test('the pilot uses one initial full review and focused closure thereafter', () => {
+  assert.match(pilot, /initial review applies every lens/i);
+  assert.match(pilot, /accepted findings, the intervening diff, and affected regression paths/i);
+  assert.doesNotMatch(pilot, /two consecutive clean/i);
 });
 
 test('the pilot handoff records the lens results, not just round numbers', () => {
   assert.match(pilot, /lens-by-lens results/);
 });
 
-test('ordered external roles converge on evidence and progress, not round count', () => {
+test('ordered external roles retain progress checks within the cycle allowance', () => {
   assert.match(afkSkill, /two consecutive unfinished rounds without material progress/i);
   assert.match(afkSkill, /automatic root-cause checkpoint/i);
   assert.match(afkSkill, /clean terminal round never counts as stalled/i);
@@ -121,17 +117,17 @@ test('ordered external roles converge on evidence and progress, not round count'
   assert.match(afkSkill, /one transient retry/);
   assert.match(afkSkill, /crosses debate rounds, paid role verdicts, role\s+substitutions, and sequence restarts/i);
   assert.match(afkSkill, /unfinished only while/i);
-  assert.match(afkSkill, /resets only on material progress/i);
+  assert.match(afkSkill, /resets only on net material progress/i);
   assert.doesNotMatch(afkSkill, /four finding-bearing verdicts|refuses to start a fourth\s+sequence/i);
 });
 
 test('design progress is part of the canonical and debate material-progress definitions', () => {
   const debate = afkSkill.slice(
-    afkSkill.indexOf('**Exit criteria — evidence and progress, never a counter.**'),
+    afkSkill.indexOf('**Exit criteria — verified closure within the allowance.**'),
     afkSkill.indexOf('This is level 3 — doctrine'),
   );
   const external = afkSkill.slice(
-    afkSkill.indexOf('Convergence follows evidence and material progress'),
+    afkSkill.indexOf('Convergence requires net material progress'),
     afkSkill.indexOf('The no-progress streak crosses debate rounds'),
   );
   const autoPause = afkSkill.slice(

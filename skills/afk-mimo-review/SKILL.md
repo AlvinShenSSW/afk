@@ -70,11 +70,20 @@ advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
 record structural P2 for the operator-owned merge boundary, and defer minor or
 out-of-scope items without expanding the PR.
 
-When an admitted P1 already requires a content pass, batch-fix a verified
-lower-severity item only when it is in scope, shares that root cause or touched
-surface, adds no dependency, migration, public contract, or product choice, and
-needs no gate round beyond the P1 re-review. Otherwise record its disposition
-without editing; a lower-severity-only verdict never reopens a clean revision.
+Record P2/minor observations without implementation; a lower-severity-only
+verdict never reopens a clean revision. An inseparable correction may accompany
+the minimal P1 fix only with recorded causal necessity, not merely a shared
+file or an available review cycle.
+
+Use the issue-wide allowance and finding record in `../afk/SKILL.md`
+("Review-cycle allowance"). Initial review is comprehensive; re-review checks
+accepted findings, the intervening diff, and affected regression paths. Broader
+investigation requires specific evidence of an affected area. New evidenced
+in-scope blockers remain reportable. Supply prior findings and verification
+through supported context; missing context is unavailable, never invented.
+Reviewer identity alone does not reopen a closed finding. Exhaustion leaves
+unresolved work `OUTSTANDING`; finish the current cycle's validation without
+starting another repair or requesting another round automatically.
 
 Apply any invariant in `.afk/config.md` as an extra lens.
 

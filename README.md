@@ -26,9 +26,9 @@ plugin is built around:
 - **Self-review is not review.** Every external role runs as a *different*
   model from the one that wrote the code, read-only, on the real diff. A role
   that matches the implementer steps aside for an independent fallback.
-- **Round counters are not convergence.** Review continues while it closes an
-  admitted P1, turns a check green, or reduces a demonstrated root cause — never
-  because a counter says "one more pass". Evidence ends the loop.
+- **Bounded review limits churn.** Two review-driven fix cycles per issue are
+  the default; verified closure is still required. Exhaustion leaves unresolved
+  work outstanding without an automatic permission loop.
 - **A draft PR is not a finish line.** The waterfall has one end state: green
   checks, a clean internal review, clean external roles, and the full test suite
   passing on the final commit.
@@ -145,17 +145,18 @@ demonstrated wrong consequence, stage-blocking impact, and minimal causal fix.
 P2, minor, and out-of-scope observations are recorded without expanding the PR.
 A structural P2 does not block a review stamp, but it leaves auto-merge for the
 operator to authorize; minor and out-of-scope notes remain non-blocking.
-When a P1 already forces a content pass and re-review, AFK may batch a verified,
-in-scope P2 or minor that shares its root cause or touched surface and adds no
-dependency, migration, public contract, product choice, or extra gate round. It
-does not reopen a clean revision for lower-severity work alone.
+Only corrections inseparable from the minimal P1 fix may accompany it, with
+recorded causal necessity. Sharing a file does not authorize extra work.
 
-Review rounds may continue while they close an admitted P1, turn a check green,
-reduce a demonstrated root cause, or advance a clean stage. Two unfinished
-no-progress rounds trigger an automatic whole-diff root-cause checkpoint rather
-than an operator prompt. Reworded or evidence-free repeated findings cannot
-reopen a closed decision, and an A→B→A edit is pinned by the contract and tests
-before review continues.
+The default allowance is two review-driven fix/re-review cycles per issue;
+initial implementation and initial reviews are separate. An explicit kickoff
+instruction or `## review` → `max-fix-cycles` configuration may change it.
+Phases, roles and resumes share the recorded allowance. Initial review is
+comprehensive; re-review covers accepted finding closure, the repair diff and
+affected regressions. Evidence can reopen a finding; reviewer identity cannot.
+Each cycle accounts for closed and introduced blockers, acceptance coverage and
+causal-boundary expansion. Exhaustion finishes current validation, leaves any
+remaining repair outstanding and continues independent queued work.
 
 ## What this can and cannot enforce
 
