@@ -562,3 +562,31 @@ test('a glm 401 skips as unauthenticated, naming the key env', async () => {
     assert.match(result.stdout, /ZAI_API_KEY/);
   });
 });
+
+
+for (const family of ['glm', 'deepseek', 'mimo']) {
+  test(`${family} rejects incomplete required coverage before a provider request`, async () => {
+    await withRepo(async ({ dir }) => {
+      writeFileSync(join(dir, 'safe.txt'), 'ordinary changed text\n'.repeat(1000));
+      let requests = 0;
+      await withServer((_request, response) => {
+        requests++;
+        response.writeHead(500); response.end('unexpected request');
+      }, async (port) => {
+        const prefix = family.toUpperCase();
+        const result = await runGateAsync(family, {
+          args: ['--uncommitted'], cwd: dir,
+          env: {
+            [family === 'glm' ? 'GLM_API_KEY' : `${prefix}_REVIEW_API_KEY`]: 'test-only',
+            [`${prefix}_REVIEW_BASE_URL`]: `http://127.0.0.1:${port}`,
+            [`${prefix}_REVIEW_MAX_CTX_BYTES`]: '1000',
+          },
+        });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stdout, /ERROR:.*incomplete.*budget/i);
+        assert.doesNotMatch(result.stdout, /SKIPPED:|APPROVE/);
+        assert.equal(requests, 0);
+      });
+    });
+  });
+}
