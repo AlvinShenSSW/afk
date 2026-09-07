@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 import { normalizePathEntry } from '../lib/gate/spawn.mjs';
@@ -128,4 +129,29 @@ export function nonMergeHead(cwd = process.cwd()) {
   return spawnSync('git', ['rev-list', '--no-merges', '-n', '1', 'HEAD'], {
     cwd, encoding: 'utf8',
   }).stdout.trim() || 'HEAD';
+}
+
+// Transport assertions must not depend on the size of the repository's HEAD.
+export function createReviewFixture() {
+  const cwd = mkdtempSync(join(tmpdir(), 'gate-review-fixture-'));
+  const cleanup = () => rmSync(cwd, { recursive: true, force: true });
+  const git = (...args) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+    if (result.error || result.status !== 0) {
+      throw new Error(`review fixture git failed: ${result.error?.message || result.stderr}`);
+    }
+    return result.stdout.trim();
+  };
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.name', 'Fixture');
+    git('config', 'user.email', 'fixture@example.com');
+    writeFileSync(join(cwd, 'safe.txt'), 'Review fixture\n');
+    git('add', 'safe.txt');
+    git('commit', '-m', 'fixture');
+    return { cwd, commit: git('rev-parse', 'HEAD'), cleanup };
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 }

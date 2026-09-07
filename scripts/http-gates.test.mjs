@@ -8,11 +8,13 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 
-import { gateTestEnv, nonMergeHead, spawnGate } from './gate-test-env.mjs';
+import { createReviewFixture, gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
-const TEST_COMMIT = nonMergeHead();
+const reviewFixture = createReviewFixture();
+after(reviewFixture.cleanup);
+const TEST_COMMIT = reviewFixture.commit;
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -42,7 +44,7 @@ const GATE_PATHS = {
   glm: join(repoRoot, 'skills/afk-glm-review/glm-gate.mjs'),
 };
 
-function runGate(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = repoRoot } = {}) {
+function runGate(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = reviewFixture.cwd } = {}) {
   return spawnGate([GATE_PATHS[family], ...args], {
     cwd,
     encoding: 'utf8',
@@ -58,7 +60,7 @@ test('DeepSeek exposes its tuned default budgets without a provider call', () =>
   assert.equal(parsed.maxTokens, 65536);
 });
 
-async function runGateAsync(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = repoRoot } = {}) {
+async function runGateAsync(family, { args = ['--commit', TEST_COMMIT], env = {}, cwd = reviewFixture.cwd } = {}) {
   const child = spawn(process.execPath, [GATE_PATHS[family], ...args], {
     cwd,
     env: gateTestEnv(env),

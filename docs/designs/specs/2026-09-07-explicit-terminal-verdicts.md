@@ -84,3 +84,23 @@ I82-001 reproduced an indented Markdown code example supplying a false verdict
 after trim-first normalization. Cycle1 rejects code indentation before parsing
 a terminal decision, preserving the two-space Kimi transport form. Explicit
 space/tab regression failures preceded the correction; allowance consumed1/2.
+
+## Focused repair review context
+
+The initial Kimi review of commit
+6c014a4f0be708712e51269c0475ec010a48d1ba returned REQUEST CHANGES. Its sole
+P1 finding F1 reproduced 26 HTTP/GLM tests failing before provider requests
+because their repository-HEAD snapshot exceeded the default 160000-byte budget.
+This matches accepted I82-002. The parser and mode-specific call sites passed
+that review. F2, a stale alternation comment, is minor and deferred without edits.
+The complete initial report is preserved in PR #91. Internal finding I82-001
+(indented code accepted as a verdict) was already fixed and reviewed in the
+initial commit.
+
+The second and final cumulative repair cycle isolates existing HTTP/GLM transport
+assertions in a shared small disposable Git repository, retaining default budget
+assertions and explicit custom-repository cases. Three GLM success fixtures now
+end with the required terminal token. No production code or budget changes in
+this repair. Review the exact delta from the initial commit to HEAD, closure of
+F1/I82-002, and relevant fixture/grammar regressions. The prior minor does not
+reopen without new evidence; the cumulative repair allowance is exhausted.
