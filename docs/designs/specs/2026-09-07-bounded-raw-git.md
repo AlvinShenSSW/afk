@@ -66,7 +66,7 @@ review. Two cumulative review-driven fix cycles apply.
 ## Evidence and limits
 
 Git documents --no-ext-diff and --no-textconv at
-https://git-scm.com/docs/git-diff . The new raw-collection fixture proves behavior
+[git-diff documentation](https://git-scm.com/docs/git-diff). The new raw-collection fixture proves behavior
 against installed Git, rather than treating flags alone as evidence. Each
 helper's invoked command handling is level2; requiring the review in a workflow
 remains level3 doctrine. The existing dependency stack supplies honest snapshot
