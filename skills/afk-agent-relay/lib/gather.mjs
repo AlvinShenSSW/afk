@@ -9,16 +9,16 @@ import { spawnSync } from 'node:child_process';
 import { readConfigSectionValue } from '../../../lib/config.mjs';
 import { issueCommand, resolveForge } from '../../../lib/forge.mjs';
 import { readConfinedUtf8File } from '../../../lib/gate/file-boundary.mjs';
+import { literalPath, parseNameStatusZ } from '../../../lib/gate/target.mjs';
 import { byteLength, truncateWithMarker } from '../../../lib/text-budget.mjs';
 import {
-  filterDiffByExcludes,
   filterGrepByExcludes,
   isExcluded,
   redactSecrets,
 } from '../../../lib/secret.mjs';
 import { relayError } from './relay.mjs';
 
-export { filterDiffByExcludes, filterGrepByExcludes };
+export { filterGrepByExcludes };
 
 function defaultRun(cmd, args) {
   const r = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -28,6 +28,17 @@ function defaultRun(cmd, args) {
     stderr: r.stderr || '',
     error: r.error,
   };
+}
+
+// A lenient inventory parser must not turn malformed input into a partial
+// allowlist whose omitted source endpoint bypasses exclusion.
+function completeInventory(raw) {
+  const text = String(raw ?? '');
+  const entries = parseNameStatusZ(text);
+  if (entries.some((entry) => !/^(?:[ADMT]|[RC](?:100|0\d{2}))$/.test(entry.status))) return null;
+  const rebuilt = entries.map(({ status, oldPath, path }) =>
+    [status, ...(oldPath ? [oldPath] : []), path].join('\0') + '\0').join('');
+  return rebuilt === text ? entries : null;
 }
 
 function detectBase(run) {
@@ -122,13 +133,36 @@ export function gatherContext(sources = {}, opts = {}) {
   // git diff (only when --diff was passed; '' means "default base")
   if (sources.diff !== undefined) {
     const base = sources.diff || detectBase(run);
-    const r = run('git', ['diff', base]);
-    if (r.error || r.status !== 0) {
-      notes.push(`[skip: git diff ${base} unavailable]`);
-    } else if (r.stdout.trim()) {
-      const { text: filtered, dropped } = filterDiffByExcludes(r.stdout, excludeGlobs);
-      for (const p of dropped) notes.push(`[excluded from diff: ${p} (secret/binary exclude)]`);
-      if (filtered.trim()) chunks.push({ title: `git diff ${base}`, body: filtered });
+    const inventory = run('git', ['diff', '--no-relative', '--name-status', '-z', '-M', '-C', '--find-copies-harder', base, '--']);
+    if (inventory.error || inventory.status !== 0) {
+      notes.push('[skip: git diff inventory unavailable]');
+    } else {
+      const entries = completeInventory(inventory.stdout);
+      if (entries === null) {
+        notes.push('[skip: git diff inventory ambiguous]');
+      } else {
+        const paths = new Set();
+        for (const entry of entries) {
+          const endpoints = [entry.oldPath, entry.path].filter(Boolean);
+          if (endpoints.some((path) => isExcluded(path, excludeGlobs))) {
+            for (const path of endpoints) notes.push(`[excluded from diff: ${JSON.stringify(path)} (secret/binary exclude)]`);
+          } else {
+            for (const path of endpoints) paths.add(path);
+          }
+        }
+        if (paths.size) {
+          // Detection belongs to the full inventory; narrowed collection must
+          // not discover a new copy source outside the approved path set.
+          const patch = run('git', ['diff', '--no-relative', '--no-renames', base, '--', ...[...paths].map(literalPath)]);
+          if (patch.error || patch.status !== 0 || !patch.stdout?.trim()) {
+            notes.push('[skip: git diff approved patch unavailable]');
+          } else {
+            chunks.push({ title: `git diff ${base}`, body: patch.stdout });
+          }
+        } else {
+          notes.push(entries.length ? '[skip: git diff has no approved paths]' : '[skip: git diff has no tracked changes]');
+        }
+      }
     }
   }
 

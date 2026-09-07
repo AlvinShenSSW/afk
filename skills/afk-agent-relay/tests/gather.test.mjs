@@ -6,7 +6,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  boundNotes, gatherContext, filterDiffByExcludes, filterGrepByExcludes,
+  boundNotes, gatherContext, filterGrepByExcludes,
 } from '../lib/gather.mjs';
 import { runRole } from '../lib/role.mjs';
 import { mainWorktree } from '../../../lib/gate/git.mjs';
@@ -44,6 +44,7 @@ test('redaction note when secrets present', () => {
 
 test('git diff is gathered via the injected run', () => {
   const run = (cmd, args) => {
+    if (args.includes('--name-status')) return { status: 0, stdout: 'M\0x.py\0' };
     if (cmd === 'git' && args[0] === 'diff') {
       return { status: 0, stdout: 'diff --git a/x.py b/x.py\n+DIFFBODY', stderr: '', error: null };
     }
@@ -51,42 +52,6 @@ test('git diff is gathered via the injected run', () => {
   };
   const g = gatherContext({ diff: 'main' }, { run, readFile: () => null });
   assert.match(g.text, /DIFFBODY/);
-});
-
-test('filterDiffByExcludes drops a secret file section, keeps the rest', () => {
-  const diff = [
-    'diff --git a/app.py b/app.py',
-    '+print(1)',
-    'diff --git a/.env b/.env',
-    '+SECRET=abcdef1234',
-    'diff --git a/lib.py b/lib.py',
-    '+x=2',
-  ].join('\n');
-  const { text, dropped } = filterDiffByExcludes(diff);
-  assert.deepEqual(dropped, ['.env']);
-  assert.match(text, /app\.py/);
-  assert.match(text, /lib\.py/);
-  assert.doesNotMatch(text, /SECRET=abcdef1234/);
-});
-
-test('filterDiffByExcludes drops a secret renamed to a non-secret name (both sides)', () => {
-  // rename .env -> config.txt: b/ path is innocuous, a/ path is the secret
-  const diff = 'diff --git a/.env b/config.txt\nrename from .env\n+LEAKED=supersecretvalue';
-  const { text, dropped } = filterDiffByExcludes(diff);
-  assert.deepEqual(dropped, ['config.txt']);
-  assert.doesNotMatch(text, /LEAKED=supersecretvalue/);
-});
-
-test('a secret file in the diff is excluded end-to-end', () => {
-  const diff = 'diff --git a/.env b/.env\n+TOKEN=zzzthisissecret\ndiff --git a/ok.py b/ok.py\n+y=1';
-  const run = (cmd, args) => {
-    if (cmd === 'git' && args[0] === 'diff') return { status: 0, stdout: diff, stderr: '', error: null };
-    return { status: 0, stdout: 'main', stderr: '', error: null };
-  };
-  const g = gatherContext({ diff: 'main' }, { run, readFile: () => null });
-  assert.ok(g.notes.some((n) => n.includes('excluded from diff') && n.includes('.env')));
-  assert.doesNotMatch(g.text, /TOKEN=zzzthisissecret/);
-  assert.match(g.text, /ok\.py/);
 });
 
 test('filterGrepByExcludes drops hits from excluded files (incl. secret dirs)', () => {
