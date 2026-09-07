@@ -140,7 +140,7 @@ for (const [family, config] of Object.entries(CASES)) {
         model: config.model,
         choices: [{
           finish_reason: 'stop',
-          message: { reasoning_content: 'private reasoning', content: `APPROVE ${key}` },
+          message: { reasoning_content: 'private reasoning', content: `Credential ${key}\nAPPROVE` },
         }],
         usage: {},
       }));
@@ -586,6 +586,64 @@ for (const family of ['glm', 'deepseek', 'mimo']) {
         assert.match(result.stdout, /ERROR:.*incomplete.*budget/i);
         assert.doesNotMatch(result.stdout, /SKIPPED:|APPROVE/);
         assert.equal(requests, 0);
+      });
+    });
+  });
+}
+
+
+for (const family of ['glm', 'deepseek', 'mimo']) {
+  for (const answer of ['I could not review the supplied code.', 'I cannot APPROVE without reading files.', 'SOUND', 'REQUEST CHANGES\nAPPROVE']) {
+    test(`${family} refuses invalid explicit verdict ${JSON.stringify(answer)}`, async () => {
+      await withRepo(async ({ dir }) => {
+        writeFileSync(join(dir, 'safe.txt'), 'changed\n');
+        await withServer((_request, response) => {
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(JSON.stringify({
+            model: family === 'glm' ? 'glm-5.3' : CASES[family].model,
+            choices: [{ finish_reason: 'stop', message: { content: answer } }], usage: {},
+          }));
+        }, async (port) => {
+          const prefix = family.toUpperCase();
+          const result = await runGateAsync(family, {
+            args: ['--uncommitted'], cwd: dir,
+            env: {
+              [family === 'glm' ? 'GLM_API_KEY' : `${prefix}_REVIEW_API_KEY`]: 'test-only',
+              [`${prefix}_REVIEW_BASE_URL`]: `http://127.0.0.1:${port}`,
+            },
+          });
+          assert.notEqual(result.status, 0);
+          assert.match(result.stdout, /ERROR:.*verdict/i);
+          assert.ok(!result.stdout.includes(`\n${answer}\n`));
+        });
+      });
+    });
+  }
+}
+
+
+for (const family of ['glm', 'deepseek', 'mimo']) {
+  test(`${family} accepts the design vocabulary for a design target`, async () => {
+    await withRepo(async ({ dir }) => {
+      const design = join(dir, 'design.md');
+      writeFileSync(design, '# Synthetic design\n');
+      await withServer((_request, response) => {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({
+          model: family === 'glm' ? 'glm-5.3' : CASES[family].model,
+          choices: [{ finish_reason: 'stop', message: { content: '**Verdict: SOUND**' } }], usage: {},
+        }));
+      }, async (port) => {
+        const prefix = family.toUpperCase();
+        const result = await runGateAsync(family, {
+          args: ['--design', design], cwd: dir,
+          env: {
+            [family === 'glm' ? 'GLM_API_KEY' : `${prefix}_REVIEW_API_KEY`]: 'test-only',
+            [`${prefix}_REVIEW_BASE_URL`]: `http://127.0.0.1:${port}`,
+          },
+        });
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Verdict: SOUND/);
       });
     });
   });

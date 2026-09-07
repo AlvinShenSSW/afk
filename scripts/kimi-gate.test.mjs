@@ -300,8 +300,8 @@ test('the shim fallback hands over a brief on disk and takes it back', {
       + "const brief = named ? readFileSync(named[1], 'utf8') : '';\n"
       + "let stdin = '';",
     ).replace('JSON.stringify({ argv, stdin })', 'JSON.stringify({ argv, stdin, brief })')
-      .replace("process.stdout.write('STUB REVIEW: APPROVE — no findings');",
-        "process.stdout.write('APPROVE WITH COMMENTS\\nSTUB REVIEW: APPROVE — no findings');"));
+      .replace("process.stdout.write('STUB REVIEW: APPROVE — no findings\\nAPPROVE');",
+        "process.stdout.write('STUB REVIEW: APPROVE — no findings\\nAPPROVE WITH COMMENTS');"));
     const bin = posixStub(dir, impl);
 
     const result = runGate({
@@ -380,7 +380,7 @@ test('a bare-name .cmd shim on PATH is resolved and drives a completed review', 
       "const argv = process.argv.slice(2);",
       "if (argv.includes('--version')) { process.stdout.write('stub 1.0'); process.exit(0); }",
       "if (argv.includes('--help')) { process.stdout.write('Usage: kimi [options]\\n\\nOptions:\\n  -p, --prompt <p>  prompt\\n  --output-format <f>  fmt\\n'); process.exit(0); }",
-      "process.stdout.write('STUB REVIEW: APPROVE — resolved via PATH');",
+      "process.stdout.write('STUB REVIEW: APPROVE — resolved via PATH\\nAPPROVE');",
       '',
     ].join('\n'));
     writeFileSync(join(dir, 'kimi.cmd'), `@echo off\r\n"${process.execPath}" "${impl}" %*\r\n`);
@@ -468,7 +468,7 @@ const TAKES_VALUE = {
  * wording the drift diagnosis has to recognise.
  */
 function strictStub(dir, {
-  record, body = "process.stdout.write('STUB REVIEW: APPROVE — no findings');",
+  record, body = "process.stdout.write('STUB REVIEW: APPROVE — no findings\\nAPPROVE');",
   dialect = 'prompt', version = '0.29.1', rejectOutputFormatWithoutPrint = false,
   rejectsDespiteDocumenting = [], help = HELP[dialect],
 } = {}) {
@@ -604,7 +604,7 @@ test('the forced shim transport replaces the primary spawn, never doubles it', {
     const bin = posixStub(dir, strictStub(dir, {
       body: `import { appendFileSync } from 'node:fs';\n`
         + `appendFileSync(${JSON.stringify(counter)}, 'spawn\\n');\n`
-        + "process.stdout.write('APPROVE\\nSTUB REVIEW: APPROVE — no findings');",
+        + "process.stdout.write('APPROVE\\nSTUB REVIEW: APPROVE — no findings\\nAPPROVE');",
     }));
 
     const result = runGate({
@@ -918,7 +918,7 @@ test('the probe costs one spawn, and the review one more', {
     const log = join(dir, 'calls.log');
     const impl = strictStub(dir, {
       body: `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(log)}, 'review\\n');\n`
-        + "process.stdout.write('APPROVE\\nSTUB REVIEW: APPROVE — no findings');",
+        + "process.stdout.write('APPROVE\\nSTUB REVIEW: APPROVE — no findings\\nAPPROVE');",
     });
     // Counted in the probe branch itself, so a probe that also fell through to
     // the review branch cannot pass by counting once.
@@ -1169,4 +1169,19 @@ test('an unrecognised KIMI_GATE_CONSOLE stops the round', () => {
   assert.match(result.stdout, /ERROR: not retryable /);
   assert.match(result.stdout, /legasy/);
   assert.doesNotMatch(result.stdout, /SKIPPED/);
+});
+
+
+test('Kimi design review requires the design terminal vocabulary', {
+  skip: process.platform === 'win32' ? 'the POSIX stub needs a shebang' : false,
+}, () => {
+  for (const word of ['SOUND', 'APPROVE']) {
+    const dir = mkdtempSync(join(tmpdir(), 'kimi-mode-'));
+    try {
+      const bin = posixStub(dir, strictStub(dir, { body: `process.stdout.write(${JSON.stringify(word)});` }));
+      const result = withDesignDoc('# Design\n', (path) => runGate({ args: ['--design', path], env: { KIMI_GATE_BIN: bin } }));
+      assert.equal(result.status, word === 'SOUND' ? 0 : 1, result.stderr);
+      if (word === 'APPROVE') assert.match(result.stdout, /ERROR:.*verdict/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
 });

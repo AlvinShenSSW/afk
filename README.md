@@ -174,6 +174,17 @@ the agent being governed is also the orchestrator.
   merge" — a driver may skip a helper or ignore its exit code. These are
   doctrine the driver follows.
 
+Claude, Kimi and the snapshot-backed GLM/DeepSeek/MiMo helpers validate an
+explicit final nonempty verdict line when invoked. Diff verdicts are `APPROVE`,
+`APPROVE WITH COMMENTS` or `REQUEST CHANGES`; design verdicts are `SOUND`,
+`SOUND WITH CONCERNS` or `RETHINK`. Supported forms are `TOKEN`, `**TOKEN**`,
+`Verdict: TOKEN`, `Verdict: **TOKEN**` and `**Verdict: TOKEN**`; up to three
+leading spaces, trailing whitespace and Kimi's transport bullet are ignored. Quoted, fenced or indented-code examples,
+trailing prose, wrong-mode words and conflicting standalone decisions produce
+nonzero `ERROR` without an accepted review body. Codex retains its native
+nonempty review-output contract. This checks output format, not review quality
+or permission to merge.
+
 Real non-bypassability needs a control point outside the agent's authority. This
 repository puts its own there: branch protection plus a required
 `require-owner-approval` check (see [docs/branch-protection.md](docs/branch-protection.md)).
