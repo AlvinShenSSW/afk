@@ -85,3 +85,29 @@ corrected only that score grammar and added the regression; the test and affecte
 relay/shared-formatter tests now pass. Out-of-range/malformed inventory remains
 refused before patch collection. No new blocker or causal-boundary expansion
 was introduced; consumed allowance is1/2.
+
+## Focused final revision review context
+
+The initial Kimi review approved commit
+`4632e0030d0ce745309fd00c23680eb41dff4c6c` against the frozen base
+`c04511bd8f2b1b26168bfa276fa7603da3bc9741`. Its only finding, K80-001,
+was minor availability loss from extreme path counts exceeding argv limits;
+it is deferred because failure omits the patch with a distinct diagnostic.
+Its option-looking local base observation was explicitly pre-existing and is
+deferred. No external P1 or P2 remained. I80-001 was already fixed and verified
+on that revision.
+
+The public PR89 body records the prior final review and all dispositions so
+review evidence remains accessible without local run state. Read it with
+`gh pr view 89 --json body` before claiming finding closure.
+The exact intervening repair is
+`git diff 4632e0030d0ce745309fd00c23680eb41dff4c6c HEAD --`.
+
+I80-002 is a required-check failure: the new synthetic Git fixture used a domain
+outside the provenance scanner's reserved fixture allowlist. Cycle2 changes only
+that address to the allowed `example.com` domain and supplies this review context.
+The scanner policy remains intact. Initial local provenance checking preceded
+staging and therefore missed this new file; verification must scan it after
+staging. Focus final review on that accepted finding, this intervening delta and
+the real-Git fixture regressions, while preserving the full final-revision stamp.
+The cumulative allowance is2/2; any newly demonstrated blocker stays outstanding.

@@ -12,7 +12,7 @@ function fixture(t) {
   const run = (bin, args) => spawnSync(bin, args, { cwd: root, encoding: 'utf8' });
   const git = (...args) => { const r = run('git', args); assert.equal(r.status, 0, r.stderr); return r.stdout; };
   const write = (path, body) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), body); };
-  git('init', '-q'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.invalid');
+  git('init', '-q'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.com');
   return { root, run, git, write, gather: () => gatherContext({ diff: 'HEAD' }, { run }) };
 }
 
