@@ -1,7 +1,6 @@
 name: sync-marketplace
 
-# On main, regenerate the agent manifests from skills/ and commit any drift, so
-# the enumerated skill list and mirrored version never lag the source of truth.
+# Drift must be repaired through a reviewed PR, so this job has no write token.
 
 on:
   push:
@@ -18,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: sync-marketplace
@@ -30,64 +29,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
-      - name: Regenerate manifests
-        run: node scripts/sync-marketplace.mjs
-
-      # One list, consumed by both steps below — a seventh managed file added
-      # in one place but not the other would silently drop guard coverage.
-      - name: Name the managed files
-        run: |
-          {
-            echo 'MANAGED_FILES<<EOF'
-            printf '%s\n' \
-              .claude-plugin/marketplace.json \
-              .github/plugin/marketplace.json \
-              .agents/plugins/marketplace.json \
-              .codex-plugin/plugin.json \
-              plugin.json \
-              package.json
-            echo 'EOF'
-          } >> "$GITHUB_ENV"
-
-      # In-run guard for the commit below: manifest consistency + JSON
-      # validity. A belt, not armor — the full validate suite still runs on
-      # the next triggering push.
-      - name: Verify regenerated manifests
-        run: |
-          set -e
-          node scripts/sync-marketplace.mjs --check
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$f"
-          done <<< "$MANAGED_FILES"
-
-      # The push below authenticates as GITHUB_TOKEN, and GitHub's recursion
-      # prevention creates no workflow runs for such pushes — so no marker is
-      # needed to suppress anything, and adding the six written files to the
-      # paths filter above cannot loop (in a future PAT world, idempotence
-      # bounds any loop to one extra no-op run: the second run finds no
-      # drift). A hand-drift push to main is EXPECTED to show a red validate
-      # run while this job self-heals with an uncheckable commit — the red
-      # run is the alarm, not flakiness. Self-healing covers PARSEABLE drift
-      # only: corrupt JSON in the Claude marketplace, package.json, or Codex
-      # manifest crashes the regenerate step and
-      # fails this job red before any commit — deliberate, so hand-set fields
-      # (codex policy/category) are never silently discarded by a blind
-      # rewrite; the same push's validate run goes red on its JSON step too.
-      - name: Commit drift
-        run: |
-          set -e
-          files=()
-          while IFS= read -r f; do
-            [ -n "$f" ] && files+=("$f")
-          done <<< "$MANAGED_FILES"
-          if [ -z "$(git status --porcelain -- "${files[@]}")" ]; then
-            echo "manifests already in sync"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "${files[@]}"
-          git commit -m "chore: sync manifests"
-          git push
+      # Manifest repairs need the same reviewed PR path as their source edits.
+      - name: Verify manifests
+        run: node scripts/sync-marketplace.mjs --check
