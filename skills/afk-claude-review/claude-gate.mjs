@@ -433,6 +433,7 @@ if (denials.length) {
 
 emitVerifiedReview(String(envelope?.result || ''), {
   requireVerdict: true,
+  mode: target.kind === 'design' ? 'design' : 'diff',
   emptyMessage: `Claude returned an empty review (exit ${res.status}). Transcript: ${logFile}`,
   missingVerdictMessage: `Claude answered without the mandated verdict line; the review is discarded rather than presented as a verdict. Transcript: ${logFile}`,
   exitCode: res.status || 1,

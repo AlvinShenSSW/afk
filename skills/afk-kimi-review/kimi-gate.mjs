@@ -588,6 +588,7 @@ if (res.status !== 0) {
 // the same event and `encodingFailure` already says so.
 emitVerifiedReview(review, {
   requireVerdict: true,
+  mode: target.kind === 'design' ? 'design' : 'diff',
   missingVerdictMessage: (() => {
     if (crashInfo()) return `${encodingFailure()} Transcript: ${logFile}`;
     if (briefPath) {

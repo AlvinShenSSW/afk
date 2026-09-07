@@ -4,21 +4,23 @@ import { once } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 
-import { gateTestEnv, nonMergeHead, spawnGate } from './gate-test-env.mjs';
+import { createReviewFixture, gateTestEnv, spawnGate } from './gate-test-env.mjs';
 
-const TEST_COMMIT = nonMergeHead();
+const reviewFixture = createReviewFixture();
+after(reviewFixture.cleanup);
+const TEST_COMMIT = reviewFixture.commit;
 const MODEL = 'glm-5.3';
 
-const repoRoot = new URL('..', import.meta.url);
-const GATE = 'skills/afk-glm-review/glm-gate.mjs';
+const GATE = fileURLToPath(new URL('../skills/afk-glm-review/glm-gate.mjs', import.meta.url));
 
 function runGate({ args = [], env = {} } = {}) {
   return spawnGate([GATE, ...args], {
-    cwd: repoRoot,
+    cwd: reviewFixture.cwd,
     encoding: 'utf8',
     env: gateTestEnv(env),
   });
@@ -26,7 +28,7 @@ function runGate({ args = [], env = {} } = {}) {
 
 async function runGateAsync({ args = [], env = {} } = {}) {
   const child = spawn(process.execPath, [GATE, ...args], {
-    cwd: repoRoot,
+    cwd: reviewFixture.cwd,
     env: gateTestEnv(env),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -152,7 +154,7 @@ test('a GLM successful response cannot echo the configured key', async () => {
       model: MODEL,
       choices: [{
         finish_reason: 'stop',
-        message: { reasoning_content: 'private reasoning', content: `APPROVE ${key}` },
+        message: { reasoning_content: 'private reasoning', content: `Credential ${key}\nAPPROVE` },
       }],
       usage: {},
     }));
@@ -377,7 +379,7 @@ test('the default GLM request is OpenAI-shaped with max reasoning', async () => 
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({
         model: MODEL,
-        choices: [{ finish_reason: 'stop', message: { content: 'APPROVE — shape probe' } }],
+        choices: [{ finish_reason: 'stop', message: { content: 'Shape probe\nAPPROVE' } }],
         usage: {},
       }));
     });
@@ -413,7 +415,7 @@ test('the Anthropic GLM opt-in retains its provider-native request shape', async
       response.end(JSON.stringify({
         model: MODEL,
         stop_reason: 'end_turn',
-        content: [{ type: 'text', text: 'APPROVE — Anthropic shape probe' }],
+        content: [{ type: 'text', text: 'Anthropic shape probe\nAPPROVE' }],
       }));
     });
   }, async (port) => {
