@@ -8,6 +8,7 @@
 import { spawnSync } from 'node:child_process';
 import { readConfigSectionValue } from '../../../lib/config.mjs';
 import { issueCommand, resolveForge } from '../../../lib/forge.mjs';
+import { RAW_DIFF_FLAGS, runGit } from '../../../lib/gate/git.mjs';
 import { readConfinedUtf8File } from '../../../lib/gate/file-boundary.mjs';
 import { literalPath, parseNameStatusZ } from '../../../lib/gate/target.mjs';
 import { byteLength, truncateWithMarker } from '../../../lib/text-budget.mjs';
@@ -21,7 +22,9 @@ import { relayError } from './relay.mjs';
 export { filterGrepByExcludes };
 
 function defaultRun(cmd, args) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = cmd === 'git'
+    ? runGit(args, { maxBuffer: 64 * 1024 * 1024 })
+    : spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return {
     status: r.status,
     stdout: r.stdout || '',
@@ -133,7 +136,7 @@ export function gatherContext(sources = {}, opts = {}) {
   // git diff (only when --diff was passed; '' means "default base")
   if (sources.diff !== undefined) {
     const base = sources.diff || detectBase(run);
-    const inventory = run('git', ['diff', '--no-relative', '--name-status', '-z', '-M', '-C', '--find-copies-harder', base, '--']);
+    const inventory = run('git', ['diff', ...RAW_DIFF_FLAGS, '--no-relative', '--name-status', '-z', '-M', '-C', '--find-copies-harder', base, '--']);
     if (inventory.error || inventory.status !== 0) {
       notes.push('[skip: git diff inventory unavailable]');
     } else {
@@ -153,7 +156,7 @@ export function gatherContext(sources = {}, opts = {}) {
         if (paths.size) {
           // Detection belongs to the full inventory; narrowed collection must
           // not discover a new copy source outside the approved path set.
-          const patch = run('git', ['diff', '--no-relative', '--no-renames', base, '--', ...[...paths].map(literalPath)]);
+          const patch = run('git', ['diff', ...RAW_DIFF_FLAGS, '--no-relative', '--no-renames', base, '--', ...[...paths].map(literalPath)]);
           if (patch.error || patch.status !== 0 || !patch.stdout?.trim()) {
             notes.push('[skip: git diff approved patch unavailable]');
           } else {
