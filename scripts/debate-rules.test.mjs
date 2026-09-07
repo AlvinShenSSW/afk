@@ -23,7 +23,7 @@ test('an unfixable verified P1 remains an operator authority decision', () => {
   assert.match(afkSkill, /cannot be fixed inside the frozen contract/i);
 });
 
-test('the debate asks the clean-round question without a parallel cap condition', () => {
+test('the debate requires closure and respects the shared allowance', () => {
   assert.match(afkSkill, /has the\s+design in front of you had a clean\s+round/);
   assert.match(afkSkill, /revised after its last clean round/);
   assert.match(afkSkill, /two consecutive unfinished rounds without material progress/i);

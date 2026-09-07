@@ -64,8 +64,7 @@ limited to the snapshot it was sent.
 
 ## Metering
 
-Metered like any external gate. Batch admitted P1 and eligible lower-severity
-fixes into one content pass, self-review, then re-run once. Record every other
+Metered like any external gate. Batch minimal admitted P1 fixes into one content pass, self-review, then re-run once. Record every other
 disposition together at the end without editing a clean revision.
 
 ## Run it
@@ -133,8 +132,8 @@ Same discipline as the other gate skills:
 
 1. Map every hypothesis to the frozen contract and apply the P1 admission rule.
 2. Verify its trigger and consequence; a reviewer severity is only a proposal.
-3. Fix admitted P1 findings in one batch and include only lower-severity work
-   eligible under the rule below.
+3. Fix admitted P1 findings in one batch with only inseparable
+   corrections justified below.
 4. Self-review once.
 5. Re-run the gate once if structural findings were fixed.
 6. Record remaining dispositions in one final pass without editing the clean
@@ -147,11 +146,20 @@ advance, and naming the minimal causal fix. Do not edit for an untriaged claim;
 record structural P2 for the operator-owned merge boundary, and defer minor or
 out-of-scope items without expanding the PR.
 
-When an admitted P1 already requires a content pass, batch-fix a verified
-lower-severity item only when it is in scope, shares that root cause or touched
-surface, adds no dependency, migration, public contract, or product choice, and
-needs no gate round beyond the P1 re-review. Otherwise record its disposition
-without editing; a lower-severity-only verdict never reopens a clean revision.
+Record P2/minor observations without implementation; a lower-severity-only
+verdict never reopens a clean revision. An inseparable correction may accompany
+the minimal P1 fix only with recorded causal necessity, not merely a shared
+file or an available review cycle.
+
+Use the issue-wide allowance and finding record in `../afk/SKILL.md`
+("Review-cycle allowance"). Initial review is comprehensive; re-review checks
+accepted findings, the intervening diff, and affected regression paths. Broader
+investigation requires specific evidence of an affected area. New evidenced
+in-scope blockers remain reportable. Supply prior findings and verification
+through supported context; missing context is unavailable, never invented.
+Reviewer identity alone does not reopen a closed finding. Exhaustion leaves
+unresolved work `OUTSTANDING`; finish the current cycle's validation without
+starting another repair or requesting another round automatically.
 
 Apply any invariant in `.afk/config.md` as an extra lens.
 

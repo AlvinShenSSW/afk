@@ -1,5 +1,8 @@
 # Mixed-Model Driver and Snapshot Review Improvements
 
+Review iteration, batching and reopening are superseded by
+[Bounded review iteration](2026-09-07-bounded-review-iteration.md).
+
 - **Issue:** #73
 - **Status:** Frozen contract
 

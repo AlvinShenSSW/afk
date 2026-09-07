@@ -1,5 +1,8 @@
 # Evidence-driven convergence
 
+Review iteration, batching and reopening are superseded by
+[Bounded review iteration](2026-09-07-bounded-review-iteration.md).
+
 - **Status:** Implemented
 - **Date:** 2026-08-02
 - **Supersedes:** the convergence counters and merge-risk ownership rules in
