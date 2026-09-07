@@ -8,21 +8,48 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { test } from 'node:test';
+import { after, before, test } from 'node:test';
 
 import { verifyReviewerIdentity } from '../lib/gate/model-identity.mjs';
 import {
-  gateTestEnv, nonMergeHead, spawnGate, stubPath, tempEnv,
+  gateTestEnv, spawnGate, stubPath, tempEnv,
 } from './gate-test-env.mjs';
 
-const TEST_COMMIT = nonMergeHead();
-
-const repoRoot = new URL('..', import.meta.url);
+const TEST_COMMIT = 'HEAD';
+const repoRoot = mkdtempSync(join(tmpdir(), 'claude-gate-repo-'));
+after(() => rmSync(repoRoot, { recursive: true, force: true }));
+before(() => {
+  const g = (...args) => {
+    const result = spawnSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+        GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+      },
+    });
+    assert.equal(result.status, 0, `fixture git ${args.join(' ')}: ${result.stderr}`);
+  };
+  g('init', '-q', '-b', 'main', '--template=');
+  g('config', 'user.email', 'test@example.com');
+  g('config', 'user.name', 'Test');
+  g('config', 'commit.gpgsign', 'false');
+  g('config', 'core.autocrlf', 'false');
+  g('config', 'core.hooksPath', join(repoRoot, 'no-hooks'));
+  writeFileSync(join(repoRoot, 'src.txt'), 'first\n');
+  g('add', 'src.txt');
+  g('commit', '-qm', 'initial fixture');
+  g('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  writeFileSync(join(repoRoot, 'src.txt'), 'second\n');
+  g('add', 'src.txt');
+  g('commit', '-qm', 'reviewable fixture');
+});
 const GATE = 'skills/afk-claude-review/claude-gate.mjs';
 
 // Absolute path, for the tests that must run the gate from INSIDE a temp repo.
@@ -31,7 +58,7 @@ const gatePath = () => fileURLToPath(new URL(`../${GATE}`, import.meta.url));
 // The gate must never be blocked by THIS repo's own driver when a test means to
 // exercise a downstream path, so tests declare an implementer explicitly.
 function runGate({ args = [], env = {} } = {}) {
-  return spawnGate([GATE, ...args], {
+  return spawnGate([gatePath(), ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: gateTestEnv(env),
@@ -45,12 +72,16 @@ function withStub(envelope, fn, { exitCode = 0, signal = null } = {}) {
   try {
     const payload = typeof envelope === 'string' ? envelope : JSON.stringify(envelope);
     const js = join(dir, 'stub.mjs');
+    const inputPath = join(dir, 'stdin');
     writeFileSync(
       js,
-      `process.stdout.write(${JSON.stringify(payload)});\n`
+      `import { readFileSync, writeFileSync } from 'node:fs';\n`
+        + `writeFileSync(${JSON.stringify(inputPath)}, readFileSync(0));\n`
+        + `process.stdout.write(${JSON.stringify(payload)}, () => {\n`
         + (signal
           ? `process.kill(process.pid, ${JSON.stringify(signal)});\n`
-          : `process.exit(${exitCode});\n`),
+          : `process.exit(${exitCode});\n`)
+        + '});\n',
     );
     const sh = join(dir, process.platform === 'win32' ? 'stub.cmd' : 'stub.sh');
     writeFileSync(
@@ -60,7 +91,7 @@ function withStub(envelope, fn, { exitCode = 0, signal = null } = {}) {
         : `#!/bin/sh\nexec "${process.execPath}" "${js}"\n`,
     );
     if (process.platform !== 'win32') chmodSync(sh, 0o755);
-    return fn(sh);
+    return fn(sh, inputPath);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -449,7 +480,7 @@ test('unparseable output is an error, not silence', () => {
 });
 
 test('a successful envelope is emitted as the review', () => {
-  withStub({ is_error: false, result: '[P1] lib/x.mjs:1 boom\nREQUEST CHANGES', modelUsage: usage(PINNED) }, (bin) => {
+  withStub({ is_error: false, result: '[P1] lib/x.mjs:1 boom\nREQUEST CHANGES', modelUsage: usage(PINNED) }, (bin, inputPath) => {
     const result = runGate({
       args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
       env: { CLAUDE_GATE_BIN: bin },
@@ -457,10 +488,53 @@ test('a successful envelope is emitted as the review', () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /===== CLAUDE REVIEW \(final message\) =====/);
     assert.match(result.stdout, /\[P1\] lib\/x\.mjs:1 boom/);
+    const input = readFileSync(inputPath);
+    assert.ok(input.length < 32 * 1024, 'the ordinary fixture stays small');
+    assert.match(input.toString('utf8'), /-first\n\+second/);
+    const printed = runGate({ args: ['--implementer', 'codex', '--commit', TEST_COMMIT, '--print-prompt'] });
+    assert.equal(printed.status, 0, printed.stderr);
+    assert.deepEqual(input, Buffer.from(printed.stdout.slice(0, -1)));
     assert.match(result.stdout, /REQUEST CHANGES/);
     assert.match(result.stdout, /===== END CLAUDE REVIEW =====/);
   });
 });
+
+const LARGE_INPUT_BYTES = 256 * 1024;
+
+for (const outcome of [
+  { name: 'success', options: {}, expected: /SOUND/ },
+  { name: 'nonzero exit', options: { exitCode: 7 }, expected: /ERROR: Claude exited 7/ },
+  { name: 'signal', options: { signal: 'SIGTERM' }, expected: /ERROR: Claude was terminated by SIGTERM/ },
+]) {
+  test(`a large prompt is fully delivered before the stub's ${outcome.name}`, {
+    skip: outcome.options.signal && process.platform === 'win32' ? 'POSIX signal status is required' : false,
+  }, () => {
+    withDesignDoc('x'.repeat(LARGE_INPUT_BYTES), (path) => {
+      const args = ['--implementer', 'codex', '--design', path];
+      const promptPath = `${path}.prompt`;
+      const fd = openSync(promptPath, 'w');
+      try {
+        // A regular file preserves large print-only output across process.exit.
+        const printed = spawnGate([gatePath(), ...args, '--print-prompt'], {
+          cwd: repoRoot, encoding: 'utf8', env: gateTestEnv(), stdio: ['ignore', fd, 'pipe'],
+        });
+        assert.equal(printed.status, 0, printed.stderr);
+      } finally {
+        closeSync(fd);
+      }
+      const prompt = readFileSync(promptPath, 'utf8').slice(0, -1);
+      assert.ok(Buffer.byteLength(prompt) > LARGE_INPUT_BYTES);
+      withStub({ is_error: false, result: 'SOUND', modelUsage: usage(PINNED) }, (bin, inputPath) => {
+        const result = runGate({ args, env: { CLAUDE_GATE_BIN: bin } });
+        if (outcome.name === 'success') assert.equal(result.status, 0, result.stdout + result.stderr);
+        else assert.notEqual(result.status, 0);
+        assert.match(result.stdout, outcome.expected);
+        if (outcome.name !== 'success') assert.doesNotMatch(result.stdout, /SOUND/);
+        assert.deepEqual(readFileSync(inputPath), Buffer.from(prompt));
+      }, outcome.options);
+    });
+  });
+}
 
 test('a nonzero Claude child cannot turn a valid envelope into a review', () => {
   const canary = mkdtempSync(join(tmpdir(), 'claude-abnormal-path-canary-'));
@@ -755,11 +829,11 @@ test('an over-budget diff is an error, not a truncated approval', () => {
   // partial diff would quietly redefine "reviewed".
   const result = runGate({
     args: ['--implementer', 'codex', '--commit', TEST_COMMIT],
-    env: { CLAUDE_REVIEW_MAX_CTX_BYTES: '200' },
+    env: { CLAUDE_REVIEW_MAX_CTX_BYTES: '1' },
   });
 
   assert.notEqual(result.status, 0, 'must not exit clean');
-  assert.match(result.stdout, /ERROR: .*over the 200-byte budget/);
+  assert.match(result.stdout, /ERROR: .*over the 1-byte budget/);
   assert.doesNotMatch(result.stdout, /SKIPPED/);
 });
 
