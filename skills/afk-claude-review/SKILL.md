@@ -67,6 +67,15 @@ limited to the snapshot it was sent.
 Metered like any external gate. Batch minimal admitted P1 fixes into one content pass, self-review, then re-run once. Record every other
 disposition together at the end without editing a clean revision.
 
+## Review context
+
+Use the [shared context contract](../afk/SKILL.md#supported-review-context) to
+carry frozen acceptance scope and named prior findings with accessible proof.
+`--review-phase re-review --review-context <packet.json>` preserves the selected
+review target while supplying closure context; `--print-args` reports its digest.
+Use `--print-prompt` to inspect the supplied section before a provider call.
+Required history is validated and never silently truncated.
+
 ## Run it
 
 The bundled helper `claude-gate.mjs` sits beside this SKILL.md. Locate its

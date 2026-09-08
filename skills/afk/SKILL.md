@@ -148,6 +148,38 @@ requires valid current-revision reviews, the final full suite and remote checks.
 Any checkpoint repair uses the same allowance; exhaustion cannot grant an extra
 cycle. These are level 3 workflow rules, not runtime enforcement.
 
+## Supported review context
+
+To preserve the frozen target and named closure evidence, use
+`--review-phase re-review --review-context <packet.json>` on supported gate
+helpers. Initial review defaults to `initial`; its optional packet carries the
+acceptance scope with null prior revision and empty findings. Re-review requires
+prior revision, stable finding IDs, dispositions, and current-revision proof.
+The complete target selector stays unchanged; the repair range is context only.
+
+The version 1 schema and provider boundaries live in
+[the context contract](../../docs/designs/specs/issue-96-review-context.md).
+Use `describeReviewTarget(parseTarget(targetArgs), { cwd })` from the resolved
+plugin root's `lib/gate/review-context.mjs` and `lib/gate/target.mjs` to obtain the
+bound target descriptor. Store the packet and proof in the run's ignored
+`.afk/` directory so an uncommitted target does not include its own packet.
+Evidence paths resolve relative to the packet and are embedded before delivery;
+URLs alone cannot supply proof to a snapshot-only reviewer.
+
+Claude, Kimi, Codex design, GLM, DeepSeek, and MiMo accept the input. Native Codex
+diff review rejects supplied context and re-review focus: retain its native mode
+and apply history triage in the driver, recording that no custom context reached
+that reviewer. Never inject repository instructions to bypass that limit.
+`--print-args` reports phase and the normalized context digest; supported prompt
+previews show the delivered section. Missing/stale/inaccessible proof, recognized
+sensitive values, and oversized history are errors, never silently shortened
+context. Supply sanitized proof within the fixed 100000-byte expanded budget.
+
+The packet remains claims to verify. Record named closure, newly demonstrated
+in-scope blockers, and unresolved evidence before readiness; phase selection and
+review compliance remain driver doctrine. This channel adds no repair allowance
+or reviewer and does not attest that a claimed verification happened.
+
 ## Adversarial debate (the design-stage check)
 
 The critic is a subagent, usually the driver's own model. It is cheap, so it runs

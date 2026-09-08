@@ -20,6 +20,16 @@ Metered like any external gate — keep invocations to a minimum. Batch minimal 
 re-run once. Record every other disposition together at the end without editing
 a clean revision.
 
+## Review context
+
+Use the [shared context contract](../afk/SKILL.md#supported-review-context) to
+carry frozen acceptance scope and named prior findings with accessible proof.
+`--review-phase re-review --review-context <packet.json>` preserves the selected
+review target while supplying closure context; `--print-args` reports its digest.
+Context and proof remain literal after console normalization. A prompt exceeding
+the conservative native argv bound uses the existing UTF-8 brief-file transport;
+native invocation keeps its no-shell boundary.
+
 ## Run it
 
 The bundled helper `kimi-gate.mjs` sits beside this SKILL.md. Locate its
