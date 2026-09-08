@@ -391,3 +391,20 @@ change; any admitted repair requires root-owned issue-cycle reservation before
 editing and focused named closure afterward. External ordered roles and the final
 full suite remain the driver's handoff. The draft PR depends on the #96 branch;
 neither that branch nor main is modified, and no merge is authorized here.
+
+## Implementation review dispositions
+
+I97-S1 is corrected by limiting hash exemptions to exact schema paths with
+validated commit or SHA-256 values. Arbitrary configuration fields always use
+the shared sensitivity policy, including fields named `head` or `digest` and
+values that look like hashes. Exact configured credentials remain rejected at
+every location. The named S1 unit tests cover all previously exempt field names,
+retained design and artifact identity, and invalid hash values. The six S1 gate
+integration tests require a safe error terminal before any preview is delivered.
+
+I97-S2 is corrected by parsing retained input through the same generic JSON
+error boundary as request and terminal files. The named S2 test verifies both
+the checker function and its process output omit malformed source bytes while
+preserving distinct malformed-JSON, digest-mismatch, and noncanonical categories.
+The existing disabled-target ordering assertion uses the consumed receipt
+arguments and retains its error/design and before-skip checks.

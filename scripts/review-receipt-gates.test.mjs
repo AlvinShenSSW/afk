@@ -54,6 +54,25 @@ else console.log('Fixture review.\\nSOUND');
 }
 
 for (const family of Object.keys(models)) {
+  test(`S1 ${family} rejects sensitive configuration before preview delivery`, () => {
+    const path = join(cwd, '.afk', 'config.md');
+    const secret = `sk-${'x'.repeat(24)}`;
+    try {
+      writeFileSync(path, `## external gate\nhead: ${secret}\n`);
+      const receipt = attempt(family);
+      const result = run(family, [...receipt.args, '--print-prompt']);
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /sensitive metadata/);
+      assert.equal(receipt.terminal().outcome.kind, 'error');
+      assert.equal(receipt.terminal().input, null);
+      assert.deepEqual(readdirSync(receipt.output).sort(), ['started.json', 'terminal.json']);
+      assert.ok(!(result.stdout + result.stderr).includes(secret));
+      for (const name of readdirSync(receipt.output)) {
+        assert.ok(!readFileSync(join(receipt.output, name), 'utf8').includes(secret));
+      }
+    } finally { writeFileSync(path, ''); }
+  });
+
   test(`${family} receipt captures early skip and caller error without approval`, () => {
     const skipped = attempt(family);
     const result = run(family, skipped.args, { [`${family.toUpperCase()}_REVIEW_GATE`]: 'off' });
