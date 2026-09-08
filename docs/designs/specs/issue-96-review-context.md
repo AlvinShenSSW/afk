@@ -177,7 +177,6 @@ refer to its own digest (use ignored run storage); initial phase accepts no prio
 findings; tracked binary diff text does not bind arbitrary binary working bytes.
 These do not broaden this issue's frozen transport contract.
 
-
 I96-S1 required a full-string shared secret scan for delivered evidence and target
 path fields: component scans alone lose credential patterns that span separators.
 URI-style paths are explicitly refused before reading. The source packet locator
