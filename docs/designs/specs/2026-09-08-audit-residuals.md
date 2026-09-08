@@ -34,14 +34,19 @@ the shell. Requested pipe output is collected inside the supervisor, bounded by
 the caller's maxBuffer (Node's default when omitted), and returned in the result
 as base64. Ignored descriptors remain ignored. No-input pipe stdin is closed.
 
-On timeout or overflow, start the system taskkill executable with /PID, the live
-shell PID, /T and /F. Do not first call child.kill. A single termination state
+On timeout or overflow, synchronously invoke the system taskkill executable with /PID, the live
+shell PID, /T and /F. The synchronous spawn uses a separate event loop, keeping
+the supervisor's shell exit callback and process-handle close pending until the
+PID-based utility returns. Do not first call child.kill. A single termination state
 prevents repeated kills; cancel the review timer when it begins. Bound taskkill
 and pipe closure with a shared cleanup deadline. Timeout maps to ETIMEDOUT;
 overflow maps to ENOBUFS. If cleanup fails or cannot complete, return a distinct
 ERR_AFK_TREE_CLEANUP error with the initial cause and a diagnostic, never a clean
-result. The shell PID remains owned by this live child handle; do not launch a
-watchdog that can fire after normal exit. Disarm deadlines when the shell exits.
+result. Do not launch a watchdog that can fire after normal exit. On normal shell exit,
+replace the review deadline with a bounded drain deadline: descendants can keep
+pipe handles open after exit. Drain expiry closes readers and returns
+ERR_AFK_TREE_CLEANUP; never invoke taskkill against that exited shell PID.
+Timeout cleanup and subsequent draining share one cleanup deadline.
 
 The supervisor writes its result only after success/failure classification and
 closes its pipe readers before exit. The parent validates/reads that result and
@@ -84,6 +89,20 @@ Off-Windows skips do not establish Windows verification.
 The first draft PR may contain only the regression/design/job to obtain Windows
 RED. Production implementation follows the design critic and that evidence. All
 local static checks and focused regressions precede the independent Kimi K3 role.
-The final native full suite follows that role. Review repair allowance is one
-remaining cycle, cumulative with the prior issue41 CI repair; reserve it before
-any review-driven edit. Keep the PR open for owner review.
+The final native full suite follows that role. The second cumulative repair cycle is reserved for the consolidated design
+corrections. No further automatic review-driven batch remains. Keep the PR open
+for owner review.
+
+## Design correction evidence
+
+Node distinguishes process exit from stdio closure in its
+[child-process documentation](https://nodejs.org/api/child_process.html#event-exit).
+The pinned [Node exit callback](https://raw.githubusercontent.com/nodejs/node/v22.19.0/lib/internal/child_process.js)
+closes the process handle, and the
+[Windows libuv lifecycle](https://raw.githubusercontent.com/nodejs/node/v22.19.0/deps/uv/src/win/process.c)
+releases it in endgame. The
+[synchronous-spawn implementation](https://raw.githubusercontent.com/nodejs/node/v22.19.0/src/spawn_sync.cc)
+uses a separate loop; synchronous taskkill therefore retains the shell handle
+until termination finishes without an extra watchdog. Microsoft documents
+[taskkill /T /F](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill)
+as forced process-tree termination. Live tests still supply platform evidence.

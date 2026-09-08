@@ -78,4 +78,4 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Windows shell process ownership
-        run: node --test lib/gate/windows-tree.test.mjs lib/gate/spawn.test.mjs
+        run: node --test lib/gate/windows-tree.test.mjs lib/gate/windows-shell.test.mjs lib/gate/spawn.test.mjs
