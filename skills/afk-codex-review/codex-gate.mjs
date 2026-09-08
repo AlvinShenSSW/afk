@@ -47,7 +47,7 @@ import { classifyChildOutcome, describeChildOutcome } from '../../lib/gate/child
 import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
-import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { createReceiptProtocol } from '../../lib/gate/review-receipt.mjs';
 import { loadReviewContext, reviewContextOptions } from '../../lib/gate/review-context.mjs';
 import { resolveReviewSelection } from '../../lib/gate/model-select.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
@@ -57,13 +57,17 @@ import {
 } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
-const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CODEX', slug: 'codex-gate' });
+const { receipt, protocol, argv: receiptArgs } = createReceiptProtocol({
+  label: 'CODEX', slug: 'codex-gate', family: 'codex', argv: process.argv.slice(2),
+});
+const { emitSkip, emitError, emitVerifiedReview, emitPreview } = protocol;
 let selection;
 try {
-  selection = resolveReviewSelection({ family: 'codex', argv: process.argv.slice(2) });
+  selection = resolveReviewSelection({ family: 'codex', argv: receiptArgs });
 } catch (error) {
   emitError(`cannot review — ${error.message}`, 1);
 }
+receipt.capture({ selection });
 
 // ── Machine-wide serialization of `codex exec` runs ──────────────────────────
 // Advisory lockfile in the OS temp dir, shared across repos/worktrees (the
@@ -173,7 +177,7 @@ function releaseCodexLock(lock) {
 // unreachable in exactly the configuration that most needs to say why. Reads
 // argv directly: it runs before the shared `userArgs` binding exists.
 {
-  const early = parseTarget(process.argv.slice(2));
+  const early = parseTarget(receiptArgs);
   // A design target names its document here, so a missing path is the same
   // class of caller error as an unparseable target and must surface with it.
   if (early.kind === 'error' || early.kind === 'design') {
@@ -183,10 +187,11 @@ function releaseCodexLock(lock) {
 }
 
 const reviewContext = loadReviewContext({
-  argv: process.argv.slice(2), target: parseTarget(process.argv.slice(2)),
-  supported: parseTarget(process.argv.slice(2)).kind === 'design',
+  argv: receiptArgs, target: parseTarget(receiptArgs),
+  supported: parseTarget(receiptArgs).kind === 'design',
 });
 if (reviewContext.error) emitError(`cannot review — ${reviewContext.error}`, 1);
+receipt.capture({ context: reviewContext });
 
 if (isGateDisabled('CODEX_REVIEW_GATE')) {
   emitSkip('Codex gate disabled via CODEX_REVIEW_GATE.');
@@ -214,6 +219,7 @@ const userArgs = reviewContextOptions(selection.argv).argv;
 // Acquires, optionally holds holdMs, releases, reports wait time.
 const selftest = userArgs.find((a) => a.startsWith('--selftest-lock'));
 if (selftest) {
+  if (receipt.enabled) emitError('review receipts are unavailable for the internal lock self-test');
   const holdMs = Number(selftest.split('=')[1] || 0) || 0;
   const t0 = Date.now();
   const lk = acquireCodexLock();
@@ -282,6 +288,8 @@ const guard = guardFor('codex', userArgs);
 if (!guard.run) {
   emitSkip(`independence check — ${guard.reason}`);
 }
+
+receipt.capture({ target: parsedTarget });
 
 // Lean-context overrides (review THE DIFF, not the project doc corpus):
 //   - model_reasoning_effort: default `medium`. Override via
@@ -373,7 +381,7 @@ const timeoutMs = reviewTimeoutMs('codex');
 
 if (userArgs.includes('--print-prompt')) {
   if (!isDesign) emitError('native Codex diff review has no custom prompt preview; selected mode was not changed', 1);
-  process.stdout.write(`${designPayload}\n`);
+  emitPreview(`${designPayload}\n`);
   process.exit(0);
 }
 
@@ -381,7 +389,7 @@ if (printArgsOnly) {
   // Dry run: resolve the argv, call no model. Makes the target/base resolution
   // observable without spending a metered call. The design payload is reported by
   // size only — it rides on stdin, never in argv, so it can never leak here.
-  process.stdout.write(`${JSON.stringify({
+  emitPreview(`${JSON.stringify({
     bin: codex,
     model: reviewModel || 'inherit',
     effort: selection.effort,
@@ -465,6 +473,7 @@ const res = spawnCli(codex, reviewArgs, isDesign
   });
 closeSync(fd);
 releaseCodexLock(codexLock);
+receipt.capture({ execution: { exitCode: res.status ?? null, signal: res.signal ?? null, completion: null } });
 
 if (isSpawnTimeout(res)) {
   emitError(

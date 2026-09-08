@@ -180,6 +180,51 @@ in-scope blockers, and unresolved evidence before readiness; phase selection and
 review compliance remain driver doctrine. This channel adds no repair allowance
 or reviewer and does not attest that a claimed verification happened.
 
+## Canonical review receipts
+
+To retain reconstructable review inputs, append `--review-receipt <request.json>`
+to a bundled gate invocation. The request follows the
+[version 1 receipt contract](../../docs/designs/specs/issue-97-review-receipts.md#invocation-and-ownership)
+and names the existing run, a new unique attempt ID, issue or null, selected role
+index, and complete driver-resolved profile. Keep it in the consuming run's
+ignored `.afk` directory. Every retry uses a new attempt ID; never replace a
+published receipt. Without the flag, no receipt artifacts are generated.
+
+The helper writes `started.json`, retained canonical `input.json`, sanitized
+`review.txt` when applicable, and `terminal.json` beneath
+`.afk/runs/<run-id>/receipts/<attempt-id>/` in the main worktree. Scope/profile
+claims remain driver assertions. Requested selection, delivered context,
+response-reported identity, and execution observations retain their separate
+ownership. Native Codex final text has an unchecked verdict; Codex/Kimi model
+identity remains unavailable through their current final-text interfaces. A
+driver's selected model must never fill an observed-identity field.
+
+Before reusing receipts, supply an explicit candidate target, profile, and one
+expected context per required role, plus exactly one selected attempt per role.
+Resolve `<plugin-root>` through `CLAUDE_PLUGIN_ROOT`, the recorded `pluginRoot`,
+then two directories above this skill's directory, and run:
+
+```text
+node "<plugin-root>/scripts/check-review-receipts.mjs" --candidate <candidate.json> --receipt <attempt-directory> [--receipt <attempt-directory> ...]
+```
+
+Retain the checker result in the run when the driver needs a resume reference;
+the checker itself only reads and prints JSON. Record the explicit candidate
+revision and selected receipt paths in the ledger. Common profile or target
+changes invalidate every role; a changed selection invalidates that role and
+downstream roles. Context is compared per role without pretending that native
+Codex received another role's packet.
+
+Exit zero means complete consistent review evidence, including a consistent
+negative review. Read `allRequiredApproved` separately: false and unknown are
+not approval. Skips, errors, previews, missing terminals, damaged artifacts and
+legacy runs without receipts cannot supply approval evidence. Preserve unknown
+legacy state without reconstructing facts from prose or buying a backfill call.
+Never automatically publish these local artifacts. These are level 2 checks when
+invoked, not authenticated proof of a model call or level 3 workflow enforcement;
+the ledger retains finding dispositions, reviewer independence, budgets and
+readiness rationale.
+
 ## Adversarial debate (the design-stage check)
 
 The critic is a subagent, usually the driver's own model. It is cheap, so it runs

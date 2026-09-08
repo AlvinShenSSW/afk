@@ -15,6 +15,14 @@ repository tools, so verify findings that require material outside the snapshot.
 Kilo Code may use the same provider, but this gate neither reads Kilo Code state
 nor depends on that extension.
 
+## Review receipts
+
+To retain canonical inputs and explicit outcomes, use the optional
+`--review-receipt <request.json>` flag under the
+[shared receipt contract](../afk/SKILL.md#canonical-review-receipts). Preserve
+unknown identity explicitly; skipped or incomplete attempts and previews never
+supply approval.
+
 ## Review context
 
 Use the [shared context contract](../afk/SKILL.md#supported-review-context) to

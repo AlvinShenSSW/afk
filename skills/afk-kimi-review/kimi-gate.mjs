@@ -68,7 +68,7 @@ import { guardFor } from '../../lib/gate/implementer.mjs';
 import {
   buildDesignReviewPrompt, buildReviewPrompt,
 } from '../../lib/gate/prompt.mjs';
-import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { createReceiptProtocol } from '../../lib/gate/review-receipt.mjs';
 import { loadReviewContext } from '../../lib/gate/review-context.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import {
@@ -81,14 +81,17 @@ const isWin = process.platform === 'win32';
 // disappears in between); it names WHICH of the two CLIs called `kimi` the
 // install command installs.
 const NOT_INSTALLED = 'Kimi CLI not installed (run: npm i -g @moonshot-ai/kimi-code && kimi login, which installs the npm Kimi Code CLI).';
-const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'KIMI', slug: 'kimi-gate' });
+const { receipt, protocol, argv: receiptArgs } = createReceiptProtocol({
+  label: 'KIMI', slug: 'kimi-gate', family: 'kimi', argv: process.argv.slice(2),
+});
+const { emitSkip, emitError, emitVerifiedReview, emitPreview } = protocol;
 
 // A target that could not be parsed is a caller error, and it must surface even
 // when the gate is switched off — placed after that exit, this check would be
 // unreachable in exactly the configuration that most needs to say why. Reads
 // argv directly: it runs before the shared `userArgs` binding exists.
 {
-  const early = parseTarget(process.argv.slice(2));
+  const early = parseTarget(receiptArgs);
   // A design target names its document here, so a missing path is the same
   // class of caller error as an unparseable target and must surface with it.
   if (early.kind === 'error' || early.kind === 'design') {
@@ -98,15 +101,16 @@ const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'KIM
 }
 
 const reviewContext = loadReviewContext({
-  argv: process.argv.slice(2), target: parseTarget(process.argv.slice(2)),
+  argv: receiptArgs, target: parseTarget(receiptArgs),
 });
 if (reviewContext.error) emitError(`cannot review — ${reviewContext.error}`, 1);
+receipt.capture({ context: reviewContext });
 
 if (isGateDisabled('KIMI_REVIEW_GATE')) {
   emitSkip('Kimi gate disabled via KIMI_REVIEW_GATE.');
 }
 
-const userArgs = process.argv.slice(2);
+const userArgs = receiptArgs;
 const printArgsOnly = userArgs.includes('--print-args');
 // Prints the exact review prompt kimi would receive, and calls no model — the
 // only way to observe that design mode swapped the diff context clause.
@@ -137,6 +141,8 @@ if (!isDesign) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
 }
+
+receipt.capture({ target });
 
 // This gate's own context clause: kimi HAS tools, so it is told to go looking —
 // the opposite of what glm must be told. See lib/gate/prompt.mjs.
@@ -219,7 +225,7 @@ for (const [slot, value] of operands) reviewPrompt = reviewPrompt.split(slot).jo
 reviewPrompt += `\n${reviewContext.section}`;
 
 if (printPromptOnly) {
-  process.stdout.write(`${reviewPrompt}\n`);
+  emitPreview(`${reviewPrompt}\n`);
   process.exit(0);
 }
 
@@ -307,7 +313,7 @@ const shown = (args) => (args || []).map(
   (arg) => (arg === reviewPrompt ? `<${reviewPrompt.length}B structural review prompt>` : arg));
 
 if (printArgsOnly) {
-  process.stdout.write(`${JSON.stringify({
+  emitPreview(`${JSON.stringify({
     bin: kimi,
     kind: target.kind,
     base: target.base ?? null,
@@ -457,6 +463,8 @@ if (res.error && res.error.code === 'ENOENT') {
 // nothing about availability. As a transient error it gets the role's one sticky
 // retry first. This must also precede the emitReview path — stdout may hold a
 // partial answer, and half a review presented as a verdict is worse than none.
+receipt.capture({ execution: { exitCode: res.status ?? null, signal: res.signal ?? null, completion: null } });
+
 if (isSpawnTimeout(res)) {
   emitError(
     `kimi review timed out after ${Math.round(timeoutMs / 1000)}s with no verdict. `

@@ -37,27 +37,31 @@ import { guardFor } from '../../lib/gate/implementer.mjs';
 import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-identity.mjs';
 import { resolveReviewSelection } from '../../lib/gate/model-select.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
-import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { createReceiptProtocol } from '../../lib/gate/review-receipt.mjs';
 import { loadReviewContext } from '../../lib/gate/review-context.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
 
 const isWin = process.platform === 'win32';
-const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'CLAUDE', slug: 'claude-gate' });
+const { receipt, protocol, argv: receiptArgs } = createReceiptProtocol({
+  label: 'CLAUDE', slug: 'claude-gate', family: 'claude', argv: process.argv.slice(2),
+});
+const { emitSkip, emitError, emitVerifiedReview, emitPreview } = protocol;
 let selection;
 try {
-  selection = resolveReviewSelection({ family: 'claude', argv: process.argv.slice(2) });
+  selection = resolveReviewSelection({ family: 'claude', argv: receiptArgs });
 } catch (error) {
   emitError(`cannot review — ${error.message}`, 1);
 }
+receipt.capture({ selection });
 
 // A target that could not be parsed is a caller error, and it must surface even
 // when the gate is switched off — placed after that exit, this check would be
 // unreachable in exactly the configuration that most needs to say why. Reads
 // argv directly: it runs before the shared `userArgs` binding exists.
 {
-  const early = parseTarget(process.argv.slice(2));
+  const early = parseTarget(receiptArgs);
   // A design target names its document here, so a missing path is the same
   // class of caller error as an unparseable target and must surface with it.
   if (early.kind === 'error' || early.kind === 'design') {
@@ -67,9 +71,10 @@ try {
 }
 
 const reviewContext = loadReviewContext({
-  argv: process.argv.slice(2), target: parseTarget(process.argv.slice(2)),
+  argv: receiptArgs, target: parseTarget(receiptArgs),
 });
 if (reviewContext.error) emitError(`cannot review — ${reviewContext.error}`, 1);
+receipt.capture({ context: reviewContext });
 
 if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
   emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
@@ -116,6 +121,8 @@ if (!isDesign) {
     emitError(`cannot review — ${valid.reason}`, 1);
   }
 }
+
+receipt.capture({ target });
 
 // Design mode reviews a document's reasoning, not a diff, and never enters the
 // diff path. Everything below the design branch is diff-only.
@@ -252,7 +259,7 @@ const args = [
 const bin = resolveCliBin((process.env.CLAUDE_GATE_BIN || 'claude').trim());
 
 if (printPromptOnly) {
-  process.stdout.write(`${prompt}\n`);
+  emitPreview(`${prompt}\n`);
   process.exit(0);
 }
 
@@ -261,7 +268,7 @@ if (printArgsOnly) {
   // so target/base selection can be tested without spending a metered call.
   // Runs BEFORE the no-changes skip — a dry run on a clean tree must still be
   // able to report which base it resolved.
-  process.stdout.write(`${JSON.stringify({
+  emitPreview(`${JSON.stringify({
     bin,
     model,
     effort,
@@ -325,6 +332,8 @@ if (isWin && res.error && res.error.code === 'EINVAL') {
   // descriptor, because `input` under a shell deadlocks this gate on timeout.
   res = spawnViaShell(bin, dropEmptyValued(args, '--setting-sources'), spawnOpts);
 }
+
+receipt.capture({ execution: { exitCode: res.status ?? null, signal: res.signal ?? null, completion: null } });
 
 const out = res.stdout || '';
 const errOut = res.stderr || '';
@@ -422,6 +431,7 @@ if (isErrorEnvelope) {
 // only the first is how a review written by an older generation reaches the
 // driver as a clean round.
 const identity = verifyReviewerIdentity(envelope?.modelUsage, model);
+receipt.capture({ model: { observed: identity.observed ?? null, verification: identity.ok ? 'verified' : identity.reason === 'mismatch' ? 'mismatch' : 'unavailable', reason: identity.ok ? null : identity.reason } });
 if (!identity.ok) {
   const detail = identity.reason === 'mismatch'
     ? `the result envelope reports ${identity.observed.map((m) => `"${m}"`).join(', ')} instead`
