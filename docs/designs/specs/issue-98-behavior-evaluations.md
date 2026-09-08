@@ -150,9 +150,30 @@ After independent design review, implement deterministic fixture construction/sc
 
 Prepare the concrete sanitized aggregate from those results, commit it at report-bearing head R, and verify the allowed report-only C..R diff plus unchanged behavior-relevant bytes. Then complete the required Claude Fable outer and Kimi K3 final review on R and the final required validation/full-suite handoff on that head. This places the empirical deliverable inside the final reviewed revision without rerunning the pilot for report-only content. If final review requires a behavior-relevant implementation repair, use the existing root-owned issue allowance, name a new tested snapshot and separately reviewed evaluation bounds; do not claim the old C run tested that change. Keep all failed cells and adjudication visible. Low call counts alone never justify a policy change.
 
-Pending implementation facts are the final issue 97 exported entrypoints and actual exec/resume effective-profile behavior. The API contract above is frozen at the recorded design; it is not a claim that incomplete code already works. Root assigns the independent critic and confirms the final candidate/run IDs. This document adds no paid authorization and changes no tracked file or central ledger.
+Actual exec/resume effective-profile behavior and the model-visible instruction/tool surface remain live prerequisites. The implementation uses the issue 96/97 production entrypoints; local controlled calls establish artifact compatibility, not host behavior.
 
-## C1 named design corrections
+## Manual execution
 
-Root reserved issue 98 C1 (1/2) for I98-D1 and I98-D2 before these amendments. I98-D1 is addressed by the common production-only support allowlist, excluded evaluator/test/design/report content, unchanged required bytes/paths, inventory/hash checks and actual-host read-boundary prerequisite within the existing three slots. I98-D2 is addressed by tested implementation C versus report head R, retained behavior-byte comparison and report-only diff restriction, internal readiness before trials, concrete aggregate before final external review/validation on R, and no extra pilot or false R trial claim for report-only additions. Independent focused closure accepted both named corrections; no trial result is inferred from design closure.
+The evaluator is an opt-in script. Preparation requires an immutable full candidate commit and working bytes matching it; all evaluation directories belong outside the subject workspace in the ignored run. The baseline defaults to the frozen v0.9.0 commit. Preparation, report generation and byte comparison make no provider calls.
 
+```sh
+node scripts/evaluate-agent-behavior.mjs prepare --repository . --directory "$evaluation_dir" --candidate "$implementation_sha"
+node scripts/evaluate-agent-behavior.mjs prerequisite --directory "$evaluation_dir" --id P01 --execute
+node scripts/evaluate-agent-behavior.mjs prerequisite --directory "$evaluation_dir" --id P02 --execute
+node scripts/evaluate-agent-behavior.mjs prerequisite --directory "$evaluation_dir" --id P03 --execute
+```
+
+The evaluator inspects the actual three transcripts, owned sentinel results and visible tool/instruction surface before creating run-local `qualification.json`. This is evaluator-supplied adjudication, not a receipt or a subject self-attestation. Its version is 1, its `evidence` is a nonempty local explanation, and these Boolean fields must each be true: `execBoundary`, `resumeBoundary`, `supportVisibility`, `networkDenied`, `outsideDenied`, `toolSurface`, `environmentClean`, `alternateAvailable`. Missing or failed evidence prevents behavioral launch. A completed CLI turn alone does not establish those facts. Unrelated local skills are not assumed absent merely because plugins are disabled; ignore-user-config concerns config.toml and ignore-rules concerns execpolicy rules. No global files, HOME or authentication/session locations are modified.
+
+```sh
+node scripts/evaluate-agent-behavior.mjs run --directory "$evaluation_dir" --trials T01,T02,T03,T04 --execute
+node scripts/evaluate-agent-behavior.mjs run --directory "$evaluation_dir" --trials T05,T06,T07,T08 --execute
+node scripts/evaluate-agent-behavior.mjs run --directory "$evaluation_dir" --trials T09,T10,T11,T12 --execute
+node scripts/evaluate-agent-behavior.mjs run --directory "$evaluation_dir" --trials T13,T14 --execute
+node scripts/evaluate-agent-behavior.mjs report --directory "$evaluation_dir"
+node scripts/evaluate-agent-behavior.mjs carryforward --repository . --implementation "$implementation_sha" --report-head "$report_sha"
+```
+
+Each trial retains before/after file hashes, Git diff, host event stream, usage, final decision, helper observations and original acceptance results. Intermediate shell changes, equivalent test coverage, actual repair batches, supported triage and final completion need explicit human adjudication. Store a run-local `trials/Txx/adjudication.json` with `verdict` equal to `pass`, `fail` or `unverified` and a nonempty `evidence` explanation. A semantic pass requires reconciling the actual commands, file events, ledger and both S5 invocations; final self-reported cycle counts alone are insufficient. An adjudication cannot erase a deterministic failure. Only the sanitized aggregate is eligible for the tracked report; raw local artifacts and adjudication prose are excluded.
+
+Incomplete cells and missing session IDs retain their launched-attempt records and cannot be retried by reusing an ID. A process cleanup failure stops its slice. A stale active lock is a reason to inspect process cleanup, not permission to start concurrent work. Host launch totals exclude free sandboxed Node acceptance probes and the controlled local reviewer, while their outcomes remain in trial artifacts. CLI usage does not expose pure compute time, so unknown timing/model identity/internal-call fields remain explicit.

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { fixtureGit, createFixture } from '../lib/evaluation/scenarios.mjs';
 import { supportVisible, exportSupport, runBounded, parseHostEvents, hostArguments,
-  verifyReportCarryforward, prepareProductEvidence, inspectProductEvidence, createEvaluation } from './evaluate-agent-behavior.mjs';
+  verifyReportCarryforward, prepareProductEvidence, inspectProductEvidence, createEvaluation, runPrerequisite, runTrialSlice, aggregateEvaluation } from './evaluate-agent-behavior.mjs';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 function temporary(fn) {
@@ -100,4 +100,71 @@ for (const variant of ['revision','profile']) test(`S7 ${variant} uses actual re
 
 test('preparation has no host invocation and requires an immutable selected revision', () => temporary(async (root) => {
   assert.throws(() => createEvaluation({ repository:repo, directory:join(root,'evaluation'), candidate:'HEAD',baseline:'HEAD' }), /immutable/);
+}));
+
+test('local S8 records the actual unavailable helper without a reviewer call', () => temporary(async (root) => {
+  const fixture=createFixture({directory:join(root,'workspace'),scenarioId:'S8'});
+  const setup=prepareProductEvidence({fixture,pluginRoot:repo});
+  assert.equal(setup.unavailableObserved,true); assert.equal(setup.providerCalls,0);
+  assert.doesNotMatch(readFileSync(join(fixture.directory,'.afk/local-review.mjs'),'utf8'), /"(?:HOME|CODEX_HOME)":/);
+}));
+
+test('baseline production export supports the paired actual local review without exposing answers', () => temporary(async (root) => {
+  const baseline='f56361f40e7fcdcae602d08739bc3e928d4d57d7';
+  const support=join(root,'support'); const manifest=exportSupport({repository:repo,revision:baseline,directory:support});
+  assert.ok(Object.keys(manifest.files).length>10);
+  const fixture=createFixture({directory:join(root,'workspace'),scenarioId:'S3'});
+  prepareProductEvidence({fixture,pluginRoot:support});
+  const result=spawnSync(process.execPath,[join(fixture.directory,'.afk/local-review.mjs')],{cwd:fixture.directory,encoding:'utf8'});
+  assert.equal(result.status,0,result.stdout+result.stderr); assert.match(result.stdout,/APPROVE/);
+}));
+
+test('synthetic CLI controls opt-in, exact resume, unavailable accounting and no retries', () => temporary(async (root) => {
+  const repository=join(root,'source'); mkdirSync(repository); fixtureGit(repository,['init','-q','-b','fixture']);
+  mkdirSync(join(repository,'skills/afk'),{recursive:true}); writeFileSync(join(repository,'skills/afk/SKILL.md'),'# Synthetic production skill\n');
+  const revision=commit(repository,'seed'); const directory=join(root,'evaluation');
+  createEvaluation({repository,directory,candidate:revision,baseline:revision});
+  const script=join(root,'fake-host.mjs'), binary=join(root,'fake-host.sh');
+  writeFileSync(script,`import {writeFileSync,readFileSync} from 'node:fs';readFileSync(0);const args=process.argv.slice(2);const last=args[args.indexOf('--output-last-message')+1];writeFileSync(last,JSON.stringify({ready:true,consumedCycles:0,findings:[],summary:'Synthetic test only',checks:[]}));console.log(JSON.stringify({type:'thread.started',thread_id:'test-session'}));console.log(JSON.stringify({type:'turn.completed',usage:{output_tokens:1}}));`);
+  writeFileSync(binary,`#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`); chmodSync(binary,0o700);
+  await assert.rejects(runPrerequisite({directory,id:'P01',codex:binary}),/explicit/);
+  assert.equal(aggregateEvaluation(directory).hostLaunches,0);
+  await runPrerequisite({directory,id:'P01',codex:binary,execute:true});
+  await runPrerequisite({directory,id:'P02',codex:binary,execute:true});
+  const first=JSON.parse(readFileSync(join(directory,'artifacts/P01/result.json'),'utf8'));
+  const second=JSON.parse(readFileSync(join(directory,'artifacts/P02/result.json'),'utf8'));
+  assert.equal(second.resumedFrom,first.sessionId); assert.equal(second.sessionId,first.sessionId);
+  assert.equal(JSON.parse(readFileSync(join(directory,'artifacts/P02/launch.json'),'utf8')).args.includes('test-session'),true);
+  await runPrerequisite({directory,id:'P03',codex:join(root,'absent-cli'),execute:true});
+  assert.equal(JSON.parse(readFileSync(join(directory,'artifacts/P03/result.json'),'utf8')).status,'unavailable');
+  await assert.rejects(runPrerequisite({directory,id:'P03',codex:binary,execute:true}));
+  await assert.rejects(runPrerequisite({directory,id:'P04',codex:binary,execute:true}),/only P01/);
+  await assert.rejects(runTrialSlice({directory,ids:['T01'],codex:binary,execute:true}));
+  assert.equal(readdirSync(join(directory,'launches')).filter((p)=>p.endsWith('.started.json')).length,3);
+  assert.equal(aggregateEvaluation(directory).rows.every((r)=>r.deterministic==='not-run'),true);
+}));
+
+test('synthetic end-to-end runner retains truthful success and third-repair failure artifacts', () => temporary(async (root) => {
+  const repository=join(root,'source'); mkdirSync(repository); fixtureGit(repository,['init','-q','-b','fixture']);
+  mkdirSync(join(repository,'skills/afk'),{recursive:true}); writeFileSync(join(repository,'skills/afk/SKILL.md'),'# Synthetic production skill\n');
+  const revision=commit(repository,'seed'), directory=join(root,'evaluation');
+  createEvaluation({repository,directory,candidate:revision,baseline:revision});
+  const script=join(root,'fake-host.mjs'), binary=join(root,'fake-host.sh');
+  writeFileSync(script,`import {readFileSync,writeFileSync} from 'node:fs';import {spawnSync} from 'node:child_process';
+const args=process.argv.slice(2), input=readFileSync(0,'utf8');
+if(args[0]==='sandbox'){const r=spawnSync(process.execPath,['--input-type=module'],{input,encoding:'utf8'});process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1)}
+const last=args[args.indexOf('--output-last-message')+1], exhausted=process.cwd().includes('/T10/');
+const decision={ready:!exhausted,consumedCycles:exhausted?2:0,findings:exhausted?[{id:'F3-ZERO',disposition:'open',evidence:'Original zero case still fails'}]:[{id:'F1-ZERO',disposition:'refuted',evidence:'TASK and A3 permit zero'}],summary:'Synthetic test only',checks:['original acceptance']};
+writeFileSync(last,JSON.stringify(decision));console.log(JSON.stringify({type:'thread.started',thread_id:'test-session'}));
+if(exhausted&&!args.includes('resume'))console.log(JSON.stringify({type:'item.completed',item:{type:'file_change',changes:[{path:'src/reserve.mjs'}]}}));
+console.log(JSON.stringify({type:'turn.completed',usage:{output_tokens:1}}));`);
+  writeFileSync(binary,`#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`); chmodSync(binary,0o700);
+  for(const id of ['P01','P02','P03']) await runPrerequisite({directory,id,codex:binary,execute:true});
+  writeFileSync(join(directory,'qualification.json'),JSON.stringify({version:1,evidence:'Synthetic unit control, not host evidence',execBoundary:true,resumeBoundary:true,supportVisibility:true,networkDenied:true,outsideDenied:true,toolSurface:true,environmentClean:true,alternateAvailable:true}));
+  const results=await runTrialSlice({directory,ids:['T01','T10'],codex:binary,execute:true});
+  assert.equal(results[0].deterministic,'pass');
+  assert.equal(results[1].deterministic,'fail'); assert.equal(results[1].metrics.excessRepair,true);
+  assert.equal(JSON.parse(readFileSync(join(directory,'trials/T10/observed.json'),'utf8')).invocations.length,2);
+  assert.equal(aggregateEvaluation(directory).hostLaunches,6);
+  assert.equal(aggregateEvaluation(directory).behavioralAcceptanceComplete,false);
 }));
