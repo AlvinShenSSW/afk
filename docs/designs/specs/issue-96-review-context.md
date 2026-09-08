@@ -176,3 +176,18 @@ Recorded P2 limitations remain deferred: a packet inside an uncommitted target c
 refer to its own digest (use ignored run storage); initial phase accepts no prior
 findings; tracked binary diff text does not bind arbitrary binary working bytes.
 These do not broaden this issue's frozen transport contract.
+
+
+I96-S1 required a full-string shared secret scan for delivered evidence and target
+path fields: component scans alone lose credential patterns that span separators.
+URI-style paths are explicitly refused before reading. The source packet locator
+is never delivered; its components and exact configured credential are checked
+separately because ordinary absolute temporary prefixes can resemble high-entropy
+values. Tests named `I96-S1` in `lib/gate/review-context.test.mjs` and
+`scripts/review-context-gates.test.mjs` verify existing URI-shaped and labeled-value
+proof paths, descriptor paths, and zero emitted HTTP requests on rejection.
+
+I96-S2 required preserving leading U+FEFF in evidence files during strict UTF-8
+decoding. Tests named `I96-S2` in those files assert complete proof equality and
+its presence in the actual emitted HTTP context. These are delivery checks;
+they make no claim about the truth of the supplied proof.

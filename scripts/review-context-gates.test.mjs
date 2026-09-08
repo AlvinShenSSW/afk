@@ -3,7 +3,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, test } from 'node:test';
 import { describeReviewTarget, loadReviewContext } from '../lib/gate/review-context.mjs';
@@ -186,4 +186,35 @@ test('HTTP rejects combined target/context overflow without shrinking either', a
   assert.notEqual(result.status, 0);
   assert.equal(result.calls, 0);
   assert.match(result.stdout, /full snapshot plus required review-context.*no target or history was truncated/);
+});
+
+
+test('I96-S1 refuses existing credential-shaped proof paths without an HTTP request', async () => {
+  const { args, packet } = prepare(['--design', '.afk/design.md']);
+  for (const evidencePath of ['https://reader:fixture-password@host/proof.txt', 'api_key=/fixture-value/proof.txt']) {
+    if (process.platform !== 'win32' || !evidencePath.includes('://')) {
+      mkdirSync(dirname(join(cwd, '.afk', evidencePath)), { recursive: true });
+      writeFileSync(join(cwd, '.afk', evidencePath), 'proof');
+    }
+    packet.findings[0].evidence = [{ revision, path: evidencePath }];
+    writeFileSync(contextPath, JSON.stringify(packet));
+    const result = await httpCall('glm', args, { ZAI_API_KEY: 'fixture-http-key' }, {});
+    assert.notEqual(result.status, 0);
+    assert.equal(result.calls, 0);
+    assert.match(result.stdout, /sensitive|URL/);
+    assert.ok(!result.stdout.includes('fixture-password'));
+  }
+});
+
+test('I96-S2 sends the leading BOM in the actual HTTP proof unchanged', async () => {
+  const text = '\uFEFF' + proof;
+  const { args, context } = prepare(['--design', '.afk/design.md'], text);
+  let payload;
+  const result = await httpCall('glm', args, { ZAI_API_KEY: 'fixture-http-key' }, {
+    model: 'glm-5.3', choices: [{ message: { content: 'SOUND' }, finish_reason: 'stop' }],
+  }, (body) => { payload = body.messages[1].content; });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(result.calls, 1);
+  assert.equal(context.context.findings[0].evidence[0].text, text);
+  assert.ok(payload.includes(context.section));
 });
