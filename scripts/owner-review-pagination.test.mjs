@@ -38,7 +38,13 @@ if (endpoint === 'repos/fixture/repository/pulls/1') {
   const match = /^repos\/fixture\/repository\/collaborators\/([^/]+)\/permission$/.exec(endpoint);
   if (!match || query !== '.permission') fail();
   log({ permission: match[1] });
-  process.stdout.write((fixture.permissions[match[1]] || 'write') + '\n');
+  const permission = fixture.permissions[match[1]] ?? 'write';
+  if (permission && typeof permission === 'object') {
+    if (permission.output) process.stdout.write(permission.output);
+    process.stderr.write('fixture permission unavailable\n');
+    process.exit(42);
+  }
+  process.stdout.write(permission + '\n');
 }
 `;
 
@@ -97,4 +103,37 @@ test('the existing administrator-author exemption remains unchanged', posix, (t)
   const result = run(t, [{ error: true }], { author: 'admin' });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.ok(!result.calls.some((call) => call.page));
+});
+
+for (const subject of ['author', 'reviewer']) {
+  for (const [name, value, diagnostic] of [
+    ['API failure', { error: true }, /Could not fetch repository permission/],
+    ['partial API output', { error: true, output: 'admin\n' }, /Could not fetch repository permission/],
+    ['empty permission', '', /Invalid repository permission/],
+    ['unknown permission', 'superuser', /Invalid repository permission/],
+    ['multiple permission lines', 'admin\nwrite', /Invalid repository permission/],
+  ]) {
+    test(`${subject} ${name} refuses unreliable approval evidence`, posix, (t) => {
+      const result = run(t, [[approval()]], { author: 'write', reviewer: 'admin', [subject]: value });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, diagnostic);
+      if (subject === 'author') assert.ok(!result.calls.some((call) => call.page));
+    });
+  }
+}
+
+for (const permission of ['write', 'read', 'none']) {
+  test(`verified ${permission} remains a non-admin policy result`, posix, (t) => {
+    const result = run(t, [[approval()]], { author: permission, reviewer: permission });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout, /needs an approving review/);
+    assert.doesNotMatch(result.stdout + result.stderr, /Could not fetch|Invalid repository permission/);
+  });
+}
+
+test('admin exemption does not claim human review', posix, (t) => {
+  const result = run(t, [], { author: 'admin' });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /admin-author exemption/);
+  assert.doesNotMatch(result.stdout, /inherently admin-reviewed/);
 });
