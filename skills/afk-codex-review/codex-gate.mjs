@@ -48,6 +48,7 @@ import { detectBase, resolveBase } from '../../lib/gate/git.mjs';
 import { guardFor, stripImplementer } from '../../lib/gate/implementer.mjs';
 import { buildDesignReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { loadReviewContext, reviewContextOptions } from '../../lib/gate/review-context.mjs';
 import { resolveReviewSelection } from '../../lib/gate/model-select.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnCli, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
@@ -181,6 +182,12 @@ function releaseCodexLock(lock) {
   }
 }
 
+const reviewContext = loadReviewContext({
+  argv: process.argv.slice(2), target: parseTarget(process.argv.slice(2)),
+  supported: parseTarget(process.argv.slice(2)).kind === 'design',
+});
+if (reviewContext.error) emitError(`cannot review — ${reviewContext.error}`, 1);
+
 if (isGateDisabled('CODEX_REVIEW_GATE')) {
   emitSkip('Codex gate disabled via CODEX_REVIEW_GATE.');
 }
@@ -201,7 +208,7 @@ function resolveCodex() {
   return resolveCliBin('codex');
 }
 
-const userArgs = selection.argv;
+const userArgs = reviewContextOptions(selection.argv).argv;
 
 // Hidden self-test for the lock only (no codex call): --selftest-lock[=holdMs].
 // Acquires, optionally holds holdMs, releases, reports wait time.
@@ -246,7 +253,7 @@ function promoteExplicitBase(argv) {
 // --implementer is an afk-level flag: strip it, or `codex exec review` rejects
 // an option it does not know and the gate cannot run at all in a relay setup.
 const passThrough = promoteExplicitBase(
-  stripImplementer(userArgs.filter((a) => a !== '--print-args')),
+  stripImplementer(userArgs.filter((a) => !['--print-args', '--print-prompt'].includes(a))),
 );
 
 // Detect and validate a design target BEFORE the independence guard: a malformed
@@ -341,7 +348,7 @@ if (isDesign) {
   const { text } = doc;
   const context = 'The design document under review is included below. You are running read-only: you may read files in this repository to check a claim the design makes about the code, but you cannot modify anything. Do not claim to have run any command you did not run.';
   const brief = buildDesignReviewPrompt({ scope: designTarget.label, context });
-  designPayload = `${brief}\n\n## Design document (${designTarget.path})\n${text}`;
+  designPayload = `${brief}\n\n## Design document (${designTarget.path})\n${text}\n${reviewContext.section}`;
 
   reviewArgs = ['exec', '-s', 'read-only', ...leanConfig];
   reviewArgs.push('-o', finalFile, '-');
@@ -364,6 +371,12 @@ if (isDesign) {
 const codex = resolveCodex();
 const timeoutMs = reviewTimeoutMs('codex');
 
+if (userArgs.includes('--print-prompt')) {
+  if (!isDesign) emitError('native Codex diff review has no custom prompt preview; selected mode was not changed', 1);
+  process.stdout.write(`${designPayload}\n`);
+  process.exit(0);
+}
+
 if (printArgsOnly) {
   // Dry run: resolve the argv, call no model. Makes the target/base resolution
   // observable without spending a metered call. The design payload is reported by
@@ -375,6 +388,9 @@ if (printArgsOnly) {
     selectionSources: selection.sources,
     hasExplicitTarget: hasTarget,
     promptOnStdin: isDesign,
+    reviewPhase: reviewContext.phase,
+    reviewContextDigest: reviewContext.digest,
+    reviewContextCapability: isDesign ? 'custom context via stdin' : 'native diff: driver-side history triage only; no custom context delivered',
     stdinBytes: designPayload ? Buffer.byteLength(designPayload, 'utf8') : 0,
     timeoutMs,
     args: reviewArgs.map((a) => (a === finalFile ? '<review-file>' : a)),

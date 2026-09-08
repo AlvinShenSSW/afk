@@ -15,6 +15,15 @@ repository tools, so verify findings that require material outside the snapshot.
 Kilo Code may use the same provider, but this gate neither reads Kilo Code state
 nor depends on that extension.
 
+## Review context
+
+Use the [shared context contract](../afk/SKILL.md#supported-review-context) to
+carry frozen acceptance scope and named prior findings with accessible proof.
+`--review-phase re-review --review-context <packet.json>` preserves the selected
+review target while supplying closure context; `--print-args` reports its digest.
+Use `--print-prompt` to inspect the supplied section before a provider call.
+Required history is validated and never silently truncated.
+
 ## Run it
 
 Locate `deepseek-gate.mjs` beside this file through

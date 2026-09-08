@@ -20,6 +20,16 @@ Codex calls are metered — keep invocations to a minimum. Batch minimal admitte
 once. Record every other disposition together at the end without editing a clean
 revision. Never spend a round-trip on a small or doc-only observation.
 
+## Review context
+
+Use the [shared context contract](../afk/SKILL.md#supported-review-context) to
+carry frozen acceptance scope and named prior findings with accessible proof.
+`--review-phase re-review --review-context <packet.json>` preserves the selected
+review target while supplying closure context; `--print-args` reports its digest.
+Native diff review cannot accept this input or a focus prompt; it reports the
+limitation without changing modes. Only `--design` delivers custom context on
+stdin and supports `--print-prompt`. Keep native diff history triage in the driver.
+
 ## Run it
 
 The bundled helper `codex-gate.mjs` sits beside this SKILL.md. Locate its

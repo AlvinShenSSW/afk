@@ -69,6 +69,7 @@ import {
   buildDesignReviewPrompt, buildReviewPrompt,
 } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { loadReviewContext } from '../../lib/gate/review-context.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import {
   resolveCliBin, spawnCli, spawnViaShell, UNSAFE_SHELL_ARG,
@@ -95,6 +96,11 @@ const { emitSkip, emitError, emitVerifiedReview } = createProtocol({ label: 'KIM
     if (!valid.ok) emitError(`cannot review — ${valid.reason}`, 1);
   }
 }
+
+const reviewContext = loadReviewContext({
+  argv: process.argv.slice(2), target: parseTarget(process.argv.slice(2)),
+});
+if (reviewContext.error) emitError(`cannot review — ${reviewContext.error}`, 1);
 
 if (isGateDisabled('KIMI_REVIEW_GATE')) {
   emitSkip('Kimi gate disabled via KIMI_REVIEW_GATE.');
@@ -209,6 +215,8 @@ if (consoleEncoding.constrain) {
 // one is mangled — `feature/$&-fix` comes back with the slot re-inserted into
 // the brief, and `$$` (a routine temp-path idiom) collapses.
 for (const [slot, value] of operands) reviewPrompt = reviewPrompt.split(slot).join(value);
+// Insert proof after console normalization so its bytes remain evidence.
+reviewPrompt += `\n${reviewContext.section}`;
 
 if (printPromptOnly) {
   process.stdout.write(`${reviewPrompt}\n`);
@@ -289,6 +297,10 @@ const dialect = unavailable
 // Primary transport: the payload as one argv element, spawned WITHOUT a shell.
 const promptArgs = dialect.ok ? dialect.buildArgs(reviewPrompt) : null;
 const shimArgs = (path) => dialect.buildArgs(briefInstruction(path));
+// Doubling every UTF-16 operand covers Windows quoting expansion and fixed argv.
+const MAX_NATIVE_ARGV_CHARS = 30000;
+const nativeArgvBound = (args) => [kimi, ...args].reduce((sum, value) => sum + 2 * value.length + 3, 1);
+const nativeBrief = !forceShim && Boolean(promptArgs && nativeArgvBound(promptArgs) > MAX_NATIVE_ARGV_CHARS);
 // The prompt is elided wherever argv is shown: it is in the transcript, and a
 // review brief on stderr is noise.
 const shown = (args) => (args || []).map(
@@ -305,7 +317,7 @@ if (printArgsOnly) {
     // The invocation SHAPE is part of the contract, not an implementation
     // detail: each Windows failure below is silent, model-call-expensive to
     // discover, and looks like an unavailable reviewer. Keep it observable.
-    transport: forceShim ? 'brief-file' : 'argv',
+    transport: forceShim || nativeBrief ? 'brief-file' : 'argv',
     shell: forceShim,
     // Null, never a table: the argv is a function of the installed CLI, so a
     // dry run with nothing to probe must say so rather than print a shape no
@@ -314,7 +326,7 @@ if (printArgsOnly) {
     dialect: dialect.ok ? dialect.dialect : null,
     dialectSource: dialect.ok ? dialect.source : null,
     dialectReason: dialect.ok ? null : dialect.reason,
-    args: dialect.ok ? (forceShim ? shimArgs('<brief>') : promptArgs) : null,
+    args: dialect.ok ? (forceShim || nativeBrief ? shimArgs('<brief>') : promptArgs) : null,
     // The shim path's argv, with the brief's path standing in for the temp file
     // that only exists during the call. This CLI has no stdin transport at all,
     // so a payload that cannot ride argv has nowhere else to go but disk.
@@ -322,6 +334,8 @@ if (printArgsOnly) {
       ? { transport: 'brief-file', shell: true, args: shimArgs('<brief>') }
       : null,
     promptBytes: reviewPrompt.length,
+    reviewPhase: reviewContext.phase,
+    reviewContextDigest: reviewContext.digest,
     timeoutMs,
   }, null, 2)}\n`);
   process.exit(0);
@@ -376,40 +390,37 @@ const spawnOpts = {
 // directly, the prompt survives verbatim, non-ASCII included, and the ~8191-char
 // Windows command-line limit is not in reach (this gate sends instructions, and
 // lets Kimi fetch the diff itself).
-let sentArgs = promptArgs;
-// Forced, the seam SKIPS this spawn rather than running before it: leaving it in
-// bought two complete paid reviews and twice the documented bound, and silently
-// discarded the first one's outcome — including a verdict or a timeout.
-let res = forceShim
-  ? { error: { code: 'EINVAL' } }
-  : spawnSync(kimi, promptArgs, { ...spawnOpts, shell: false });
-
-// A Windows `.cmd`/`.bat` shim cannot be launched without a shell (EINVAL since
-// Node 18.20/20.12) — the one install shape where the payload must leave argv,
-// and the shape `npm i -g` produces, which resolveCliBin now makes reachable.
-// This CLI has NO stdin transport (`--input-format` does not exist), so the
-// brief goes to a private file and argv carries only flags and its quotable
-// path. Same shape design mode already uses for a document.
-//
 let briefPath = null;
-if (forceShim || (isWin && res.error && res.error.code === 'EINVAL')) {
-  briefPath = join(work, 'review-brief.md');
+const prepareBrief = () => {
+  if (briefPath) return briefPath;
+  const path = join(work, 'review-brief.md');
   try {
-    writeFileSync(briefPath, reviewPrompt, 'utf8');
+    writeFileSync(path, reviewPrompt, 'utf8');
   } catch (err) {
-    // This CLI has no other transport under a shell, so a brief that cannot be
-    // written is an unreviewable environment — reported, never a stack trace.
-    emitError(`cannot hand the review brief to kimi: ${err.message}. This install is a Windows script shim, whose only transport is a file reference; point TMP at a writable directory or use a native executable.`, 1);
+    emitError(`cannot hand the review brief to kimi: ${err.message}. Point TMP at a writable directory.`, 1);
   }
-  process.stderr.write(`[kimi-gate] ${forceShim ? 'shim transport forced (KIMI_GATE_FORCE_SHIM)' : 'script shim detected'}; brief on disk -> ${briefPath}\n`);
-  sentArgs = shimArgs(briefPath);
-  // The banner above described the primary argv; this path rewrote it.
-  process.stderr.write(`[kimi-gate] ${kimi} ${shown(sentArgs).join(' ')} (via shell)\n`);
-  try {
+  briefPath = path;
+  return path;
+};
+let sentArgs = nativeBrief ? shimArgs(prepareBrief()) : promptArgs;
+if (nativeBrief) {
+  if (nativeArgvBound(sentArgs) > MAX_NATIVE_ARGV_CHARS) emitError('native brief arguments exceed the command-line budget; shorten the temporary directory path', 1);
+  process.stderr.write(`[kimi-gate] native brief delivery (no shell) -> ${briefPath}\n`);
+}
+// A forced shim must not buy a native review before the shell review.
+let res;
+try {
+  res = forceShim
+    ? { error: { code: 'EINVAL' } }
+    : spawnSync(kimi, sentArgs, { ...spawnOpts, shell: false });
+  if (forceShim || (isWin && res.error && res.error.code === 'EINVAL')) {
+    sentArgs = shimArgs(prepareBrief());
+    process.stderr.write(`[kimi-gate] ${forceShim ? 'shim transport forced (KIMI_GATE_FORCE_SHIM)' : 'script shim detected'}; brief on disk -> ${briefPath}\n`);
+    process.stderr.write(`[kimi-gate] ${kimi} ${shown(sentArgs).join(' ')} (via shell)\n`);
     res = spawnViaShell(kimi, sentArgs, spawnOpts);
-  } finally {
-    // The brief carries the same content as the transcript beside it, but it
-    // exists only to be read during the call.
+  }
+} finally {
+  if (briefPath) {
     try { unlinkSync(briefPath); } catch { /* already gone */ }
   }
 }

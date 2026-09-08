@@ -38,6 +38,7 @@ import { isPinnedModelId, verifyReviewerIdentity } from '../../lib/gate/model-id
 import { resolveReviewSelection } from '../../lib/gate/model-select.mjs';
 import { buildDesignReviewPrompt, buildReviewPrompt } from '../../lib/gate/prompt.mjs';
 import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { loadReviewContext } from '../../lib/gate/review-context.mjs';
 import { gateWorkDir } from '../../lib/gate/workdir.mjs';
 import { resolveCliBin, spawnViaShell, UNSAFE_SHELL_ARG } from '../../lib/gate/spawn.mjs';
 import { collectDiff, parseTarget, readDesign, validateTarget } from '../../lib/gate/target.mjs';
@@ -64,6 +65,11 @@ try {
     if (!valid.ok) emitError(`cannot review — ${valid.reason}`, 1);
   }
 }
+
+const reviewContext = loadReviewContext({
+  argv: process.argv.slice(2), target: parseTarget(process.argv.slice(2)),
+});
+if (reviewContext.error) emitError(`cannot review — ${reviewContext.error}`, 1);
 
 if (isGateDisabled('CLAUDE_REVIEW_GATE')) {
   emitSkip('Claude gate disabled via CLAUDE_REVIEW_GATE.');
@@ -201,6 +207,8 @@ if (isDesign) {
   prompt = buildReviewPrompt({ scope: target.label, context });
 }
 
+prompt += `\n${reviewContext.section}`;
+
 // ── Invocation ──────────────────────────────────────────────────────────────
 // A full model ID, never an alias: `--model opus` resolved to claude-opus-4-8
 // while the pipeline required a current generation, and nothing in the run said
@@ -267,6 +275,8 @@ if (printArgsOnly) {
     changedFiles,
     promptBytes: prompt.length,
     promptOnStdin: true,
+    reviewPhase: reviewContext.phase,
+    reviewContextDigest: reviewContext.digest,
     timeoutMs,
     args,
   }, null, 2)}\n`);
