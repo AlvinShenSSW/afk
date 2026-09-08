@@ -20,6 +20,14 @@ Metered like any external gate — keep invocations to a minimum. Batch minimal 
 re-run once. Record every other disposition together at the end without editing
 a clean revision.
 
+## Review receipts
+
+To retain canonical inputs and explicit outcomes, use the optional
+`--review-receipt <request.json>` flag under the
+[shared receipt contract](../afk/SKILL.md#canonical-review-receipts). Preserve
+unknown identity explicitly; skipped or incomplete attempts and previews never
+supply approval.
+
 ## Review context
 
 Use the [shared context contract](../afk/SKILL.md#supported-review-context) to

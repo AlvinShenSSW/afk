@@ -14,14 +14,18 @@
 // endpoint guessing can spend a metered call on the wrong transport.
 
 import { runOpenAiSnapshotGate } from '../../lib/gate/openai-snapshot-gate.mjs';
-import { createProtocol } from '../../lib/gate/protocol.mjs';
+import { createReceiptProtocol } from '../../lib/gate/review-receipt.mjs';
+import { readCredential } from '../../lib/gate/credential.mjs';
 import { makeAnthropicProvider } from '../../lib/http/anthropic-provider.mjs';
 import { makeOpenAiProvider } from '../../lib/http/openai-provider.mjs';
 
 const modelDefault = 'glm-5.3';
+const keyEnvs = ['ZAI_API_KEY', 'GLM_API_KEY'];
+const receiptContext = createReceiptProtocol({ label: 'GLM', slug: 'glm-gate', family: 'glm',
+  argv: process.argv.slice(2), credential: readCredential(keyEnvs) });
 const protocolName = String(process.env.GLM_REVIEW_PROTOCOL ?? '').trim().toLowerCase() || 'openai';
 if (!['openai', 'anthropic'].includes(protocolName)) {
-  createProtocol({ label: 'GLM', slug: 'glm-gate' }).emitError(
+  receiptContext.protocol.emitError(
     'cannot review — GLM_REVIEW_PROTOCOL must be "openai" or "anthropic".',
     1,
   );
@@ -60,7 +64,7 @@ await runOpenAiSnapshotGate({
   label: 'GLM',
   slug: 'glm-gate',
   disableEnv: 'GLM_REVIEW_GATE',
-  keyEnvs: ['ZAI_API_KEY', 'GLM_API_KEY'],
+  keyEnvs,
   modelEnv: 'GLM_REVIEW_MODEL',
   modelDefault,
   baseUrlEnv: 'GLM_REVIEW_BASE_URL',
@@ -71,4 +75,4 @@ await runOpenAiSnapshotGate({
   maxOutputDefault: 65536,
   excludeGlobsEnv: 'GLM_REVIEW_EXCLUDE_GLOBS',
   provider,
-});
+}, { receiptContext });
