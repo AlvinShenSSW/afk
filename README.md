@@ -18,6 +18,23 @@ invariants, reports, and run ledgers live in the consuming repository's
 gitignored `.afk/` directory — nothing about your project is ever written back
 into the plugin.
 
+## What's new in 1.0.0
+
+[Version 1.0.0](https://github.com/AlvinShenSSW/afk/releases/tag/v1.0.0) makes
+review evidence explicit so a resumed run can distinguish verified closure from
+missing or stale information:
+
+- [Review context](#carry-findings-into-re-review) carries the frozen scope,
+  named findings, dispositions, and current-revision proof to supported reviewers.
+- [Review receipts](#check-receipts-before-reuse) retain the inputs and outcomes
+  needed to check whether earlier review evidence still matches the candidate.
+- [Behavior evaluations](#behavior-evaluations) expose unnecessary repairs,
+  missed defects, and unsafe readiness through repeatable, bounded scenarios.
+
+The two-cycle repair allowance and independent-review rules from 0.9.0 remain
+unchanged. The new helpers support those rules; they do not add an orchestration
+runtime or establish that agents obey them.
+
 ## Why
 
 Left alone, an agent grades its own homework. The three failure modes this
@@ -65,7 +82,7 @@ in the pipeline is plain git.
 | `afk-internal-review` | Performs the internal production-readiness review. |
 | `afk-codex-review` | Runs the default Codex outer role. |
 | `afk-claude-review` | Runs a Claude fallback role; declines to review Claude's own work. |
-| `afk-kimi-review` | Runs the default Kimi final role. |
+| `afk-kimi-review` | Runs Kimi as the final role when selected. |
 | `afk-glm-review` | Runs a GLM fallback role with bounded diff context. |
 | `afk-deepseek-review` | Runs an optional DeepSeek V4 Pro snapshot-backed role. |
 | `afk-mimo-review` | Runs an optional MiMo V2.5 Pro Token Plan snapshot-backed role. |
@@ -158,6 +175,81 @@ Each cycle accounts for closed and introduced blockers, acceptance coverage and
 causal-boundary expansion. Exhaustion finishes current validation, leaves any
 remaining repair outstanding and continues independent queued work.
 
+## Review evidence
+
+### Carry findings into re-review
+
+To avoid asking each reviewer to reconstruct prior decisions, supported gate
+helpers accept `--review-context <packet.json>` and
+`--review-phase initial|re-review`. A re-review packet binds the original scope,
+prior revision, stable finding IDs, dispositions, and proof to the current target.
+The complete review target stays intact; the repair range is additional context.
+Missing, stale, inaccessible, recognized sensitive, or oversized evidence is an
+error before the provider call, rather than silently shortened history.
+
+Claude, Kimi, GLM, DeepSeek, MiMo, and Codex **design** review accept this channel.
+Native Codex **diff** review does not: the driver retains history and applies
+triage without claiming that custom context reached that reviewer. Packets are
+claims for a reviewer to verify, not proof that the stated checks ran.
+
+Keep packets and sanitized proof in the run's ignored `.afk/` directory. The
+[context guide](skills/afk/SKILL.md#supported-review-context) explains target
+binding, previews, provider limits, and the linked JSON schema.
+
+### Check receipts before reuse
+
+Opt-in `--review-receipt <request.json>` records preserve canonical inputs,
+context digests, requested and available observed identity, sanitized review
+text, and terminal outcomes. Each attempt has its own directory under
+`.afk/runs/<run-id>/receipts/`; retries use new IDs so helper publication does not
+overwrite earlier records. Without the flag, no receipts are created.
+
+To check saved evidence against a proposed revision and role profile, use
+`check-review-receipts.mjs` with `--candidate <candidate.json>` and one
+`--receipt <attempt-directory>` per required role. Changes to the target,
+selection, or expected context invalidate affected evidence. Missing terminals,
+damaged artifacts, skips, errors, and previews cannot supply approval evidence.
+
+An exit code of zero means complete, consistent evidence, which can include a
+negative review. Inspect `allRequiredApproved` separately; false or unknown is
+not approval. Requested identity never substitutes for an unobserved model, and
+legacy runs without receipts stay unknown. These are local, unsigned records,
+not provider attestation or permission to merge.
+
+The [receipt guide](skills/afk/SKILL.md#canonical-review-receipts) provides the
+request/candidate schemas, artifact layout, checker invocation, and native Codex
+verdict and Codex/Kimi identity limitations. Existing run ledgers still carry
+finding dispositions, repair allowances, and merge decisions.
+
+## Behavior evaluations
+
+The manual evaluator makes convergence claims testable without adding paid
+trials to ordinary CI. Eight fixtures cover repeated refuted findings,
+minor-only reviews, new blockers during closure, repair regressions, exhausted
+budget resumes, missing/stale review context, obsolete approvals, and unavailable
+reviewers. Deterministic outcome checks and human semantic adjudication remain
+separate; synthetic reviewer observations are not external-model reviews.
+
+Run `node "<plugin-root>/scripts/evaluate-agent-behavior.mjs" --help` to inspect
+the interface without a provider call. Resolve `<plugin-root>` to the installed
+plugin directory or repository checkout. Actual prerequisite and trial commands
+require `--execute`; the operator must verify the host's isolation and tool
+surface before qualifying a run. The frozen pilot limits host launches, elapsed
+time, and output; these are not hard dollar, token, or internal model-call caps.
+Cleanup observations cover the owned process group, not proof that escaped
+descendants are absent.
+
+The [initial pilot report](docs/evaluations/issue-98-pilot.md) records **29 passing
+deterministic evaluator tests, three real prerequisite invocations, and 0 of 14
+behavior trials covered**. Tool-surface isolation could not be qualified, and
+the alternate-model prerequisite timed out. Behavioral completion, defect
+recognition, and excess-repair rates therefore remain unobserved.
+[Issue #98](https://github.com/AlvinShenSSW/afk/issues/98) tracks the outstanding
+empirical acceptance; merging the evaluator did not close that gap. The
+[design](docs/designs/specs/issue-98-behavior-evaluations.md) defines the scenarios,
+comparison matrix, limits, and distinction between tested implementation and
+later report-only commits.
+
 ## What this can and cannot enforce
 
 These skills are markdown read by a host agent. **There is no afk runtime.**
@@ -185,10 +277,11 @@ nonzero `ERROR` without an accepted review body. Codex retains its native
 nonempty review-output contract. This checks output format, not review quality
 or permission to merge.
 
-Real non-bypassability needs a control point outside the agent's authority. This
-repository puts its own there: branch protection plus a required
-`require-owner-approval` check (see [docs/branch-protection.md](docs/branch-protection.md)).
-Do the same in yours.
+Real non-bypassability needs a control point outside the agent's authority.
+This repository supplies a `require-owner-approval` workflow; its presence alone
+does not configure branch protection or make it required. Configure the host's
+required checks and branch rules using the
+[branch-protection guide](docs/branch-protection.md).
 
 ## Installation
 
@@ -416,7 +509,7 @@ itself.
 
 ```text
 skills/       Source skills shipped by the plugin.
-scripts/      Manifest sync, lint, link, provenance, and version checks.
+scripts/      Validation, manifest sync, receipt checking, and manual behavior evaluation.
 lib/          Shared runtime imported by bundled scripts and hooks.
 hooks/        Plugin-level hooks (SessionStart auto-resume, update notice).
 templates/    Starter `.afk/` files for consuming repositories.
