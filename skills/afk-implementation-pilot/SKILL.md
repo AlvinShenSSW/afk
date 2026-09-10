@@ -105,7 +105,13 @@ authorized actions.
 
 ### 7 — CI watch (only when asked to push / open a PR)
 
-If a push or PR is authorised, the job is not done when `git push` returns. Ask
+With `remote-ci: off`, skip this stage and report that remote CI was not read
+or requested; local checks and review remain required. Follow the driver's local
+completion/publication rule (`../afk/SKILL.md`, "Remote checks").
+
+For a Draft PR in enabled modes, defer CI waiting to the driver after reviews
+and the final local suite. Do not mark Ready here or treat a skipped job as green.
+For an already non-Draft PR, the job is not done when `git push` returns. Ask
 the forge which checks it required of the pushed revision (`../afk/SKILL.md`,
 "Remote checks", for what counts as required) and stay engaged while any is
 failing: read its real output, confirm each finding against the cited code, fix
