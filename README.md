@@ -98,11 +98,13 @@ scope
 -> targeted tests
 -> implementation
 -> self-review
--> pull request (draft) + required checks resolved
+-> pull request (draft; omitted in local mode)
 -> internal review
 -> Codex external role (or independent fallback; single by default)
 -> Kimi final external role (only when a double profile is selected)
 -> full final test suite on the final commit
+-> local completion if CI is off; otherwise Ready for review to trigger CI
+-> actual current-revision validation success and required checks resolved
 -> owner approval or configured merge policy
 ```
 
@@ -351,7 +353,7 @@ priority: codex > claude > kimi > glm
 # github-repository:     # [HOST/]OWNER/REPO, likewise
 
 ## checks
-# remote-ci:             # detect (default) · expected · absent
+# remote-ci:             # detect (default) · expected · absent · off
 
 ## merge
 policy: leave-open
@@ -431,15 +433,42 @@ it from and each CLI would otherwise take one from the checkout or its own
 environment. A forge that cannot be served is named where it is needed rather
 than attempted.
 
+### Remote CI and local mode
+
+By default, finish local tests and reviews while the PR is Draft, then mark it
+Ready for review to start CI. That forge transition is not AFK merge readiness:
+wait for actual validation success on the current revision. A Draft-stage skipped
+job is not test evidence, even if the forge displays a successful check. This
+repository filters its validation job for Draft PRs and still validates later
+non-Draft updates, main pushes, and manual runs. Consuming repositories need
+compatible workflow triggers and Draft filtering to get the same CI savings.
+
+To finish AFK locally, set this in the consuming project's `.afk/config.md`:
+
+```markdown
+## checks
+remote-ci: off
+```
+
+`off` retains local test/lint/build checks, internal review, and every configured
+external review role. AFK completes the local branch, reports `LOCAL-COMPLETE`,
+and ends the queue without remote CI polling or automatic push, PR creation,
+Ready transition, or merge. Existing PRs remain as found. This takes precedence
+over automatic merge policy and does not close issues. It does not disable
+repository workflows, cancel existing runs, or make external models offline;
+explicitly publishing work can still trigger CI. Changing back to an enabled
+mode continues publication and CI from the retained revision and review evidence.
+
 ### What an empty check reading means
 
-`remote-ci` says what to do when the forge names no required check for a
+For enabled modes, `remote-ci` says what to do when the forge names no required check for a
 revision, or cannot be asked at all. `detect` (the default) settles it once the
 run's re-read window closes; `absent` settles it at once, for a repository the
 operator knows runs none; `expected` never settles it, for one that must always
 report. It adds no required check of its own; what counts as required is the
 forge's answer — a forge that draws no required/advisory line has every check it
-reports read as required.
+reports read as required. A known validation workflow deferred during Draft
+must actually run even if advisory; waiting for it is not an empty reading.
 
 Where no required check constrained a revision, the ordered roles and the local
 suite are the whole of what the run applied, and both are evaluation the driver
@@ -449,6 +478,8 @@ that authority, so every such revision is named in the end-of-run report.
 ## Merge policies
 
 Configured in `.afk/config.md`:
+
+With `remote-ci: off`, all three policies stop at local completion. Otherwise:
 
 - `leave-open` prepares the PR and leaves it for operator approval.
 - `merge-to-unblock` merges only when needed to unblock the scoped queue.

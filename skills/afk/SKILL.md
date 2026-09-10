@@ -36,7 +36,9 @@ self-contained spec.
 5. **Confirm the merge policy** (from `.afk/config.md`: `leave-open` default /
    `merge-to-unblock` / `merge-when-green`) and any constraints (branches not to
    touch, naming, safe-direction-only, deploy is the operator's job, summary
-   language, explicit gate choice).
+   language, explicit gate choice). Resolve `remote-ci` ("Remote checks") now,
+   record its value and source in the ledger, and reuse it on resume unless the
+   operator changes it. Announce `off` as local completion before remote writes.
 6. **Resolve the review-cycle allowance** ("Review-cycle allowance") and record
    its source before reviewing any issue.
 7. **Restate the scope and the effective gate profile with its source**
@@ -49,11 +51,12 @@ self-contained spec.
 
 ## Per issue — the full waterfall (one at a time)
 
-**Every issue runs the full waterfall — no exceptions.** Each in-scope PR passes
+**Every issue runs the full review waterfall.** With `remote-ci: off`, the
+endpoint is local completion ("Remote checks"); otherwise each in-scope PR passes
 internal review AND the external gate(s) AND lands green (merged, or under
 `leave-open` declared ready only after internal review + gate + full test
 suite + the revision's check reading). A design doc, a pushed branch, or a PR
-not yet ready is a mid-waterfall
+not yet AFK merge-ready is a mid-waterfall
 checkpoint — never a stopping point and never an operator handoff. "Next:
 operator runs the review" is a bug, not an end state.
 
@@ -62,18 +65,21 @@ the shared review-cycle allowance governs repairs) →
 design-stage external gate (opt-in pilot, default off; one role per evaluation —
 "Design-stage external gate" below) → tests
 first (targeted) → implementation → adversarial sweep →
-commit → push early → open the PR as not-ready → read the revision's checks
-(fix a failure now) → **internal review** (`afk-internal-review`) → triage
+commit → push early and open a Draft PR (unless `remote-ci: off`) →
+**internal review** (`afk-internal-review`) → triage
 every finding and
 batch-fix admitted P1s with only inseparable corrections →
 **external gate(s)** (the loop, closure, and termination — rule below) →
 **full test suite once** (the project's test command from `.afk/config.md`) on
-the final commit → declare it ready → merge per policy. The design doc matters more
+the final commit → local completion if `off`, otherwise mark Ready for review
+to start CI → resolve remote checks → declare AFK merge-ready → merge per policy. The design doc matters more
 than the code.
 
 - Scale design/debate depth to the work: mechanical, well-specified work gets a
   brief design and one debate round; design-heavy work gets the full treatment.
   Never scale down tests or gates.
+- **Local completion** requires all configured independent roles and the final local suite,
+  with the same finding dispositions as the review waterfall. It is not CI approval.
 - **Green** = the full test suite green on the final commit, and that commit's
   check reading resolved ("Remote checks"). A green status on the PR alone is
   not green. Never declare it ready before the suite is green.
@@ -144,7 +150,8 @@ under the default. If further repair is needed, leave the PR not ready with
 `OUTSTANDING`, unresolved findings, attempts and a suggested next action; continue
 independent queued work. Never auto-merge or downgrade a verified blocker to fit
 the allowance. There is no automatic approval request loop. Readiness still
-requires valid current-revision reviews, the final full suite and remote checks.
+requires valid current-revision reviews, the final full suite and, unless `off`,
+remote checks. Changing CI mode does not consume or reset the review-cycle allowance.
 Any checkpoint repair uses the same allowance; exhaustion cannot grant an extra
 cycle. These are level 3 workflow rules, not runtime enforcement.
 
@@ -659,20 +666,46 @@ change or sequence restart never resets it by itself.
 
 After final is clean, run the full native suite once on the same commit. A test
 failure or content fix restarts ordered roles; a green suite with unchanged
-stamps permits ready once the revision's check reading resolves.
+stamps permits the local endpoint when `off`. Otherwise mark the PR Ready for
+review to trigger CI, then read remote checks before declaring AFK merge-ready.
+Forge Ready for review (GitHub) does not mean AFK merge-ready. While CI is pending,
+keep that distinction in the ledger and report; do not toggle Draft/Ready to
+retry checks. A subsequent content fix follows the existing repair allowance
+and invalidates affected review stamps; CI must cover the new revision.
 
-**Remote checks.** Before ready, ask the forge which checks it required of the
+**Remote checks.** Resolve `## checks` → `remote-ci` in `.afk/config.md`:
+`detect` (default), `expected`, `absent`, or `off`.
+
+`off` skips remote check reads, polling, and dispatch. Complete implementation,
+local checks, internal review and the configured external roles against the local
+branch. To avoid triggering CI, do not automatically push, open a PR, mark it ready, or merge;
+leave any existing PR as found. Explicit publication instructions may authorize
+those remote actions, but first explain that they can trigger repository CI.
+Do not bypass forge requirements. After clean current-revision reviews and the
+full local suite, record `LOCAL-COMPLETE`, the branch/commit and `CI: not run by
+AFK (remote-ci: off)`; this is a successful queue endpoint, not `OUTSTANDING` or a
+reason to wait. An all-local-complete queue sets run `state: complete`. This mode
+does not disable repository workflows or cancel existing runs; external review
+models still run. Do not close a tracked issue merely because its branch is
+local-complete. Re-enabling CI resumes from the retained revision and evidence,
+then performs the normal publication/check stage without resetting repair cycles.
+If the local run is already complete, create a new run referencing that evidence
+and its consumed allowance; never reopen or overwrite a completed ledger.
+
+For an existing non-Draft PR, use its latest current-revision run without toggling
+Draft state. For enabled modes, after the Ready transition or existing non-Draft
+publication, ask the forge which checks it required of the
 final revision and record its answer as given; where a forge draws no
 required/advisory distinction, every check it reports is required here. Classify
 by what the answer names, never by how the lookup exited — a status code is a
 forge's own vocabulary, and a reading nobody took resolves nothing:
 
-- the answer names at least one required check and every one of them passed →
-  **resolved**;
+- the answer names at least one required check and every one of them passed,
+  and any validation deferred during Draft has actually succeeded → **resolved**;
 - it names one that did not pass, whether it ended without passing or has not
   ended → **unresolved**: fix a failure now, else
-  re-read until the answer changes or the window below closes, then leave the PR
-  not ready with `OUTSTANDING`, take up other queued work, and re-read on a
+  re-read until the answer changes or the window below closes, then leave AFK merge readiness
+  unresolved with `OUTSTANDING`, take up other queued work, and re-read on a
   later tick;
 - it names no required check, or gives no answer at all — no adapter for that
   host, a CLI failure, a rate limit — → **unresolved** (these are two different
@@ -680,18 +713,29 @@ forge's own vocabulary, and a reading nobody took resolves nothing:
   neither is ever recorded as the other) until `## checks` →
   `remote-ci` in `.afk/config.md` settles it: `absent` settles it at once,
   `detect` (default) once the window closes, `expected` never; blank or absent
-  is `detect`, as every key here resolves, while a non-empty value outside those
-  three is a config error — report it and read it as `expected`, since a
+  is `detect`, as every key here resolves, while a non-empty value outside these four is a config error — report it and read it as `expected`, since a
   misspelling must not settle a reading by accident. Unsettled, it takes the
   same exit as a failing check: `OUTSTANDING`, other queued work, and a re-read
   on a later tick.
 
+For validation deferred during Draft, inspect the run triggered by the Ready
+transition (or a later run for the current revision), including when the forge treats it as advisory.
+Require the validation job's actual completed `success`, not a Draft-stage `skipped` result,
+a `neutral` conclusion, an unrelated successful job, or an aggregate green badge.
+Bind the run ID and head revision (and test merge revision where applicable) to
+the candidate; an older run on the same head before the transition is insufficient.
+An expected validation run that has not appeared or executed is unresolved, not
+an empty reading that `absent` or `detect` can settle. An executed validation
+failure takes the same repair path as a failed required check. Use the same bounded wait
+and `OUTSTANDING` exit above. Optional jobs outside that validation requirement
+may retain their forge-defined skip semantics.
+
 Record with the answer which of those it was, and stamp the reading's first
 attempt against that revision's commit — the window is 30 minutes of wall clock
 from that stamp, so a resumed tick can tell a spent window from a fresh one, and
-a new commit starts its own. `remote-ci`
-governs only an empty or unanswered reading, and adds no requirement of its own;
-what counts as required is the forge's answer, read as above. This is the one step that may leave a PR not ready over
+a new commit starts its own. For `detect`, `expected`, and `absent`, the mode governs only an empty or unanswered reading
+and adds no requirement of its own; the deferred validation rule above still applies.
+What counts as required is the forge's answer, read as above. This is the one step that may leave AFK merge readiness unresolved over
 a check: a check read earlier never ends an issue's waterfall.
 
 A required check is one of the few control points outside this agent's authority
@@ -701,7 +745,8 @@ both are evaluation the driver performs on itself. Anything else holding the
 merge — branch protection, a host hook, the owner's review — sits outside this
 run and is not read here.
 
-**Merge bar.** An open admitted P1, an `UNTRIAGED` or `Contested` finding, an
+**Merge bar.** `off` grants local completion only, never automatic merge authority.
+An open admitted P1, an `UNTRIAGED` or `Contested` finding, an
 unresolved check reading ("Remote checks"), or an unmet frozen-contract item
 bars merge. A deferred
 structural P2 does not block the role stamp or ready state, but it bars auto-merge
@@ -818,7 +863,8 @@ would leave a finished run forever resumable and its scope never free again.
   your run directory, otherwise leave it untouched. Never adopt one silently.
 - **State checks** (scoped, not global): view each scoped issue; list PRs for
   your branches; check the current branch and status; resume the first
-  unfinished step. One branch per issue off the default branch; push early.
+  unfinished step. One branch per issue off the default branch; push early unless
+  `remote-ci: off` selects local completion.
 - **Auto-pause:** use the External gate's one material-progress definition above.
   Commits, pushes, and notes outside that definition are activity, not progress. Two consecutive
   working ticks with none → run the automatic root-cause checkpoint. Count a
@@ -830,7 +876,8 @@ would leave a finished run forever resumable and its scope never free again.
 
 ## End-of-run report
 
-Every PR with its state (merged / open-awaiting-review), every notable decision,
+Every branch/PR with its state (merged / open-awaiting-review / awaiting-CI /
+LOCAL-COMPLETE), the effective CI mode and any explicit off-mode publication, every notable decision,
 each external-gate outcome (including any `SKIPPED`), every revision whose
 reading named no required check or never answered — which of the two it was, and
 that the ordered roles and the local suite were then the whole of what this run

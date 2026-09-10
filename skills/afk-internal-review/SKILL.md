@@ -23,6 +23,10 @@ checks the forge reports for the revision; the surrounding code of
 changed functions (not only the diff lines); existing tests and coverage; new
 dependencies; config, migrations, and flags; recent related merges.
 
+With `remote-ci: off`, omit the forge check read and review the local branch;
+the driver owns the local completion endpoint. A Draft-stage skip does not
+prevent review and supplies no CI approval.
+
 **Checks before depth:** a failing required check means the diff will change —
 send the branch back to fix it rather than reading it deeply, unless the
 operator asks to review-with-caveat. A check still unfinished, none reported,

@@ -17,11 +17,9 @@ const pilot = read('../skills/afk-implementation-pilot/SKILL.md');
 const internal = read('../skills/afk-internal-review/SKILL.md');
 const template = read('../templates/afk-config.example.md');
 
-test('the checks are always read; only an empty reading is configurable', () => {
-  // Making the read itself configurable would let a stale config hide a check
-  // that a repository added after the key was written.
+test('enabled modes still read checks; off has an explicit local endpoint', () => {
   assert.match(afk, /ask the forge which checks it required of the\s+final revision/);
-  assert.match(afk, /`remote-ci`\s+governs only an empty or unanswered reading/);
+  assert.match(afk, /For `detect`, `expected`, and `absent`, the mode governs only an empty or unanswered reading/);
   assert.match(afk, /adds no requirement of its own/);
 });
 
@@ -62,7 +60,7 @@ test('every unresolved reading has the same named exit', () => {
   // one state with no next step at all.
   assert.match(afk, /`absent` settles it at once,\s+`detect` \(default\) once the window closes, `expected` never/);
   assert.match(afk, /blank or absent\s+is `detect`/);
-  assert.match(afk, /a non-empty value outside those\s+three is a config error/);
+  assert.match(afk, /a non-empty value outside these four is a config error/);
   // Blank once read as `expected`, so a bootstrapped repo could never be ready.
   assert.doesNotMatch(afk, /blank included, is a config error/);
   assert.match(afk, /Unsettled, it takes the\s+same exit as a failing check/);
@@ -78,7 +76,7 @@ test('the wait is bounded from a start stamped against the commit', () => {
 });
 
 test('a check never ends the waterfall anywhere but at its own step', () => {
-  assert.match(afk, /This is the one step that may leave a PR not ready over\s+a check/);
+  assert.match(afk, /This is the one step that may leave AFK merge readiness unresolved over\s+a check/);
   assert.match(afk, /a check read earlier never ends an issue's waterfall/);
 });
 
@@ -124,7 +122,7 @@ test('the pilot and internal review defer to the driver rather than restating it
   assert.doesNotMatch(pilot, /deterministic CI/);
 });
 
-test('a value outside the three is a config error, not a settled reading', () => {
+test('an invalid mode is a config error, not a settled reading', () => {
   // A misspelling that fell through to no branch left an empty reading with no
   // resolution at all, and one that fell back to `detect` would settle it.
   assert.match(afk, /blank or absent\n  is `detect`, as every key here resolves/);
@@ -146,4 +144,23 @@ test('the config key ships unset so a bootstrapped repo chooses nothing', () => 
   assert.doesNotMatch(template, /^remote-ci:/m);
   // The template once contradicted the driver's conservative fallback.
   assert.doesNotMatch(template, /makes no check required/);
+});
+
+test('local completion preserves reviews without remote work or automatic publication', () => {
+  assert.match(afk, /`off` skips remote check reads, polling, and dispatch/);
+  assert.match(afk, /do not automatically push, open a PR, mark it ready, or merge/);
+  assert.match(afk, /`LOCAL-COMPLETE`/);
+  assert.match(afk, /all configured independent roles and the final local suite/);
+  assert.match(afk, /does not disable repository workflows or cancel existing runs/);
+  assert.match(pilot, /With `remote-ci: off`, skip this stage/);
+  assert.match(internal, /With `remote-ci: off`, omit the forge check read/);
+  assert.match(template, /off/);
+});
+
+test('forge readiness precedes remote validation and never proves AFK merge readiness', () => {
+  assert.match(afk, /Ready for review.*does not mean AFK merge-ready/);
+  assert.match(afk, /Draft-stage `skipped` result/);
+  assert.match(afk, /actual completed `success`/);
+  assert.match(afk, /including when the forge treats it as advisory/);
+  assert.match(afk, /does not consume or reset the review-cycle allowance/);
 });
