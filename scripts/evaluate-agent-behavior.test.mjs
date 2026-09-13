@@ -1,3 +1,4 @@
+import { EVALUATOR_RUNTIME_FILES } from '../lib/evaluation/runtime.mjs';
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -319,14 +320,15 @@ test('issue112 events preserve command output, opaque actions, unknown model and
   assert.equal(directionRunner.parseDirectionHostEvents(raw+'\nnull').eventsComplete,false);
 });
 
-async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false}={}) {
+async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false}={}) {
   const {execFileSync}=await import('node:child_process'),{copyFileSync}=await import('node:fs'),{digestBytes}=await import('../lib/gate/review-receipt.mjs');
   const source=join(root,'source');mkdirSync(source);fixtureGit(source,['init','--template=','-q','-b','synthetic']);
-  const files=execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&(supportVisible(p)||['scripts/evaluate-agent-behavior.mjs','lib/evaluation/scenarios.mjs'].includes(p)));
+  const files=[...new Set([...execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&supportVisible(p)),...EVALUATOR_RUNTIME_FILES])];
   for(const p of files){mkdirSync(join(source,p,'..'),{recursive:true});copyFileSync(join(repo,p),join(source,p));}
   const modulePath=join(source,'scripts/evaluate-agent-behavior.mjs');
   if(controlledHost){const original="const HOST_OBSERVATION_READER = () => ({status:'unavailable',reason:'unsupported-current-host-inventory'});",replacement="const HOST_OBSERVATION_READER = (directory,slot) => {const path='artifacts/'+slot.id+'/controlled-inventory.json';return {status:'observed',reference:{path,digest:digestBytes(readFixtureFile(directory,join(directory,path)))}};};";
     const text=readFileSync(modulePath,'utf8');assert.equal(text.split(original).length,2);writeFileSync(modulePath,text.replace(original,replacement));}
+  if(catalogFixture){let text=readFileSync(modulePath,'utf8');const marker="if(trial.scenarioId==='D6')await seedExhaustedDirection";assert.equal(text.split(marker).length,2);text=text.replace('import { verifyNativeCatalog }','import { provisionNativeCatalog, verifyNativeCatalog }').replace(marker,"fixture.nativeCatalog=provisionNativeCatalog({workspace:fixture.directory,support});"+marker);writeFileSync(modulePath,text);}
   const audit=await import(new URL('file://'+join(source,'lib/direction/audit.mjs'))),profile=audit.profileFingerprint();
   const d='a'.repeat(64),qualified={version:1,status:'qualified',profileDigest:profile.digest,proof:{profile:profile.profile,request:{digest:d,profileDigest:profile.digest,systemDigest:profile.profile.promptDigest,messageRoles:['system','user'],toolsPresent:false},response:{artifactDigest:d,wireDigest:d,envelope:{model:audit.CANDIDATE.model,finishReason:'stop',toolCallsPresent:false}},result:{digest:d,packetDigest:d,phase:'endpoint',outcome:'COMPLETE',coverageEvidenceDigest:d},review:{reportPath:'docs/evaluations/synthetic-owned-test.md',reportDigest:d,executionRevision:'a'.repeat(40),evidenceSetDigest:d}}};
   const {canonicalBytes}=await import('../lib/gate/review-receipt.mjs');writeFileSync(join(source,'lib/direction/qualification.json'),canonicalBytes(qualificationCondition==='qualified'?qualified:{version:1,status:'pending',profileDigest:profile.digest,proof:null}));
@@ -627,4 +629,23 @@ for(const failure of ['actor','final','post-audit','seed'])test(`S112-5 retained
   }
   const entry=assertRetainedInspection(trialRoot,path,'invalid-utf8');assert.deepEqual(Buffer.from(entry.stdoutBase64,'base64'),Buffer.from([0xff]));assert.equal(Buffer.from(entry.stderrBase64,'base64').toString(),'retained-'+failure);assert.equal(entry.stdout,null);assert.equal(entry.code,0);
   assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,failure==='seed'?2:3);
+}));
+
+for(const path of ['lib/evaluation/host.mjs','lib/gate/protocol.mjs'])test(`observed evaluator rejects changed executed dependency ${path}`,()=>directionTemporary(async root=>{
+  const f=await prepared112(root),file=join(f.source,path);writeFileSync(file,readFileSync(file,'utf8')+'\n');
+  assert.throws(()=>f.runner.aggregateEvaluation(f.directory),/manifest inputs changed/);
+  const handoff={...f.handoff,inputs:f.runner.directionInputDigests()};writeFileSync(f.input,JSON.stringify(handoff));
+  assert.throws(()=>f.runner.createEvaluation({repository:f.source,directory:join(root,'other'),candidate:f.revision,baseline:f.revision,campaign:'issue112',executionHandoff:f.input}),/runner differs from evaluator revision/);
+}));
+
+for(const scenario of ['D6','D9'])test(`native catalog survives original ${scenario} capture and resume consumers`,()=>directionTemporary(async root=>{
+  const id=`M-${scenario}-C-ASTRA-R1`,f=await prepared112(root,{main:[id],catalogFixture:true});
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1']);
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1','P112-A2']);
+  await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
+  const trial=join(f.directory,'trials',id),fixture=JSON.parse(readFileSync(join(trial,'fixture.json'))),observed=JSON.parse(readFileSync(join(trial,'observed.json')));
+  assert.ok(fixture.nativeCatalog.digest);assert.equal(observed.observationError,null);
+  const captures=readdirSync(join(trial,'captures')).filter(name=>{try{return readFileSync(join(trial,'captures',name,'source.json')).length>0;}catch{return false;}});
+  assert.ok(captures.length>=5);for(const name of captures)assert.equal(JSON.parse(readFileSync(join(trial,'captures',name,'source.json'))).catalogDigest,fixture.nativeCatalog.digest);
+  assert.equal(observed.invocations.length,2);assert.equal(observed.invocations[1].resumedFrom,observed.invocations[0].sessionId);
 }));

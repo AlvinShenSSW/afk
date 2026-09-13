@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -14,15 +14,15 @@ import { DIRECTION_VERSION, DIRECTION_LIMITS, DIRECTION_TASK, DIRECTION_SCENARIO
 import { ACCEPTANCE, DECISION_SCHEMA, FIXTURE_VERSION, LIMITS, SCENARIOS, TASK, TRIALS,
   advanceStaleFixture, assertFixtureDirectory, readFixtureFile, createFixture, fixtureEnv, fixtureGit, scoreTrial, snapshotFixture } from '../lib/evaluation/scenarios.mjs';
 
+import { EVALUATION_PATH, FEATURES, hostArguments, permissionArgs, runBounded, shellEnvironmentArgs, toolEnvironment } from '../lib/evaluation/host.mjs';
+import { BOUNDARY_FIELDS } from '../lib/evaluation/native-witness.mjs';
+import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
+import { verifyNativeCatalog } from '../lib/evaluation/native-host.mjs';
+export { hostArguments, runBounded } from '../lib/evaluation/host.mjs';
+
 const BASELINE = 'f56361f40e7fcdcae602d08739bc3e928d4d57d7';
-// Xcode's Git avoids the system shim's denied global discovery cache.
-const GIT_DIRECTORIES = process.platform === 'darwin'
-  ? ['/Applications/Xcode.app/Contents/Developer/usr/bin','/Library/Developer/CommandLineTools/usr/bin'].filter((path)=>existsSync(join(path,'git'))) : [];
-const EVALUATION_PATH = [...GIT_DIRECTORIES,'/usr/bin','/bin','/usr/sbin','/sbin',dirname(process.execPath)].join(':');
 const REPORT = 'docs/evaluations/issue-98-pilot.md';
 const DIRECTION_REPORT = 'docs/evaluations/issue-113-pilot.md';
-const FEATURES = ['multi_agent','apps','plugins','hooks','computer_use','browser_use','image_generation',
-  'remote_plugin','skill_mcp_dependency_install','workspace_dependencies','goals','unbounded_connection_retries'];
 const immutable = (revision) => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision || '');
 function put(path, value, { exclusive = false } = {}) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -81,47 +81,6 @@ export function verifyReportCarryforward({ repository, implementation, reportHea
 
 function decodeOriginalUtf8(bytes) { return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes); }
 
-export function runBounded(command, args, { cwd, env = process.env, input = '', timeoutMs = LIMITS.invocationMs,
-  maxBytes = LIMITS.outputBytes, graceMs = LIMITS.graceMs, signal, strictBytes = false, deadline } = {}) {
-  if(deadline!==undefined){requireEvaluation(Number.isFinite(deadline)&&deadline-Date.now()>2*graceMs&&timeoutMs>0,'execution deadline exhausted');timeoutMs=Math.min(timeoutMs,deadline-Date.now()-2*graceMs);}
-  if (process.platform === 'win32') throw new Error('this bounded pilot requires POSIX process groups');
-  return new Promise((done) => {
-    const start = Date.now(); let status = 'completed', code = null, childSignal = null, count = 0, finishing = false;
-    let stdout = Buffer.alloc(0), stderr = Buffer.alloc(0);
-    const child = spawn(command, args, { cwd, env, detached: true, stdio: ['pipe','pipe','pipe'] });
-    const alive = () => { try { process.kill(-child.pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } };
-    const kill = (kind) => { if (!child.pid) return; try { process.kill(-child.pid, kind); } catch (error) { if (error.code !== 'ESRCH') status = 'cleanup-error'; } };
-    const finish = async () => {
-      if (finishing) return; finishing = true; clearTimeout(timer);
-      signal?.removeEventListener('abort', interrupt);
-      if (child.pid && alive()) {
-        kill('SIGTERM');
-        const until = Date.now() + graceMs;
-        while (alive() && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
-        if (alive()) kill('SIGKILL');
-        const reaped = Date.now() + graceMs;
-        while (alive() && Date.now() < reaped) await new Promise((r) => setTimeout(r, 10));
-      }
-      child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy();
-      let out=stdout.toString('utf8'),err=stderr.toString('utf8'),raw={};
-      if(strictBytes){let utf8Valid=true;try{out=decodeOriginalUtf8(stdout);err=decodeOriginalUtf8(stderr);}catch{utf8Valid=false;out=null;err=null;if(status==='completed')status='invalid-utf8';}
-        raw={stdoutBase64:stdout.toString('base64'),stderrBase64:stderr.toString('base64'),utf8Valid};}
-      done({ status, code, signal: childSignal, cleanup: !child.pid || !alive(),stdout:out,stderr:err,...raw,bytes:count,durationMs:Date.now()-start });
-    };
-    const collect = (which, data) => {
-      const kept = data.subarray(0, Math.max(0, maxBytes - count)); count += data.length;
-      if (which === 'stdout') stdout = Buffer.concat([stdout, kept]); else stderr = Buffer.concat([stderr, kept]);
-      if (count > maxBytes && !finishing) { status = 'output-limit'; void finish(); }
-    };
-    const interrupt = () => { if (!finishing) { status = 'interrupted'; void finish(); } };
-    const timer = setTimeout(() => { status = 'timeout'; void finish(); }, timeoutMs);
-    child.stdout.on('data', (data) => collect('stdout', data)); child.stderr.on('data', (data) => collect('stderr', data));
-    child.on('error', (error) => { status = error.code === 'ENOENT' ? 'unavailable' : 'spawn-error'; void finish(); });
-    child.on('exit', (value, sig) => { code = value; childSignal = sig; void finish(); });
-    child.stdin.on('error', () => {}); child.stdin.end(input);
-    signal?.addEventListener('abort', interrupt, { once: true }); if (signal?.aborted) interrupt();
-  });
-}
 export function parseHostEvents(raw) {
   let sessionId = null, complete = false, malformed = false, failed = false;
   const usage = {}, productEdits = [], commands = [];
@@ -142,27 +101,6 @@ export function parseHostEvents(raw) {
   }
   return { sessionId, eventsComplete: complete && !malformed && !failed, failed, usage, productEdits: [...new Set(productEdits)], commands };
 }
-function permissionArgs(support) {
-  const filesystem = { ':root':'deny', ':minimal':'read', ':tmpdir':'deny', ':slash_tmp':'deny',
-    ':workspace_roots': { '.git':'write' }, '/System/Library/OpenSSL/openssl.cnf':'read', [support]:'read' };
-  const toml = (value) => typeof value === 'object' ? `{${Object.entries(value).map(([k,v]) => `${JSON.stringify(k)}=${toml(v)}`).join(',')}}` : JSON.stringify(value);
-  return ['-c','permissions.afk-eval.extends=":workspace"','-c',`permissions.afk-eval.filesystem=${toml(filesystem)}`,
-    '-c','permissions.afk-eval.network.enabled=false'];
-}
-function shellEnvironmentArgs(toolEnv) {
-  return ['-c',`shell_environment_policy={inherit="none",ignore_default_excludes=false,set={${Object.entries(toolEnv).map(([k,v]) => `${JSON.stringify(k)}=${JSON.stringify(v)}`).join(',')}},filters={${Object.keys(toolEnv).map((key)=>`${JSON.stringify(key)}="include"`).join(',')}}}`,'-c','allow_login_shell=false'];
-}
-export function hostArguments({ support, schema, lastMessage, model, resume, toolEnv = {} }) {
-  if (!['gpt-6-astra','gpt-5.6-sol'].includes(model)) throw new Error('model is outside the frozen pilot');
-  if (resume != null && (typeof resume !== 'string' || !resume || resume.startsWith('-'))) throw new Error('recorded session ID is required');
-  return ['exec', ...(resume ? ['resume'] : []), '--ignore-user-config','--ignore-rules','--json',
-    '--model',model,'--output-schema',schema,'--output-last-message',lastMessage,
-    '-c','model_reasoning_effort="medium"','-c','approval_policy="never"','-c','default_permissions="afk-eval"',
-    ...permissionArgs(support), ...FEATURES.flatMap((feature) => ['-c',`features.${feature}=false`]),
-    ...shellEnvironmentArgs(toolEnv),
-    ...(resume ? [resume] : []), '-'];
-}
-
 function localEnv(directory, binary) {
   const env = fixtureEnv({ PATH: EVALUATION_PATH, TMPDIR: join(directory,'.afk/tmp'), AFK_UPDATE_CHECK:'off' });
   return { ...env, CLAUDE_GATE_BIN: binary, CLAUDE_REVIEW_TIMEOUT_MS:'10000' };
@@ -270,7 +208,7 @@ export function createEvaluation({repository,directory,candidate,baseline=BASELI
   for(const [label,revision] of Object.entries({B:baseline,C:candidate})) supports[label]=exportSupport({repository,revision,directory:join(directory,'support',label)});
   const manifest={version:FIXTURE_VERSION,implementation:candidate,baseline,repository,behaviorFiles,limits:LIMITS,trials:TRIALS,
     support:supports,fixtureDigest:digestBytes(JSON.stringify({TASK,ACCEPTANCE,SCENARIOS,PROMPT})),
-    runnerDigest:digestBytes(readFileSync(fileURLToPath(import.meta.url))),
+    runnerDigest:evaluatorRuntime().digest,
     scenariosDigest:digestBytes(readFileSync(fileURLToPath(new URL('../lib/evaluation/scenarios.mjs',import.meta.url)))),
     createdAt:new Date().toISOString(),hostLaunches:0,paidCallsPerformedByPreparation:0};
   put(join(directory,'manifest.json'),manifest,{exclusive:true});
@@ -281,16 +219,10 @@ function loadEvaluation(directory) {
   if(manifest.campaign==='issue112')return loadDirectionEvaluation(directory);
   if(manifest.version!==FIXTURE_VERSION || canonicalBytes(manifest.limits)!==canonicalBytes(LIMITS)
     || canonicalBytes(manifest.trials)!==canonicalBytes(TRIALS)) throw new Error('evaluation manifest differs from frozen pilot');
-  if(manifest.runnerDigest!==digestBytes(readFileSync(fileURLToPath(import.meta.url)))
+  if(manifest.runnerDigest!==evaluatorRuntime().digest
     || manifest.scenariosDigest!==digestBytes(readFileSync(fileURLToPath(new URL('../lib/evaluation/scenarios.mjs',import.meta.url))))) throw new Error('tested runner bytes changed; select a new implementation snapshot');
   for(const [path,entry] of Object.entries(manifest.behaviorFiles)) if(entry.mode!=='120000' && digestBytes(readFileSync(join(manifest.repository,path)))!==entry.digest) throw new Error('behavior-relevant working bytes changed');
   return manifest;
-}
-function toolEnvironment(workspace) {
-  assertFixtureDirectory(workspace);
-  const absent=readFixtureFile(workspace,join(workspace,'.afk/absent-prerequisite'),{missing:true}).length>0;
-  return fixtureEnv({PATH:EVALUATION_PATH,TMPDIR:join(workspace,'.afk/tmp'),AFK_UPDATE_CHECK:'off',
-    CLAUDE_GATE_BIN:join(workspace,'.afk',absent?'absent-claude':'fixture-cli.sh')});
 }
 function verifySupport(directory,manifest,label) {
   const root=join(directory,'support',label), expected=manifest.support[label].files;
@@ -644,7 +576,7 @@ export function directionInputDigests() {
   return {fixtureVersion:DIRECTION_VERSION,fixtureDigest:contentDigest(DIRECTION_SCENARIOS.map(s=>({scenario:s,files:directionFixtureFiles(s.id)}))),
     promptDigest:contentDigest({main:DIRECTION_PROMPT,resume:DIRECTION_RESUME_PROMPT,plan:PLAN_PROMPT,child:CHILD_PROMPT,driver:DRIVER_PROMPT,controls:CONTROL_TRIALS}),
     oracleDigest:digestBytes(readFileSync(fileURLToPath(new URL('../lib/evaluation/scenarios.mjs',import.meta.url)))),
-    exportPolicyDigest:digestBytes(supportVisible.toString()),runnerDigest:digestBytes(readFileSync(fileURLToPath(import.meta.url)))};
+    exportPolicyDigest:digestBytes(supportVisible.toString()),runnerDigest:evaluatorRuntime().digest};
 }
 export function createDirectionEvaluation({repository,directory,candidate,baseline,executionHandoff}) {
   requireEvaluation(typeof executionHandoff==='string'&&immutable(candidate)&&immutable(baseline),'execution handoff and explicit immutable baseline/candidate required');
@@ -655,7 +587,7 @@ export function createDirectionEvaluation({repository,directory,candidate,baseli
   requireEvaluation(equal(handoff.inputs,directionInputDigests()),'handoff input fingerprint mismatch');
   for(const sha of new Set([...Object.values(handoff.revisions),handoff.auditor.revision]))tree(repository,sha);
   const evaluatorTree=tree(repository,handoff.revisions.evaluator);
-  for(const path of ['scripts/evaluate-agent-behavior.mjs','lib/evaluation/scenarios.mjs'])requireEvaluation(evaluatorTree[path]&&digestBytes(gitBytes(repository,['cat-file','blob',evaluatorTree[path].object]))===digestBytes(readFileSync(fileURLToPath(new URL(`../${path}`,import.meta.url)))),'runner differs from evaluator revision');
+  for(const [path,digest] of Object.entries(evaluatorRuntime().files))requireEvaluation(evaluatorTree[path]&&['100644','100755'].includes(evaluatorTree[path].mode)&&digestBytes(gitBytes(repository,['cat-file','blob',evaluatorTree[path].object]))===digest,'runner differs from evaluator revision');
   mkdirSync(directory,{mode:0o700});directory=realpathSync(directory);repository=realpathSync(repository);
   put(join(directory,'execution-handoff.json'),handoff,{exclusive:true});
   for(const [path,bytes]of Object.entries(sources.files))put(join(directory,'sources',path),bytes,{exclusive:true});
@@ -679,14 +611,17 @@ function loadDirectionEvaluation(directory) {
   requireEvaluation(productOperation({cwd:directory,support:join(directory,'support/M'),operation:'profile'}).digest===manifest.handoff.auditor.profileDigest,'auditor profile mismatch');
   return manifest;
 }
-export function captureMeasurementSources({workspace,head,includePlan=false}) {
+export function captureMeasurementSources({workspace,head,includePlan=false,nativeCatalog}) {
   assertFixtureDirectory(workspace);requireEvaluation(immutable(head),'original head unavailable');
+  const catalog=nativeCatalog===undefined?null:verifyNativeCatalog(nativeCatalog);
+  requireEvaluation(!catalog||nativeCatalog.workspace===workspace,'catalog workspace mismatch');
   const files={},snapshot={},metadata=new Set(['.git','.gitattributes','.gitmodules','.gitignore']);let entries=0,total=0;
   const visit=path=>{
     assertFixtureDirectory(workspace,path);
     for(const entry of readdirSync(path,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))) {
       if(path===workspace&&entry.name==='.git')continue;
       requireEvaluation(++entries<=DIRECTION_LIMITS.captureEntries,'capture entry bound');const full=join(path,entry.name),key=relative(workspace,full).split('\\').join('/');
+      if(catalog?.links.includes(key)){requireEvaluation(lstatSync(full).isSymbolicLink(),'catalog link replaced');continue;}
       requireEvaluation(!lstatSync(full).isSymbolicLink(),'capture symlink');
       const selected=key.startsWith('src/')||key.startsWith('test/')||includePlan&&key==='docs/plan.md';
       if(selected||key==='src'||key==='test')requireEvaluation(!key.split('/').some(p=>metadata.has(p.toLowerCase())),'capture metadata');
@@ -697,8 +632,9 @@ export function captureMeasurementSources({workspace,head,includePlan=false}) {
       if(selected){const text=decodeOriginalUtf8(bytes);requireEvaluation(!text.includes('\0'),'capture binary');requireEvaluation(!redactCredential(text,'').count,'capture sensitive source');files[key]=text;}
     }
   };visit(workspace);
+  if(catalog)requireEvaluation(verifyNativeCatalog(nativeCatalog).digest===catalog.digest,'catalog changed during capture');
   requireEvaluation(Object.hasOwn(files,'src/reserve.mjs'),'capture missing source');
-  return {head,files,snapshot:{head,files:snapshot},sourceDigest:contentDigest(files),snapshotDigest:contentDigest({head,files:snapshot}),entries,bytes:total};
+  return {head,files,snapshot:{head,files:snapshot},sourceDigest:contentDigest(files),snapshotDigest:contentDigest({head,files:snapshot}),entries,bytes:total,...(catalog?{catalogDigest:catalog.digest}:{})};
 }
 export function originalAcceptanceProvenance({trialId,captureId,commands}) {
   requireEvaluation(evalId(trialId)&&evalId(captureId)&&Array.isArray(commands)&&commands.length>0,'provenance identity');
@@ -794,7 +730,6 @@ function requireLiveQualification(directory,manifest,execution) {
   requireEvaluation(checked.profileDigest===manifest.handoff.auditor.profileDigest,'live qualification profile mismatch');
 }
 const HOST_OBSERVATION_READER = () => ({status:'unavailable',reason:'unsupported-current-host-inventory'});
-const BOUNDARY_FIELDS = ['outsideReadDenied','outsideWriteDenied','networkDenied','environmentClean','supportVisibility','scorerReadDenied','evaluatorReadDenied','gitNodeAllowed'];
 export function validateHostObservation({directory,slot,host,result,source}) {
   requireEvaluation(source?.status==='observed','unsupported host inventory source');evaluationRef(source.reference);
   requireEvaluation(source.reference.path.startsWith(`artifacts/${slot.id}/`),'inventory source location');
@@ -977,7 +912,7 @@ async function retainedInspection({directory,inspectionId,role='inspection',...o
   put(`${stem}.json`,entry,{exclusive:true});
   if(failure){failure.observation=entry;failure.inspectionPath=inspectionPath;throw failure;}return entry;
 }
-export async function originalCapture({workspace,support,codex,signal,trial,directory,captureId,execution,maxBytes=LIMITS.outputBytes}) {
+export async function originalCapture({workspace,support,codex,signal,trial,directory,captureId,execution,maxBytes=LIMITS.outputBytes,nativeCatalog}) {
   const captureRoot=join(directory,'captures',captureId),commands=[],results=[];let status='unavailable',failure=null;
   put(join(captureRoot,'started.json'),{captureId,trialId:trial.id},{exclusive:true});
   const run=async(command,args,input='',role='inspection')=>{
@@ -986,7 +921,7 @@ export async function originalCapture({workspace,support,codex,signal,trial,dire
   };
   try{
     const git=await run('git',['rev-parse','HEAD']);requireEvaluation(git.code===0&&immutable(git.stdout.trim()),'original HEAD unavailable');
-    const before=captureMeasurementSources({workspace,head:git.stdout.trim(),includePlan:trial.scenarioId==='D7'});
+    const before=captureMeasurementSources({workspace,head:git.stdout.trim(),includePlan:trial.scenarioId==='D7',nativeCatalog});
     put(join(captureRoot,'source.json'),before,{exclusive:true});const authority=readOriginalAuthority(workspace);put(join(captureRoot,'authority.json'),authority,{exclusive:true});
     await run(process.execPath,['--test'],'','acceptance');
     const checks=[{name:'reserve',path:'src/reserve.mjs',rows:ACCEPTANCE},...(trial.scenarioId==='D4'?[{name:'reserveBatch',path:'src/reserve-batch.mjs',rows:BATCH_ACCEPTANCE}]:[])];
@@ -994,7 +929,7 @@ export async function originalCapture({workspace,support,codex,signal,trial,dire
       const observed=await run(process.execPath,['--input-type=module'],program,'acceptance');if(observed.code===0){const parsed=strictJson(observed.stdout);requireEvaluation(Array.isArray(parsed),'original acceptance result');results.push(...parsed);}}
     put(join(captureRoot,'acceptance.json'),results,{exclusive:true});
     const current=await run('git',['rev-parse','HEAD']);requireEvaluation(current.code===0&&current.stdout.trim()===before.head,'original target changed during capture');
-    const after=captureMeasurementSources({workspace,head:current.stdout.trim(),includePlan:trial.scenarioId==='D7'});requireEvaluation(after.snapshotDigest===before.snapshotDigest,'original snapshot changed during capture');
+    const after=captureMeasurementSources({workspace,head:current.stdout.trim(),includePlan:trial.scenarioId==='D7',nativeCatalog});requireEvaluation(after.snapshotDigest===before.snapshotDigest,'original snapshot changed during capture');
     let target=null,targetStatus='unsupported';
     if(existsSync(join(support,'lib/direction/audit.mjs'))){const program=`const {observeTarget}=await import(${JSON.stringify(pathToFileURL(join(support,'lib/direction/audit.mjs')).href)});process.stdout.write(JSON.stringify(observeTarget({kind:'uncommitted'},process.cwd())));`;
       const observed=await run(process.execPath,['--input-type=module'],program);if(observed.code===0){target=strictJson(observed.stdout);targetStatus='observed';}}
@@ -1017,7 +952,7 @@ function retainedMeasurementHistory(measurement,priorIds) {
   return history;
 }
 async function measurementCheckpoint({directory,manifest,trial,root,fixture,support,codex,signal,auditId,priorIds,execution}) {
-  const captured=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:auditId,execution});
+  const captured=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:auditId,execution});
   requireEvaluation(captured.provenance!==null,captured.provenanceError||'measurement provenance unavailable');
   const measurement=materializeMeasurement({directory:join(root,'measurement'),trialId:trial.id,captureId:auditId,capture:captured.capture,task:directionTaskFor(trial.scenarioId),provenance:captured.provenance});
   measurement.support=join(directory,'support/M');measurement.execution=execution;initializeDirectionMeasurement(measurement);
@@ -1042,7 +977,7 @@ async function measurementCheckpoint({directory,manifest,trial,root,fixture,supp
     const checked=productOperation({...measurement,operation:'check',auditId,stage:phase==='endpoint'?'endpoint':'result',endpointId:'local-completion'});
     const resultPath=join(auditRoot(measurement,auditId),'result.json'),result=strictJson(readFixtureFile(measurement.cwd,resultPath));
     const after=await retainedInspection({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/${auditId}-post-head`},'git',['rev-parse','HEAD']);
-    let current;try{current=after.code===0?captureMeasurementSources({workspace:fixture.directory,head:after.stdout.trim(),includePlan:trial.scenarioId==='D7'}):null;}catch(error){error.inspectionPath=after.inspectionPath;throw error;}
+    let current;try{current=after.code===0?captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:after.stdout.trim(),includePlan:trial.scenarioId==='D7'}):null;}catch(error){error.inspectionPath=after.inspectionPath;throw error;}
     const originalCurrent=current?.snapshotDigest===captured.capture.snapshotDigest;
     return {auditId,controlled,actualAuditorCalls:controlled?0:observed.requests,simulatedTransportRequests:controlled?observed.simulatedTransportRequests:0,
       check:checked,originalCurrent,originalCurrentnessInspection:after.inspectionPath,measurementEndpointSatisfied:originalCurrent&&checked.directionSatisfied===true,subjectEndpointStatus:'outstanding',
@@ -1085,7 +1020,7 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
       if(!fixture.standalone&&!trial.caseId)prepareProductEvidence({fixture,pluginRoot:support});
       if(trial.scenarioId==='D6')await seedExhaustedDirection({directory,root,fixture,trial,support,codex,signal,execution});
       else if(!fixture.standalone&&(trial.scenarioId&&trial.scenarioId!=='D7'||trial.caseId==='L5'))initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:join(directory,'support/M'),task:directionTaskFor(trial.scenarioId??'D1'),existingFixtureLedger:true,execution});
-      fixture.authority=readOriginalAuthority(fixture.directory);const before=captureMeasurementSources({workspace:fixture.directory,head:fixture.current,includePlan:trial.scenarioId==='D7'});put(join(root,'before.json'),before.snapshot,{exclusive:true});put(join(root,'fixture.json'),fixture,{exclusive:true});}
+      fixture.authority=readOriginalAuthority(fixture.directory);const before=captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:fixture.current,includePlan:trial.scenarioId==='D7'});put(join(root,'before.json'),before.snapshot,{exclusive:true});put(join(root,'fixture.json'),fixture,{exclusive:true});}
     if(fixture.control)support=fixture.control.support;
     const invocations=[],audits=[],phaseResults=[];let observationError=null,lastCapture=null;
     try{for(const phase of trial.phases){
@@ -1101,17 +1036,17 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
         const launchId=`${trial.id}-${phase}`;requireEvaluation(!directionStarted(directory).some(r=>r.id===launchId),'unfinished invocation remains charged; no automatic replay');
         const resume=phase==='author-resume'?invocations[0]?.sessionId:undefined;requireEvaluation(phase!=='author-resume'||resume,'exact session unavailable');
         const prompt=directionPrompt(trial,phase,{support,childResult:join(fixture.directory,'.afk/runs/trial/child-result.json'),observationPath:join(fixture.directory,'.afk/runs/trial/handoff-observations.md')})+(fixture.control?.promptSuffix||'');
-        const actorBefore=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:`${phase}-before`,execution});
+        const actorBefore=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:`${phase}-before`,execution});
         const invocation=await invokeHost({directory,id:launchId,workspace:fixture.directory,support,model:trial.model,prompt,resume,timeoutMs:phase==='author-resume'?manifest.handoff.bounds.resumeMs:manifest.handoff.bounds.invocationMs,codex,signal,campaignManifest:manifest,execution});
         invocations.push(invocation);
-        const actorAfter=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:`${phase}-after`,execution});
+        const actorAfter=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:`${phase}-after`,execution});
         const actorEndpoint=await originalDirectionStatus({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/${phase}-endpoint`,auditId:phase==='author-resume'?'audit-2':'audit-1'});
         invocation.transition={before:actorBefore.capture.snapshot,after:actorAfter.capture.snapshot,beforeAuthority:actorBefore.authority,afterAuthority:actorAfter.authority,acceptance:actorAfter.results,subjectEndpointStatus:actorEndpoint.status,subjectEndpointEvidence:actorEndpoint.inspectionPath??null};
         saved={phase,invocation};if(trial.scenarioId==='D7'&&trial.repetition===2&&phase==='author-1')deliverChildEvidence({directory,fixture,launchId,invocation});
       }
       put(phasePath,saved,{exclusive:true});phaseResults.push(saved);
     }
-    lastCapture=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:'final-original',execution});
+    lastCapture=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:'final-original',execution});
     }catch(error){observationError={reason:error.message,capturePath:error.capturePath??null,inspectionPath:error.inspectionPath??null};}
     const before=strictJson(strictText(root,join(root,'before.json'))),after=lastCapture?.capture.snapshot??before,decision=invocations.at(-1)?.decision;
     let result;
@@ -1178,7 +1113,7 @@ async function seedExhaustedDirection({directory,root,fixture,trial,support,code
     const check=await retainedInspection({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/seed-repair-${proofs.length+1}`,role:'acceptance'},process.execPath,['--test','--test-name-pattern',`^${repair.assertion}$`,'test/reserve.test.mjs']);
     proofs.push({...repair,check});requireEvaluation(check.code===0,'seeded repair proof failed');}
   fixtureGit(fixture.directory,['checkout','--detach',fixture.oldGood]);
-  const captured=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:'seed-good',execution});
+  const captured=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:'seed-good',execution});
   const measurement=materializeMeasurement({directory:join(root,'measurement'),trialId:trial.id,captureId:'seed-good',capture:captured.capture,task:directionTaskFor('D6'),provenance:captured.provenance});
   measurement.support=join(directory,'support/M');measurement.execution=execution;initializeDirectionMeasurement(measurement);
   const attempts=[];
@@ -1190,7 +1125,7 @@ async function seedExhaustedDirection({directory,root,fixture,trial,support,code
   mkdirSync(retained,{recursive:true,mode:0o700});copy(sourceRun,retained);
   const priorAttempts=attempts.map(({id})=>{const path=`prior-evidence/${id}.txt`,bytes=readFixtureFile(sourceRun,join(sourceRun,'issues/synthetic/audits',id,'terminal-witness.txt'));put(join(originalRun,path),bytes,{exclusive:true});return {id,evidence:[{path,digest:digestBytes(bytes)}]};});
   initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:measurement.support,task:directionTaskFor('D6'),priorAttempts,existingFixtureLedger:true,execution});
-  const runPrefix='.afk/runs/trial/',sources=Object.keys(captureMeasurementSources({workspace:fixture.directory,head:fixture.current}).snapshot.files).filter(path=>path.startsWith(runPrefix)).map(path=>path.slice(runPrefix.length)).sort();
+  const runPrefix='.afk/runs/trial/',sources=Object.keys(captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:fixture.current}).snapshot.files).filter(path=>path.startsWith(runPrefix)).map(path=>path.slice(runPrefix.length)).sort();
   put(join(originalRun,'handoff-observations.md'),`D6 fixture-driver-controlled retained source index.\nRead TASK.md and the current original run ledger and direction records as authority. Saved summaries and retained measurement records are historical evidence.\nSeeded findings, repairs and audit attempts are fixture-driver history, not actions by either author invocation. This index grants no new allowance.\nPrior measurement targets differ from the original target; their results supply no original endpoint approval.\nPaths are relative to this index; inspect the complete referenced bytes.\n\n- [TASK.md](../../../TASK.md)\n${sources.map(path=>`- [${path}](${path})`).join('\n')}\n`,{exclusive:true});
   put(join(root,'seeded-history.json'),{provenance:'fixture-driver-controlled-history',proofs,attempts:attempts.map(a=>({id:a.id,charged:a.result.charged,actualAuditorCalls:0})),measurementRun:measurement.runId},{exclusive:true});
   }catch(error){error.inspectionPath??=proofs.at(-1)?.check.inspectionPath??null;if(!existsSync(join(root,'seeded-history.json')))put(join(root,'seeded-history.json'),{status:'unavailable',reason:error.message,inspectionPath:error.inspectionPath,capturePath:error.capturePath??null,proofs},{exclusive:true});throw error;}

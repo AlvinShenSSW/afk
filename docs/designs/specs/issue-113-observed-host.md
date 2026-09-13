@@ -621,3 +621,99 @@ Only `scripts/qualify-direction-transport.test.mjs` gains this test setup. No
 production qualification record or validator changes to make those tests pass.
 The production record remains historical until actual new qualification succeeds.
 The separately reviewed live later-history harness remains a completion dependency.
+
+## Host-witness integration: proposed freeze
+
+The next slice connects owned source witnesses and the existing native launch
+configuration. It does not by itself qualify a real model. A new controlled local
+fixture verified the complete `hostArguments` including output schema, native
+skill-directory symlinks into read-only production support, and an absolute probe
+outside the writable workspace. First and exact-resumed native invocations
+completed with the eight actual shell boundary fields true. No provider ran.
+
+Move the existing bounded process runner and native launch/environment definitions
+into one evaluation host module, re-exporting the existing runner API. Preserve
+legacy arguments and process cleanup behavior byte-for-byte unless the observer
+option is present. Both the witness generator and actual evaluator import this
+single implementation. This relocation prevents a second launcher or cleanup
+implementation from silently qualifying a different configuration.
+
+A single finite runtime-file inventory covers the executed evaluator entry point,
+its local ESM dependency closure and the new host/witness helpers. The existing
+`runnerDigest` becomes the digest of that complete path-to-byte-digest map in both
+campaigns. Preparation and reload recompute it from the actual executing source
+root, not a caller-selected root. Issue 112 also compares every listed file with
+the immutable evaluator revision before preparation. Issue 98 retains its separate
+candidate-tree semantics: a small subject tree need not contain the evaluator,
+but the executed runtime is still bound and rechecked. Fixture copies use this
+same inventory. Tests verify closure coverage and reject a changed host/dependency
+after preparation, or a mismatching selected evaluator revision before preparation.
+These checks apply when invoked; already imported code is not a trusted pre-import
+monitor. Private execution preflight remains separate.
+
+The optional observed launch adds a named custom Responses provider with only the
+local collector URL and a dedicated local-token environment-variable name. Disable
+request/stream retries and WebSockets, preserve the original feature exclusions,
+medium effort, approval-never and tool network denial. The evaluator's clean child
+environment carries the local token, fresh Codex state path, required executable
+PATH/TMPDIR and telemetry/update-check disabling only. The collector separately
+loads the chosen bearer into memory. No upstream secret enters child configuration.
+A fixed, identical evaluation instruction tells both revisions which direct tools
+are available; it does not name the expected selected skill or a correct outcome.
+
+Place the generated boundary probe in a dedicated evaluator-owned read-only root
+outside the writable fixture; pass that exact root as an additional read permit.
+Use the source-bound absolute command in actual CLI event validation. Keep all
+sentinels and scorer/evaluator files outside every permitted read root. This avoids
+letting an actor replace a probe through a writable fixture parent. Native skill
+entries are evaluator-owned symlinks to the selected immutable support's skill
+directories, preserving original relative references and helper roots. Bind both
+links and resolved selected sources; a changed or extra entry invalidates catalog
+admission. Preserve all observed built-in catalog entries separately and bind their
+available source bodies; unknown bodies prevent claims that require them.
+
+Provision native catalog links before the initial subject snapshot. Pass an
+explicit evaluator-owned catalog binding through every capture: initial fixture,
+original acceptance before/after, post-audit comparison and resume source-list
+preparation. Verify the entire expected catalog set, ordinary non-symlink
+ancestors, each link's exact text and resolved target, and the selected support
+source bytes before and after capture. Exclude only those individually verified
+links from the product snapshot; do not follow them or skip the catalog directory
+wholesale. Missing, extra, replaced or retargeted entries refuse capture. Without
+the explicit binding, retain the existing rejection of every symlink. The separate
+catalog evidence, rather than a product snapshot, carries its source identity.
+Checks make no claim about undetected transient edits between observations.
+Regression cases cover a valid native catalog through every capture consumer,
+arbitrary sibling links and mutated catalog entries/sources refusing before an
+author launch or measurement reuse. Legacy snapshots do not substitute for this
+catalog validation.
+
+An owned witness generator uses a separate local-only synthetic Responses server,
+never the live forwarding collector and never caller-supplied responses/transport.
+Its fixed script observes the actual registry, runs the source-bound eight-field
+probe, attempts owned outside patch/image access, requests denied escalation and
+checks an unknown session's stdin. It issues only the fixed script and a synthetic
+structured terminal, twice per selected model for first/exact resume. Explicit
+positive request-byte, invocation-count and deadline bounds apply; every attempt
+and failed cleanup remains retained. No upstream route, auth credential or live
+usage is available in this server. Synthetic usage stays labeled synthetic.
+
+The witness record pins the installed native CLI, separate code-mode executable,
+launcher/package metadata, bundled resources, platform/architecture and shared
+launch/environment source. Restrict admission to the source-reviewed native
+version/profile; an unfamiliar binary or configuration needs new source evidence,
+not just a version string or matching model declaration. Actual request-derived
+complete declaration digests and fixed registry outputs are retained per model,
+with the exact first/resumed session and actual probe/effect events. Recheck these
+identities before each live invocation and request. A caller's self-reported
+complete flag cannot replace the generator's retained source records.
+
+Write scope is `lib/evaluation/host.mjs`, a finite runtime-inventory module,
+a focused native witness/profile module
+and tests, and the existing evaluator/runner tests. All witnesses and generated
+native state remain in ignored run evidence. Existing source-export rules keep
+these evaluator helpers hidden from the subject. This slice grants no new author,
+audit, control or qualification slot and does not claim a trusted external monitor.
+Tests cover unchanged legacy arguments/cleanup, exact observed provider flags,
+clean environments, protected probe/root binding, wrong runtime/source/registry,
+first/resume identity mismatch and retained synthetic-versus-live provenance.
