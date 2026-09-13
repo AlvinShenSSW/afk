@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import https from 'node:https';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -363,7 +363,7 @@ async function syntheticObservedHost({args,model,tools,builtin,wrongBoundary}){
   console.log(JSON.stringify({type:'item.completed',item:{id:'boundary',type:'command_execution',command,exit_code:0,aggregated_output:JSON.stringify({outsideReadDenied:true,outsideWriteDenied:true,networkDenied:true,environmentClean:true,supportVisibility:true,scorerReadDenied:true,evaluatorReadDenied:true,gitNodeAllowed:true})}}));
   console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:9999,output_tokens:9999}}));
 }
-async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false}={}) {
+async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false,baselineAbsentControls=false}={}) {
   const {execFileSync}=await import('node:child_process'),{copyFileSync}=await import('node:fs'),{digestBytes}=await import('../lib/gate/review-receipt.mjs');
   const source=join(root,'source');mkdirSync(source);fixtureGit(source,['init','--template=','-q','-b','synthetic']);
   const files=[...new Set([...execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&supportVisible(p)),...EVALUATOR_RUNTIME_FILES])];
@@ -390,16 +390,18 @@ async function prepared112(root,{main=[],controls=[],status='authorized',unknown
   writeFileSync(binary,`#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`);chmodSync(binary,0o700);
   if(observedHost){const text=readFileSync(script,'utf8'),marker="const model=args[args.indexOf('--model')+1];";assert.equal(text.split(marker).length,2);
     writeFileSync(script,text.replace(marker,marker+`await (${syntheticObservedHost.toString()})({args,model,tools:${JSON.stringify(nativeTools)},builtin:${JSON.stringify(nativeBuiltin)},wrongBoundary:${wrongBoundary}});process.exit(0);`));}
+  let baselineRevision=revision;
+  if(baselineAbsentControls){fixtureGit(source,['rm','-q','skills/afk/references/environment.md','scripts/direction-state.mjs']);writeFileSync(join(source,'skills/afk/SKILL.md'),'---\nname: afk\ndescription: Synthetic inline baseline.\n---\nInline baseline instructions.\n');baselineRevision=commit(source,'Synthetic unsupported baseline');fixtureGit(source,['checkout',revision,'--','.']);}
   const handoff=handoff112({main,controls,status,host:{...runner.directionHostFingerprints(binary,{observer:observedHost}),version:'synthetic-test-host'}});
   if(observedHost){const proof='{}';writeFileSync(join(root,'native-proof.txt'),proof);
     const files=Object.fromEntries(nativeWitnessSourcePaths().map(path=>[path,{path:'native-proof.txt',digest:digestBytes(proof)}]));
     const profile=JSON.stringify({version:1,models:[{model:'gpt-6-astra',files}]});writeFileSync(join(root,'native-profile.json'),profile);
     handoff.observer={version:1,profile:{path:'native-profile.json',digest:digestBytes(profile)},authMode:'chatgpt',maxRequests:40,maxRequestsPerInvocation:10,maxBytes:1048576,requestTimeoutMs:1000};}
-  for(const key of ['baseline','candidate','evaluator'])handoff.revisions[key]=revision;handoff.auditor.revision=revision;handoff.auditor.profileDigest=profile.digest;handoff.auditor.condition=auditorCondition;handoff.inputs=runner.directionInputDigests();if(sliceMs!==undefined)handoff.bounds.sliceMs=sliceMs;
+  for(const key of ['baseline','candidate','evaluator'])handoff.revisions[key]=revision;handoff.revisions.baseline=baselineRevision;handoff.auditor.revision=revision;handoff.auditor.profileDigest=profile.digest;handoff.auditor.condition=auditorCondition;handoff.inputs=runner.directionInputDigests();if(sliceMs!==undefined)handoff.bounds.sliceMs=sliceMs;
   const authority='Synthetic fixture-driver authorization and budget for this exact bounded test; no actual model calls.\n';writeFileSync(join(root,'authority.md'),authority);
   for(const source of [handoff.authorization.source,handoff.budgetSource,handoff.bounds.spend.basis].filter(Boolean))source.ref.digest=digestBytes(authority);
   const input=join(root,'handoff.json');writeFileSync(input,JSON.stringify(handoff));const directory=join(root,'evaluation');
-  runner.createEvaluation({repository:source,directory,candidate:revision,baseline:revision,campaign:'issue112',executionHandoff:input});
+  runner.createEvaluation({repository:source,directory,candidate:revision,baseline:baselineRevision,campaign:'issue112',executionHandoff:input});
   return {directory,binary,handoff,revision,source,input,runner};
 }
 function qualify112Fixture(directory,handoff,ids) {
@@ -692,6 +694,7 @@ test('I112-4 BOM source bytes survive capture and inert materialization',()=>tem
 
 test('I112-4 L1 prompt delivers complete BOM-bearing reference bytes',()=>temporary(root=>{
   const support=join(root,'support'),path='skills/afk/references/environment.md',bytes=Buffer.from('\ufeffComplete reference.\n');mkdirSync(join(support,'skills/afk/references'),{recursive:true});writeFileSync(join(support,path),bytes);
+  writeFileSync(join(support,'skills/afk/SKILL.md'),'Read [environment](references/environment.md).\n');
   const trial=direction.CONTROL_TRIALS.find(t=>t.caseId==='L1'),control=directionRunner.prepareControlFixture({trial,fixture:{},support:realpathSync(support),directory:root});
   const delivered=control.promptSuffix.split(`(${path}):\n`)[1].slice(0,-1);assert.deepEqual(Buffer.from(delivered),bytes);
   assert.equal(control.contextDelivery[0].digest,require112Crypto.createHash('sha256').update(bytes).digest('hex'));assert.equal(control.contextDelivery[0].complete,true);
@@ -731,4 +734,53 @@ for(const scenario of ['D6','D9'])test(`native catalog survives original ${scena
   const captures=readdirSync(join(trial,'captures')).filter(name=>{try{return readFileSync(join(trial,'captures',name,'source.json')).length>0;}catch{return false;}});
   assert.ok(captures.length>=5);for(const name of captures)assert.equal(JSON.parse(readFileSync(join(trial,'captures',name,'source.json'))).catalogDigest,fixture.nativeCatalog.digest);
   assert.equal(observed.invocations.length,2);assert.equal(observed.invocations[1].resumedFrom,observed.invocations[0].sessionId);
+}));
+test('native controls refuse absent selected capabilities before fixture mutation and retain L3 original bytes',()=>temporary(root=>{
+  const support=join(root,'support');mkdirSync(join(support,'skills/afk'),{recursive:true});writeFileSync(join(support,'skills/afk/SKILL.md'),'Inline baseline.\n');
+  for(const caseId of ['L1','L2','L3','L5']){
+    const trial=direction.CONTROL_TRIALS.find(t=>t.caseId===caseId),control=directionRunner.prepareControlFixture({trial,fixture:{directory:join(root,'not-allocated')},support:realpathSync(support),directory:root});
+    assert.equal(control.status,'unsupported');assert.equal(existsSync(join(root,'not-allocated')),false);
+  }
+  const path='skills/afk/references/environment.md';mkdirSync(join(support,'skills/afk/references'));writeFileSync(join(support,path),'Original selected environment.\n');
+  writeFileSync(join(support,'skills/afk/SKILL.md'),'Read [environment](references/environment.md).\n');
+  const trial=direction.CONTROL_TRIALS.find(t=>t.caseId==='L3'),control=directionRunner.prepareControlFixture({trial,fixture:{},support:realpathSync(support),directory:root});
+  assert.equal(control.status,'supported');assert.equal(existsSync(join(control.support,path)),false);
+  assert.equal(control.sourcePlan.missingReference.digest,require112Crypto.createHash('sha256').update('Original selected environment.\n').digest('hex'));
+}));
+test('L4 captures complete standalone plan and L6 stages an actual local design preview',()=>temporary(root=>{
+  const fixture=direction.createDirectionFixture({directory:join(root,'workspace'),scenarioId:'D7'}),trial=direction.CONTROL_TRIALS.find(t=>t.caseId==='L6');
+  const control=directionRunner.prepareControlFixture({trial,fixture,support:repo,directory:root});
+  assert.equal(control.status,'supported');assert.match(control.promptSuffix,/--design docs\/plan.md --print-prompt/);
+  const capture=directionRunner.captureMeasurementSources({workspace:fixture.directory,head:fixture.current,includePlan:true});
+  assert.equal(capture.files['docs/plan.md'],readFileSync(join(fixture.directory,'docs/plan.md'),'utf8'));assert.match(capture.files['docs/plan.md'],/A6/);
+}));
+test('native control aggregation binds behavior adjudication without erasing unknown loading or concrete failures',()=>directionTemporary(async root=>{
+  const id='C-L4-C-ASTRA',f=await prepared112(root,{controls:[id]}),base=join(f.directory,'trials',id);mkdirSync(base,{recursive:true});
+  const observation={requiredReads:[],reads:[],catalog:{kind:'native',complete:true},selectionEvidence:true,selectedSkill:'afk-spec-planner',nativeOrder:{kind:'native',status:'unobserved'},behaviorEvidence:false,behaviorPass:false,semanticEligible:true};
+  const source=join(base,'control-observation.json');writeFileSync(source,JSON.stringify(observation));
+  const path=join(base,'observed.json');writeFileSync(path,JSON.stringify({invocations:[],audits:[],controlObservation:{path:'control-observation.json',digest:digestBytes(readFileSync(source))}}));
+  writeFileSync(join(base,'result.json'),JSON.stringify(direction.scoreControl({trial:direction.CONTROL_TRIALS.find(row=>row.id===id),observation})));
+  writeFileSync(join(base,'adjudication.json'),JSON.stringify({verdict:'pass',evidence:'Independent synthetic judgment bound to retained original source.',observedDigest:digestBytes(readFileSync(path))}));
+  let row=f.runner.aggregateDirectionEvaluation(f.directory).rows.find(row=>row.id===id);assert.equal(row.behavior,'pass');assert.equal(row.loading,'unobserved');assert.equal(row.deterministic,'unobserved');
+  writeFileSync(source,JSON.stringify({...observation,behaviorEvidence:true,behaviorPass:false}));
+  row=f.runner.aggregateDirectionEvaluation(f.directory).rows.find(row=>row.id===id);assert.notEqual(row.behavior,'pass');assert.equal(row.semantic,'unverified');
+  writeFileSync(path,JSON.stringify({invocations:[],audits:[],controlObservation:{path:'control-observation.json',digest:digestBytes(readFileSync(source))}}));
+  writeFileSync(join(base,'adjudication.json'),JSON.stringify({verdict:'pass',evidence:'Synthetic unchanged positive assertion cannot cure a concrete failure.',observedDigest:digestBytes(readFileSync(path))}));
+  row=f.runner.aggregateDirectionEvaluation(f.directory).rows.find(row=>row.id===id);assert.equal(row.behavior,'fail');assert.equal(row.deterministic,'fail');
+}));
+test('unsupported baseline controls keep their rows without a prerequisite, author or measurement allocation',()=>directionTemporary(async root=>{
+  const controls=['C-L1-B-ASTRA','C-L5-B-ASTRA'],f=await prepared112(root,{controls,baselineAbsentControls:true});
+  const rows=await f.runner.runTrialSlice({directory:f.directory,ids:controls,codex:f.binary,execute:true});
+  assert.equal(rows.length,2);assert.ok(rows.every(row=>row.deterministic==='unsupported'));
+  for(const id of controls){assert.equal(existsSync(join(f.directory,'trials',id,'workspace')),false);assert.equal(existsSync(join(f.directory,'trials',id,'measurement')),false);}
+  const aggregate=f.runner.aggregateDirectionEvaluation(f.directory);assert.equal(aggregate.hostLaunches,0);assert.equal(aggregate.rows.length,252);
+  assert.ok(controls.every(id=>aggregate.rows.find(row=>row.id===id).deterministic==='unsupported'));
+}));
+test('native control producer rechecks wire and catalog sources without treating CLI path hints as selection',async t=>directionTemporary(async root=>{
+  observedUpstreamFixture(t);const id='C-F01-C-ASTRA',f=await prepared112(root,{controls:[id],observedHost:true});
+  for(const prerequisite of ['P112-A1','P112-A2'])await f.runner.runPrerequisite({directory:f.directory,id:prerequisite,codex:f.binary,execute:true});
+  const [result]=await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
+  assert.equal(result.selection,'unqualified');assert.equal(result.loading,'unobserved');assert.equal(result.behavior,'unobserved');
+  const observation=JSON.parse(readFileSync(join(f.directory,'trials',id,'control-observation.json')));
+  assert.equal(observation.nativeSourceQualified,true);assert.ok(observation.sourceEvidence.length>=5);assert.ok(observation.reasons.some(reason=>/No complete native skill/.test(reason)));
 }));

@@ -19,6 +19,8 @@ import { BOUNDARY_FIELDS, nativeBoundaryEvidence } from '../lib/evaluation/nativ
 import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
 import { campaignUsage, strictEvaluationJson as strictJson, validateObserver, observerProfileReferences, loadObserverProfile, campaignObserverProfile,
   openObservedCollector, prepareObservedSession, observedPhysicalUsage, readObservedInvocation } from '../lib/evaluation/observed-execution.mjs';
+import { controlSourcePlan, observeNativeControl, observeControlBehavior } from '../lib/evaluation/native-control.mjs';
+import { decodeNativeRequest, decodeNativeResponse } from '../lib/evaluation/native-wire.mjs';
 import { nativeHostIdentity, provisionNativeCatalog, verifyNativeCatalog } from '../lib/evaluation/native-host.mjs';
 export { hostArguments, runBounded } from '../lib/evaluation/host.mjs';
 
@@ -959,7 +961,7 @@ export async function originalCapture({workspace,support,codex,signal,trial,dire
   };
   try{
     const git=await run('git',['rev-parse','HEAD']);requireEvaluation(git.code===0&&immutable(git.stdout.trim()),'original HEAD unavailable');
-    const before=captureMeasurementSources({workspace,head:git.stdout.trim(),includePlan:trial.scenarioId==='D7',nativeCatalog});
+    const before=captureMeasurementSources({workspace,head:git.stdout.trim(),includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6',nativeCatalog});
     put(join(captureRoot,'source.json'),before,{exclusive:true});const authority=readOriginalAuthority(workspace);put(join(captureRoot,'authority.json'),authority,{exclusive:true});
     await run(process.execPath,['--test'],'','acceptance');
     const checks=[{name:'reserve',path:'src/reserve.mjs',rows:ACCEPTANCE},...(trial.scenarioId==='D4'?[{name:'reserveBatch',path:'src/reserve-batch.mjs',rows:BATCH_ACCEPTANCE}]:[])];
@@ -967,7 +969,7 @@ export async function originalCapture({workspace,support,codex,signal,trial,dire
       const observed=await run(process.execPath,['--input-type=module'],program,'acceptance');if(observed.code===0){const parsed=strictJson(observed.stdout);requireEvaluation(Array.isArray(parsed),'original acceptance result');results.push(...parsed);}}
     put(join(captureRoot,'acceptance.json'),results,{exclusive:true});
     const current=await run('git',['rev-parse','HEAD']);requireEvaluation(current.code===0&&current.stdout.trim()===before.head,'original target changed during capture');
-    const after=captureMeasurementSources({workspace,head:current.stdout.trim(),includePlan:trial.scenarioId==='D7',nativeCatalog});requireEvaluation(after.snapshotDigest===before.snapshotDigest,'original snapshot changed during capture');
+    const after=captureMeasurementSources({workspace,head:current.stdout.trim(),includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6',nativeCatalog});requireEvaluation(after.snapshotDigest===before.snapshotDigest,'original snapshot changed during capture');
     let target=null,targetStatus='unsupported';
     if(existsSync(join(support,'lib/direction/audit.mjs'))){const program=`const {observeTarget}=await import(${JSON.stringify(pathToFileURL(join(support,'lib/direction/audit.mjs')).href)});process.stdout.write(JSON.stringify(observeTarget({kind:'uncommitted'},process.cwd())));`;
       const observed=await run(process.execPath,['--input-type=module'],program);if(observed.code===0){target=strictJson(observed.stdout);targetStatus='observed';}}
@@ -1015,7 +1017,7 @@ async function measurementCheckpoint({directory,manifest,trial,root,fixture,supp
     const checked=productOperation({...measurement,operation:'check',auditId,stage:phase==='endpoint'?'endpoint':'result',endpointId:'local-completion'});
     const resultPath=join(auditRoot(measurement,auditId),'result.json'),result=strictJson(readFixtureFile(measurement.cwd,resultPath));
     const after=await retainedInspection({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/${auditId}-post-head`},'git',['rev-parse','HEAD']);
-    let current;try{current=after.code===0?captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:after.stdout.trim(),includePlan:trial.scenarioId==='D7'}):null;}catch(error){error.inspectionPath=after.inspectionPath;throw error;}
+    let current;try{current=after.code===0?captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:after.stdout.trim(),includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6'}):null;}catch(error){error.inspectionPath=after.inspectionPath;throw error;}
     const originalCurrent=current?.snapshotDigest===captured.capture.snapshotDigest;
     return {auditId,controlled,actualAuditorCalls:controlled?0:observed.requests,simulatedTransportRequests:controlled?observed.simulatedTransportRequests:0,
       check:checked,originalCurrent,originalCurrentnessInspection:after.inspectionPath,measurementEndpointSatisfied:originalCurrent&&checked.directionSatisfied===true,subjectEndpointStatus:'outstanding',
@@ -1046,20 +1048,25 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
   requireEvaluation(Array.isArray(ids)&&ids.length>0&&ids.length<=manifest.handoff.bounds.sliceTrials&&new Set(ids).size===ids.length&&ids.every(id=>selected.some(t=>t.id===id)),'slice must name distinct selected rows');
   directionAuthority(directory,manifest);
   const rows=ids.map(id=>[...DIRECTION_TRIALS,...CONTROL_TRIALS].find(t=>t.id===id));
-  for(const trial of rows){verifyDirectionHost(manifest,trial.modelKey,codex);observedQualification(directory,manifest,trial.modelKey,{nativeRevision:trial.caseId?manifest.support[trial.revision].revision:null,codex});}
+  const controlPlans=new Map(rows.filter(trial=>trial.caseId).map(trial=>[trial.id,selectedControlSourcePlan(trial,join(directory,'support',trial.revision))]));
+  for(const trial of rows){if(controlPlans.get(trial.id)?.status==='unsupported')continue;verifyDirectionHost(manifest,trial.modelKey,codex);observedQualification(directory,manifest,trial.modelKey,{nativeRevision:trial.caseId?manifest.support[trial.revision].revision:null,codex});}
   if(manifest.handoff.auditor.condition==='live'&&rows.some(t=>t.scenarioId&&!['D6','D7','D8'].includes(t.scenarioId)))requireLiveQualification(directory,manifest);
   const lock=join(directory,'active.lock');put(lock,{kind:'slice',ids},{exclusive:true});const started=Date.now(),execution=directionBudget(directory,manifest,started+manifest.handoff.bounds.sliceMs),answers=[];
   try{for(const trial of rows){remainingExecution(execution,manifest.handoff.bounds.sliceMs);const root=join(directory,'trials',trial.id);let support=join(directory,'support',trial.revision);
     if(existsSync(join(root,'result.json'))){answers.push(strictJson(strictText(directory,join(root,'result.json'))));continue;}
     mkdirSync(root,{recursive:true,mode:0o700});let fixture;
+    const sourcePlan=controlPlans.get(trial.id);
+    if(sourcePlan?.status==='unsupported'){const result={id:trial.id,...scoreControl({trial}),deterministic:'unsupported',reason:sourcePlan.reason};
+      put(join(root,'control-source-plan.json'),sourcePlan,{exclusive:true});put(join(root,'observed.json'),{invocations:[],audits:[],observationError:null,unsupported:sourcePlan.reason},{exclusive:true});
+      put(join(root,'result.json'),result,{exclusive:true});answers.push(result);continue;}
     if(existsSync(join(root,'fixture.json')))fixture=strictJson(strictText(root,join(root,'fixture.json')));
     else {fixture=createDirectionFixture({directory:join(root,'workspace'),scenarioId:trial.scenarioId??(trial.caseId==='L4'?'D7':'D1'),repetition:trial.repetition??1});mkdirSync(join(fixture.directory,'.afk/tmp'),{recursive:true,mode:0o700});
-      if(trial.caseId){fixture.control=prepareControlFixture({trial,fixture,support,directory:root});support=fixture.control.support;}
+      if(trial.caseId){fixture.control=prepareControlFixture({trial,fixture,support,directory:root,sourcePlan});support=fixture.control.support;}
       if(!fixture.standalone&&!trial.caseId)prepareProductEvidence({fixture,pluginRoot:support});
       if(manifest.handoff.observer)fixture.nativeCatalog=provisionNativeCatalog({workspace:fixture.directory,support});
       if(trial.scenarioId==='D6')await seedExhaustedDirection({directory,root,fixture,trial,support,codex,signal,execution});
-      else if(!fixture.standalone&&(trial.scenarioId&&trial.scenarioId!=='D7'||trial.caseId==='L5'))initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:join(directory,'support/M'),task:directionTaskFor(trial.scenarioId??'D1'),existingFixtureLedger:true,execution});
-      fixture.authority=readOriginalAuthority(fixture.directory);const before=captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:fixture.current,includePlan:trial.scenarioId==='D7'});put(join(root,'before.json'),before.snapshot,{exclusive:true});put(join(root,'fixture.json'),fixture,{exclusive:true});}
+      else if(!fixture.standalone&&(trial.scenarioId&&trial.scenarioId!=='D7'||trial.caseId==='L5'))initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:trial.caseId==='L5'?support:join(directory,'support/M'),task:directionTaskFor(trial.scenarioId??'D1'),existingFixtureLedger:true,execution});
+      fixture.authority=readOriginalAuthority(fixture.directory);const before=captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:fixture.current,includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6'});put(join(root,'before.json'),before.snapshot,{exclusive:true});put(join(root,'fixture.json'),fixture,{exclusive:true});}
     if(fixture.control)support=fixture.control.support;
     const invocations=[],audits=[],phaseResults=[];let observationError=null,lastCapture=null;
     try{for(const phase of trial.phases){
@@ -1089,12 +1096,24 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
     lastCapture=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:'final-original',execution});
     }catch(error){observationError={reason:error.message,capturePath:error.capturePath??null,inspectionPath:error.inspectionPath??null};}
     const before=strictJson(strictText(root,join(root,'before.json'))),after=lastCapture?.capture.snapshot??before,decision=invocations.at(-1)?.decision;
-    let result;
-    if(trial.caseId){const requiredReads=fixture.control.requiredReads,reads=observedReferenceReads(invocations,support,requiredReads);
-      if(trial.caseId==='L1'&&invocations.length)reads.push(...fixture.control.contextDelivery);
-      const observation={explicitPathPrompt:false,requiredReads,reads,catalog:invocations.at(-1)?.catalog,selectionEvidence:false,behaviorEvidence:false,...controlActionOrder(invocations,support,requiredReads)};
-      put(join(root,'control-observation.json'),{...observation,condition:fixture.control.condition},{exclusive:true});
-      result={...scoreControl({trial,observation}),deterministic:observationError?'incomplete':'unobserved'};}
+    let result,controlObservation=null;
+    if(trial.caseId){
+      let observation;
+      if(manifest.handoff.observer){
+        try{observation=nativeControlObservation({directory,manifest,trial,fixture,support,codex,invocations});}
+        catch(error){observation={...scoreControl({trial}),requiredReads:fixture.control.requiredReads,reads:[],selectionEvidence:false,behaviorEvidence:false,reasons:[error.message]};}
+        if(observation.nativeSourceQualified)Object.assign(observation,observeControlBehavior({trial,invocations,before,after,files:lastCapture?.capture.files??{},acceptance:lastCapture?.results??[],
+          control:fixture.control,support,workspace:fixture.directory,node:process.execPath}));
+      }else{
+        const requiredReads=fixture.control.requiredReads,reads=observedReferenceReads(invocations,support,requiredReads);
+        if(trial.caseId==='L1'&&invocations.length)reads.push(...fixture.control.contextDelivery);
+        observation={explicitPathPrompt:false,requiredReads,reads,catalog:invocations.at(-1)?.catalog,selectionEvidence:false,behaviorEvidence:false,...controlActionOrder(invocations,support,requiredReads)};
+      }
+      if(observationError){observation.semanticEligible=false;observation.behaviorEvidence=false;}
+      const path=join(root,'control-observation.json');put(path,{...observation,condition:fixture.control.condition},{exclusive:true});
+      controlObservation={path:'control-observation.json',digest:digestBytes(readFixtureFile(root,path))};
+      result=scoreControl({trial,observation});if(observationError)result.deterministic='incomplete';}
+
     else{
       let original;try{original=lastCapture?await originalDirectionStatus({workspace:fixture.directory,support,codex,signal,auditId:trial.scenarioId==='D9'?'audit-3':'audit-2',execution,directory:root,inspectionId:'inspections/final-endpoint'}):{status:'unobserved'};}catch(error){original={status:'unobserved',reason:error.message,inspectionPath:error.inspectionPath??null};observationError??={reason:error.message,inspectionPath:error.inspectionPath??null};}
       const paths=Object.keys(lastCapture?.capture.files||{}),code=lastCapture?.capture.files['src/reserve.mjs']||'',test=lastCapture?.capture.files['test/reserve.test.mjs']||'';
@@ -1108,7 +1127,7 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
       if(observationError){result.deterministic='incomplete';result.issues.push('observation-error');}
       put(join(root,'original-endpoint.json'),original,{exclusive:true});put(join(root,'adapter.json'),adapter,{exclusive:true});
     }
-    result={id:trial.id,...result};put(join(root,'observed.json'),{invocations,audits,observationError},{exclusive:true});put(join(root,'result.json'),result,{exclusive:true});answers.push(result);
+    result={id:trial.id,...result};put(join(root,'observed.json'),{invocations,audits,observationError,...(controlObservation?{controlObservation}:{})},{exclusive:true});put(join(root,'result.json'),result,{exclusive:true});answers.push(result);
     if(observationError||invocations.some(i=>!i.cleanup)||signal?.aborted)break;
   }return answers;}finally{rmSync(lock);}
 }
@@ -1120,9 +1139,16 @@ export function aggregateDirectionEvaluation(directory,manifest=loadDirectionEva
     let result=existsSync(path)?strictJson(strictText(directory,path)):null;
     const observedPath=join(directory,'trials',trial.id,'observed.json'),observed=existsSync(observedPath)?strictJson(strictText(directory,observedPath)):null;
     const invocations=observed?.invocations??attempts.filter(a=>a.kind==='author').map(a=>{const p=join(directory,'artifacts',a.id,'result.json');return existsSync(p)?strictJson(strictText(directory,p)):{status:'incomplete',usage:{},actions:[],durationMs:null};});
+    let control=null;
+    if(trial.caseId&&observed?.controlObservation?.path==='control-observation.json'){
+      const p=join(directory,'trials',trial.id,'control-observation.json');
+      if(existsSync(p)){const bytes=readFixtureFile(directory,p);if(digestBytes(bytes)===observed.controlObservation.digest)control=strictJson(bytes);}
+      result=control?scoreControl({trial,observation:control}):scoreControl({trial});
+    }
     let semantic='unverified';const judgmentPath=join(directory,'trials',trial.id,'adjudication.json');
     if(observed&&existsSync(judgmentPath)){const judgment=strictJson(strictText(directory,judgmentPath));
-      if(['pass','fail','unverified'].includes(judgment.verdict)&&typeof judgment.evidence==='string'&&judgment.evidence.trim()&&judgment.observedDigest===digestBytes(readFixtureFile(directory,observedPath))){semantic=judgment.verdict;
+      if(['pass','fail','unverified'].includes(judgment.verdict)&&typeof judgment.evidence==='string'&&judgment.evidence.trim()&&judgment.observedDigest===digestBytes(readFixtureFile(directory,observedPath))&&(!trial.caseId||control)){semantic=judgment.verdict;
+        if(trial.caseId&&control.semanticEligible===true&&control.behaviorEvidence!==true&&['pass','fail'].includes(semantic))result=scoreControl({trial,observation:{...control,behaviorEvidence:true,behaviorPass:semantic==='pass'}});
         if(trial.scenarioId&&typeof judgment.repairAdmission==='boolean'){const base=join(directory,'trials',trial.id),before=strictJson(strictText(directory,join(base,'before.json'))),capturePath=join(base,'captures/final-original/source.json');
           if(existsSync(capturePath)){const capture=strictJson(strictText(directory,capturePath)),adapter=strictJson(strictText(directory,join(base,'adapter.json'))),acceptance=strictJson(strictText(directory,join(base,'captures/final-original/acceptance.json')));
             result=scoreDirectionTrial({trial,before,after:capture.snapshot,acceptance,invocations,decision:invocations.at(-1)?.decision,adapter:{...adapter,repairAdmission:judgment.repairAdmission}});}}}}
@@ -1135,7 +1161,7 @@ export function aggregateDirectionEvaluation(directory,manifest=loadDirectionEva
       durationMs:invocations.every(i=>count(i.durationMs))?invocations.reduce((n,i)=>n+i.durationMs,0):null,
       commandCount:invocations.reduce((n,i)=>n+(i.actions||[]).filter(a=>a.event==='item.completed'&&a.type==='command_execution').length,0),
       opaqueActions:invocations.reduce((n,i)=>n+(i.unknownActions??0),0),externalReviewerWaitMs:null,
-      selection:result?.selection??null,loading:result?.loading??null,hostLaunches:attempts.filter(a=>a.kind==='author').length,auditAttempts:attempts.filter(a=>a.kind==='audit').length,
+      selection:result?.selection??null,loading:result?.loading??null,behavior:result?.behavior??null,hostLaunches:attempts.filter(a=>a.kind==='author').length,auditAttempts:attempts.filter(a=>a.kind==='audit').length,
       subjectEndpointStatus:result?.subjectEndpointStatus??'unobserved',measurementEndpointSatisfied:result?.measurementEndpointSatisfied??false,metrics:result?.metrics??null};
   });
   const attempts=directionStarted(directory),slots=PREREQUISITES.map(p=>({id:p.id,model:p.model,selected:manifest.handoff.prerequisites.includes(p.id),consumed:attempts.some(r=>r.id===p.id)}));
@@ -1144,7 +1170,7 @@ export function aggregateDirectionEvaluation(directory,manifest=loadDirectionEva
     auditAttempts:attempts.filter(a=>a.kind==='audit').length,behavioralAcceptanceComplete:false,
     limitations:['Deterministic fixture observations are not actual model behavior.','Original subject endpoint/freshness remains separate from measurement approval.',
       'Native selection, full reference delivery and complete tool inventory require actual retained host evidence.','Unknown provider usage and unattempted cells remain visible.',
-      'Legacy issue98 zero-of-fourteen behavior remains unmet.','D9 full retained history may exceed the unchanged production 16-KiB request limit.']};
+      'Legacy issue98 zero-of-fourteen behavior remains unmet.','D9 retains full prior history; actual request size and current-profile live qualification remain separate evidence requirements.']};
 }
 
 async function seedExhaustedDirection({directory,root,fixture,trial,support,codex,signal,execution}) {
@@ -1213,33 +1239,58 @@ export function controlActionOrder(invocations,support,required=[]) {
   }
   return {orderKnown:true,dependentAction:null};
 }
-export function requiredControlReferences(trial,support) {
-  const skill=trial.skill,names=['environment'];
-  if(skill==='afk')names.push('kickoff','external-review','review-convergence','publication');
-  if(['afk-implementation-pilot','afk-internal-review'].includes(skill))names.push('review-convergence','publication','continuity','output');
-  if(['afk-spec-planner','afk-agent-relay'].includes(skill))names.push('output');
-  if(/-(codex|claude|kimi|glm|deepseek|mimo)-review$/.test(skill))names.push('external-review','review-convergence','review-evidence');
-  if(trial.caseId==='L5')names.push('direction-state');if(trial.caseId==='L6')names.push('design-review');if(trial.caseId==='L7')names.push('review-evidence');if(trial.caseId==='L8')names.push('continuity');
-  return [...new Set(names)].map(name=>{const path=`skills/afk/references/${name}.md`;return {path,digest:existsSync(join(support,path))?digestBytes(readFixtureFile(support,join(support,path))):null};});
+export function nativeControlObservation({directory,manifest,trial,fixture,support,codex,invocations}) {
+  requireEvaluation(invocations.length===1,'single native control invocation required');const result=invocations[0],id=`${trial.id}-author-1`,reference=result.nativeObservation;
+  evaluationRef(reference);requireEvaluation(reference.path===`artifacts/${id}/native-observation.json`,'native control source location');
+  const bytes=readFixtureFile(directory,join(directory,reference.path));requireEvaluation(digestBytes(bytes)===reference.digest,'native control source changed');
+  const observed=readObservedInvocation({directory,id,workspace:fixture.directory,support,model:trial.model,catalog:fixture.nativeCatalog,manifest,codex});
+  requireEvaluation(observed.status==='observed'&&equal(observed,strictJson(bytes))&&result.nativeParentId===id&&result.sessionId,'native control source unqualified');
+  const stdout=readFixtureFile(directory,join(directory,'artifacts',id,'stdout.raw'));
+  requireEvaluation(stdout.equals(readFixtureFile(directory,join(directory,'artifacts',id,'stdout.jsonl'))),'native control event bytes changed');
+  const parsed=parseDirectionHostEvents(decodeOriginalUtf8(stdout));
+  requireEvaluation(parsed.eventsComplete&&parsed.sessionId===result.sessionId&&equal(parsed.actions,result.actions),'native control event projection changed');
+  const read=ref=>{evaluationRef(ref);const value=readFixtureFile(directory,join(directory,ref.path),{maxBytes:manifest.handoff.observer.maxBytes});requireEvaluation(digestBytes(value)===ref.digest,'native control exchange changed');return value;};
+  const exchanges=[],effects=[],sourceEvidence=[reference,{path:`artifacts/${id}/stdout.raw`,digest:digestBytes(stdout)}];let catalog;
+  for(const row of observed.exchanges){
+    requireEvaluation(row.forwarded&&row.released,'native control exchange not delivered');
+    const request=decodeNativeRequest(read(row.request),{maxBytes:manifest.handoff.observer.maxBytes}),response=decodeNativeResponse(read(row.response),{maxBytes:manifest.handoff.observer.maxBytes,contentType:'text/event-stream',requestedModel:trial.model});
+    catalog=strictJson(read(row.catalog));sourceEvidence.push(row.request,row.response,row.catalog);
+    exchanges.push({invocationId:id,sessionId:result.sessionId,ordinal:row.ordinal,request,response});
+    for(const call of response.response.output.filter(item=>['custom_tool_call','function_call'].includes(item.type)))effects.push({invocationId:id,sessionId:result.sessionId,callId:null,evidence:`${row.response.path}#${call.call_id}`,reason:'Native nested dependent-effect parentage is unavailable.'});
+  }
+  const bodies={},builtinRoot=join(directory,'artifacts',observed.session.ownerId,'native-state/skills/.system');
+  for(const row of [...catalog.entries,...catalog.unadvertisedBodies]){const root=row.kind==='selected'?support:builtinRoot;const value=readFixtureFile(root,row.path);requireEvaluation(digestBytes(value)===row.sourceDigest,'native control catalog body changed');bodies[row.path]=value;}
+  return {...observeNativeControl({trial,plan:fixture.control.sourcePlan,support,catalog,bodies,exchanges,effects,contextDelivery:fixture.control.contextDelivery}),nativeSourceQualified:true,sourceEvidence};
 }
 
-export function prepareControlFixture({trial,fixture,support,directory}) {
+export function selectedControlSourcePlan(trial,support) {
+  return controlSourcePlan({trial,sources:path=>existsSync(join(support,path))?readFixtureFile(support,join(support,path)):undefined});
+}
+export function requiredControlReferences(trial,support) { return selectedControlSourcePlan(trial,support).requiredReads; }
+
+export function prepareControlFixture({trial,fixture,support,directory,sourcePlan=selectedControlSourcePlan(trial,support)}) {
   const condition=trial.condition;let promptSuffix='',contextDelivery=[];
+  if(sourcePlan.status!=='supported')return {status:'unsupported',reason:sourcePlan.reason,condition,support,sourcePlan};
   if(trial.caseId==='L3'){
     const original=support;support=join(directory,'controlled-support');mkdirSync(support,{mode:0o700});
-    const copy=(source,dest)=>{assertFixtureDirectory(original,source);for(const entry of readdirSync(source,{withFileTypes:true})){const from=join(source,entry.name),key=relative(original,from),to=join(dest,entry.name);if(key==='skills/afk/references/environment.md')continue;
+    const copy=(source,dest)=>{assertFixtureDirectory(original,source);for(const entry of readdirSync(source,{withFileTypes:true})){const from=join(source,entry.name),key=relative(original,from),to=join(dest,entry.name);if(key===sourcePlan.missingReference.path)continue;
       if(entry.isDirectory()){mkdirSync(to,{mode:0o700});copy(from,to);}else{requireEvaluation(entry.isFile(),'controlled support nonregular');put(to,readFixtureFile(original,from),{exclusive:true});chmodSync(to,0o444);}}};copy(original,support);
     support=realpathSync(support);
   }
-  const requiredReads=requiredControlReferences(trial,support);
-  if(trial.caseId==='L1'){const path='skills/afk/references/environment.md',bytes=readFixtureFile(support,join(support,path));
+  const requiredReads=sourcePlan.requiredReads;
+  if(trial.caseId==='L1'){const path=requiredReads.find(row=>row.path.endsWith('/environment.md')).path,bytes=readFixtureFile(support,join(support,path));
     promptSuffix=`\nCurrent selected-revision reference bytes delivered in this context (${path}):\n${decodeOriginalUtf8(bytes)}\n`;
     contextDelivery=[{path,digest:digestBytes(bytes),complete:true,success:true,source:'actual-invocation-prompt',invocationIndex:0,actionIndex:-1}];}
   if(trial.caseId==='L2')put(join(fixture.directory,'.afk/runs/trial/saved-summary.md'),'Controlled stale summary claim: environment instructions were read from an older installed revision. No current-revision delivery evidence is retained.\n',{exclusive:true});
+  if(trial.caseId==='L4')promptSuffix='\nThis is a standalone plan-only stage. Save the complete plan at docs/plan.md; preserve product files and do not allocate a run.\n';
   if(trial.caseId==='L5')promptSuffix='\nThe fixture driver explicitly enabled direction state from the retained request and policy sources in the active run. Inspect those current records through the selected production interface.\n';
-  if(trial.caseId==='L6')promptSuffix='\nThis is the external design phase for the supplied synthetic request. Inspect the applicable instructions before the bounded local gate operation; no provider call is authorized.\n';
-  if(trial.caseId==='L7'){fixture.controlledReceipt=prepareProductEvidence({fixture:{...fixture,scenarioId:'S7'},pluginRoot:support});fixture.current=fixtureGit(fixture.directory,['rev-parse','HEAD']);}
-  return {condition,support,requiredReads,promptSuffix,contextDelivery,provenance:trial.caseId==='L3'?'deliberate-missing-reference':'original-selected-support'};
+  if(trial.caseId==='L6'){
+    put(join(fixture.directory,'docs/plan.md'),'# Supplied inventory plan\n\nImplement TASK R1 and preserve A1 through A6. Reject fractional, negative and excessive requests; retain the original stock on rejection. Validate all six acceptance rows with node --test.\n',{exclusive:true});
+    promptSuffix='\nThis is the external design phase for docs/plan.md. The bounded local endpoint is the selected Codex gate with --design docs/plan.md --print-prompt. No provider call or completed external review is authorized.\n';
+  }
+  if(trial.caseId==='L7'){fixture.controlledReceipt=prepareProductEvidence({fixture:{...fixture,scenarioId:'S7'},pluginRoot:support});fixture.current=fixtureGit(fixture.directory,['rev-parse','HEAD']);
+    promptSuffix=`\nThe local endpoint is checking the retained candidate ${fixture.controlledReceipt.candidate} against the original receipt ${fixture.controlledReceipt.priorReceipt} using the selected receipt checker. Preserve those sources and the target; no new review is authorized.\n`;}
+  return {status:'supported',condition,support,sourcePlan,requiredReads,promptSuffix,contextDelivery,receipt:fixture.controlledReceipt??null,provenance:trial.caseId==='L3'?'deliberate-missing-reference':'original-selected-support'};
 }
 
 function finishMeasurementTerminal(measurement,auditId) {
