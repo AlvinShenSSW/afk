@@ -17,6 +17,7 @@ import { ACCEPTANCE, DECISION_SCHEMA, FIXTURE_VERSION, LIMITS, SCENARIOS, TASK, 
 import { EVALUATION_PATH, FEATURES, hostArguments, permissionArgs, runBounded, shellEnvironmentArgs, toolEnvironment } from '../lib/evaluation/host.mjs';
 import { BOUNDARY_FIELDS } from '../lib/evaluation/native-witness.mjs';
 import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
+import { campaignUsage, strictEvaluationJson as strictJson } from '../lib/evaluation/observed-execution.mjs';
 import { verifyNativeCatalog } from '../lib/evaluation/native-host.mjs';
 export { hostArguments, runBounded } from '../lib/evaluation/host.mjs';
 
@@ -505,17 +506,6 @@ async function main(argv) {
 
 
 function requireEvaluation(ok, reason) { if(!ok)throw new Error(`issue112 ${reason}`); }
-function strictJson(bytes) {
-  const text=typeof bytes==='string'?bytes:new TextDecoder('utf-8',{fatal:true}).decode(bytes);
-  const value=JSON.parse(text),tokens=text.match(/"(?:[^"\\]|\\.)*"|[{}\[\]:,]|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/g)||[],stack=[];
-  for(let n=0;n<tokens.length;n++) {
-    if(tokens[n]==='{')stack.push(new Set());else if(tokens[n]==='[')stack.push(null);
-    else if(tokens[n]==='}'||tokens[n]===']')stack.pop();
-    else if(tokens[n+1]===':'&&stack.at(-1)){const key=JSON.parse(tokens[n]);requireEvaluation(!stack.at(-1).has(key),'duplicate JSON key');stack.at(-1).add(key);}
-    requireEvaluation(stack.length<=128,'JSON depth bound');
-  }
-  return value;
-}
 const evalId = value => typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value);
 const evalDigest = value => typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const count = value => Number.isSafeInteger(value)&&value>=0;
@@ -701,15 +691,7 @@ function directionRemainingWall(directory,manifest,cap) {
 function directionAuthority(directory,manifest) {
   requireEvaluation(manifest.handoff.authorization.status==='authorized','planned handoff cannot execute');
   requireEvaluation(!existsSync(join(directory,'cleanup-failed.json')),'cleanup unresolved');
-  const observed=directionStarted(directory);let input=0,output=0;
-  for(const record of observed){const path=join(directory,'artifacts',record.id,'result.json');
-    requireEvaluation(existsSync(path),'unfinished launch remains charged; inspect recovery');
-    const result=strictJson(strictText(directory,path));requireEvaluation(result.cleanup===true,'cleanup unresolved');
-    if(record.kind==='audit'&&result.controlled===true)continue;
-    const tokens=result.usage||{};
-    const i=tokens.input_tokens??tokens.input,o=tokens.output_tokens??tokens.output;
-    requireEvaluation(count(i)&&count(o),'unknown usage stops next launch');input+=i;output+=o;
-  }
+  const {input,output}=campaignUsage(directory);
   const spend=manifest.handoff.bounds.spend;requireEvaluation(spend.plannedMaxMicrousd>0&&input<spend.inputTokens&&output<spend.outputTokens,'sourced spend or token planning ceiling exhausted');
   directionRemainingWall(directory,manifest,manifest.handoff.bounds.totalMs);
 }

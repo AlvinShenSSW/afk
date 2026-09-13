@@ -529,6 +529,77 @@ finding. No control invokes a live auditor, compressor, scope model or remote
 forge. Original transition captures, tool events and checker outputs supply
 separate evidence references. Semantic assessments remain explicitly separate.
 
+### Native control projection: proposed freeze
+
+Add one pure control projection module and adapt the existing `scoreControl` and
+fixture producer in place. `controlSourcePlan` accepts the selected trial and its
+immutable support sources. It includes the selected `SKILL.md` and only that
+revision's applicable production routes. Candidate references remain references;
+baseline inline owners remain actual baseline `SKILL.md` bodies. Resolve the
+finite stage/condition routes against their selected-source links, preserving
+each expected byte digest. Unknown routing is unsupported rather than an invented
+candidate path. Keep all 37 forms, eight conditions and original 72/180 IDs.
+
+`observeNativeControl` accepts that plan, request-derived catalog evidence,
+complete observed exchanges and original before/after/product observations.
+Compare exact UTF-8 source bytes with complete string leaves from actual delivered
+tool outputs and expressly delivered context. One bounded JSON decoding layer may
+expose nested string leaves; retain BOMs and newlines, reject lone surrogates and
+bound depth, values and total bytes. No evaluation of model code, escape guessing,
+or concatenation of unrelated partial outputs is permitted. Source equality
+establishes delivery, not proof of a particular filesystem-read command.
+
+Selection is the first unambiguous complete advertised skill-body delivery in
+the observed invocation. Match against every body in its actual native catalog;
+do not search only for the expected answer. Missing bodies, earlier opaque output,
+multiple candidate bodies in the same call/response or unadvertised skill-body
+delivery keep selection unqualified. Repeated history is deduplicated by native
+session, call identity and output digest; a response ID alone is not globally
+unique. Explicit L1 reference delivery never counts as unhinted skill selection.
+
+For order retain only validated request-to-response and call-to-later-output
+edges scoped to the invocation and session. A source delivered in request Q
+precedes generation of response Q; a source returned by call X cannot precede
+effects inside X or its same-response siblings. Unknown nested effect parentage
+remains unknown. Do not infer it from CLI arrival order, matching text, `await`
+or an added JavaScript filter. The scorer accepts a separate native causal-order
+record alongside its legacy controlled-index format, and grants loading PASS
+only with complete required delivery before the first proven dependent effect
+and no earlier unresolved effect candidate. Unknown order earns no PASS.
+
+Prepare L1/L2/L3 only when the selected revision contains the named routed
+environment reference. L3 records its original digest before removing that one
+file from the controlled support; the native links expose the same controlled
+tree. Unsupported baseline conditions receive a retained unsupported result
+before any author or measurement allocation. Check L5's actual selected state
+helper before initialization; never graft auditor support into an absent baseline
+capability. The fixture driver remains distinct from any observed author action.
+
+L4 captures the existing standalone D7 plan fixture as a plan even though its
+control ID is L4. Retain the complete plan and original task/acceptance context,
+unchanged product files and absence of new run/direction state. L6 uses the actual
+selected Codex gate's `--design <plan> --print-prompt` endpoint; this proves local
+preparation only, never a completed model review. L7 distinguishes the seeded
+stale receipt from an actual author checker invocation, result and unchanged
+receipt/target. L8 preserves actual remote checks off and the local endpoint;
+unknown action coverage cannot prove absence of remote activity. Advertised forms
+without a safe local endpoint retain behavior unobserved.
+
+Populate independent selection/loading/behavior components from their evidence,
+removing the producer's unconditional unobserved override. A concrete observed
+violating action may fail its component; a missing observation is unobserved,
+not a negative model finding. Positive behavior requiring semantic plan/intent
+judgment remains unavailable until independently adjudicated against the retained
+original evidence, using the existing evidence-digest-bound adjudication path.
+Agent assertions, fixture-driver checks and initial seed artifacts cannot become
+author behavior. Final aggregation preserves those distinctions and denominators.
+
+Tests cover exact/escaped/BOM source delivery versus prefixes, repeated history,
+same-cell ambiguity, later-response edges, missing parentage, unadvertised bodies,
+baseline inline routing, unsupported baseline features, original L3 digests, L4
+plan capture, L5 pre-allocation refusal, L6 preview limits, L7 seed/actor separation
+and L8 incomplete coverage. The real matrix remains a later evidence requirement.
+
 ### Observer handoff decisions under preparation
 
 Add an optional strict `observer` object to the existing version-one handoff:
@@ -567,6 +638,75 @@ they cannot guarantee a provider will not exceed a ceiling within one already
 started request. A physical request maximum bounds that remaining exposure. The
 report distinguishes planned cost from actual billing and does not price a
 ChatGPT subscription request as an API invoice.
+
+### Observed execution integration: proposed freeze
+
+Implement the optional handoff through a focused `observed-execution.mjs` module
+and the existing evaluator entry points. Preserve the legacy path without an
+observer and the four original prerequisite slots. The shared launcher, catalog
+and wire helpers remain their single owners; do not introduce a second collector,
+process runner, inventory parser or scoring engine.
+
+The profile names both selected models and each generated witness's complete
+required artifact references. Stage those references with the handoff's other
+sources, count their combined bytes against the existing handoff ceiling, and
+reject missing or conflicting references. Validate the witness identity, first
+and exact-resumed sessions, complete fixed-script requests/responses, original
+CLI/probe evidence and model-specific registry. Recompute evidence from retained
+bytes; a stored status or complete flag is insufficient. Evidence paths in a
+witness never grant new live read permissions. Live invocations construct their
+own fixed protected-probe and native-state roots and revalidate their actual
+selected support/catalog bytes. This is artifact verification when invoked,
+not an external attestation that an orchestrator cannot fabricate records.
+
+The observed form of the existing host fingerprint uses the pinned native bundle
+and executed-runtime identity; it accepts the resolved installed launcher without
+weakening the legacy regular-file check. A changed runtime invalidates source
+witnesses and live qualification. Complete initial implementation and regenerate
+source witnesses before spending any of the four real prerequisite slots.
+
+The parent reads the selected upstream bearer and optional account identifier
+from dedicated environment variables. It passes them only to the existing
+collector; the clean native child receives only the collector's local token.
+The collector's existing fixed upstream routes own dispatch. Source-bound client
+protocol headers may pass through the existing explicit header allowlist; no
+caller-defined origin, retry, proxy or credential override is introduced.
+
+For each observed invocation, create the native state before launch and retain it
+outside the writable fixture. Exact resume uses the original state and session.
+Provision the selected native catalog before all initial captures, including D6
+history preparation. The live prerequisite command uses the protected absolute
+probe and original Node/Git checks. Its command event must match a supported
+native shell serialization of that exact command and its actual output must
+contain all eight successful fields. A merely similar command, printed marker,
+or agent assertion does not qualify a host. New observation records bind the
+profile, parent launch, session/model, raw exchanges and probe events; legacy
+controlled observations keep their existing format and cannot enter this route.
+
+Before each upstream reservation, verify the current source identity, exact
+request model/declarations and native catalog. Read prior completed parent/audit
+usage plus the current parent's completed physical exchanges. Verify every
+started physical ordinal against its collector dispatch and terminal; a missing
+or conflicting artifact stops continuation. Reserve the new physical ordinal
+exclusively only after those checks. A reservation remains consumed even if
+dispatch later fails. Pre-dispatch zero usage requires the collector's complete
+terminal proving no forward; a bare missing dispatch file is unknown usage.
+
+After each invocation, stop the collector, retain its complete bounded records
+and derive usage/model identity from those exchanges. Do not add the native CLI's
+summary usage to them. Partial or unparseable forwarded exchanges make usage
+unknown and stop the next dependent request or launch. The original campaign
+lock, slot counts, first-start deadline and all prior accounting remain in effect.
+Pre-reservation refusals and source-witness experiments remain explicitly separate
+from real dispatches, but none disappear from their respective attempt records.
+
+Tests cover strict optional metadata and combined source bounds, stale witness
+or runtime refusal before a real slot, changed declarations/catalog before
+dispatch, complete native first/resume admission, wrong probe serialization,
+physical global/per-parent exhaustion, unknown/missing terminals, no double
+counting, pre-dispatch zero usage and refusal to overwrite or replay an attempt.
+Use source-isolated fixtures and mocked HTTPS for these tests. Actual provider
+qualification follows only after all execution and control code is frozen.
 
 ## Response-release slice: proposed freeze
 
