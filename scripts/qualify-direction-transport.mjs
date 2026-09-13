@@ -1,10 +1,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
 import { appendDirectionRecord } from '../lib/direction/state.mjs';
-import { requireValue, shape, text, identifier, equal, contentDigest } from '../lib/direction/schema.mjs';
+import { requireValue, shape, text, identifier, evidenceRef, equal, contentDigest } from '../lib/direction/schema.mjs';
 import { LIMITS, CANDIDATE, prepareAudit, loadPrepared, readJson, readArtifact, directories, publish,
   terminalRequest, qualificationEvidence, profileFingerprint, readResult, exists } from '../lib/direction/audit.mjs';
 import { recordExchange } from '../lib/direction/transport.mjs';
@@ -15,13 +15,43 @@ const SELF = fileURLToPath(import.meta.url);
 const HARNESS = [SELF, join(FIXTURE_ROOT, 'setup.mjs')];
 const FIXTURE_FILES = ['requirements.md', 'artifact.mjs', 'check.txt', 'expected.json'];
 const PRIOR_ELAPSED_MS = 1900;
+const AMENDMENT_DIRECTORY = 'budget-amendment';
+const AMENDMENT_FILE = 'amendment.json';
+const AMENDMENT_PATH = `${AMENDMENT_DIRECTORY}/${AMENDMENT_FILE}`;
+function effectiveBudget(amendment = null) {
+  if (amendment === null) return { priorCalls: 1, priorElapsedMs: PRIOR_ELAPSED_MS,
+    remainingCalls: 1, remainingMs: LIMITS.totalMs - PRIOR_ELAPSED_MS };
+  shape(amendment, ['version', 'physicalCallId', 'authorization', 'history', 'priorAttempts', 'priorRequests', 'priorElapsedMs', 'additionalAttempts']);
+  requireValue(amendment.version === 1 && amendment.additionalAttempts === 1, 'qualification_budget');
+  identifier(amendment.physicalCallId); evidenceRef(amendment.authorization); evidenceRef(amendment.history);
+  for (const value of [amendment.priorAttempts, amendment.priorRequests, amendment.priorElapsedMs]) {
+    requireValue(Number.isSafeInteger(value) && value >= 0, 'qualification_budget');
+  }
+  requireValue(Number.isSafeInteger(amendment.priorAttempts + 1) && amendment.priorRequests <= amendment.priorAttempts, 'qualification_budget');
+  const remainingMs = LIMITS.totalMs - amendment.priorElapsedMs;
+  requireValue(remainingMs >= LIMITS.processMs, 'qualification_budget');
+  return { priorCalls: amendment.priorAttempts, priorRequests: amendment.priorRequests, priorElapsedMs: amendment.priorElapsedMs,
+    remainingCalls: 1, remainingMs, physicalCallId: amendment.physicalCallId, amendmentDigest: contentDigest(amendment) };
+}
+function readAmendment(root, path) {
+  const amendment = readJson(root, path, { maxBytes: LIMITS.requestBytes }); const budget = effectiveBudget(amendment);
+  const sources = new Map();
+  for (const ref of [amendment.authorization, amendment.history]) {
+    requireValue(ref.path !== AMENDMENT_FILE, 'output_exists');
+    const bytes = readArtifact(root, ref.path, { sensitive: true, maxBytes: LIMITS.requestBytes }); text(bytes);
+    requireValue(digestBytes(bytes) === ref.digest, 'qualification_source_digest'); sources.set(ref.path, bytes);
+  }
+  return { amendment, budget, sources };
+}
 function harnessDigest() { return contentDigest(HARNESS.map(path => ({ path: path === SELF ? 'qualifier' : 'fixture-setup', digest: digestBytes(readFileSync(path)) }))); }
 function command(binary, args, cwd) {
   const result = spawnSync(binary, args, { cwd, encoding: 'utf8', timeout: 10000, maxBuffer: LIMITS.responseBytes,
     env: { PATH: process.env.PATH || '', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' } });
   requireValue(result.status === 0 && !result.error && !result.signal, 'fixture_command_failed'); return result.stdout;
 }
-export function prepare({ fixtureRoot = FIXTURE_ROOT, out }) {
+export function prepare({ fixtureRoot = FIXTURE_ROOT, out, budgetAmendmentPath }) {
+  const amendmentPath = budgetAmendmentPath === undefined ? null : resolve(budgetAmendmentPath);
+  const amendment = amendmentPath === null ? null : readAmendment(dirname(amendmentPath), basename(amendmentPath));
   const absolute = resolve(out); directories(dirname(absolute));
   const files = Object.fromEntries(FIXTURE_FILES.map(path => [path, readArtifact(fixtureRoot, path, { sensitive: true, maxBytes: LIMITS.requestBytes })]));
   const expected = JSON.parse(files['expected.json']); validateOracle(expected);
@@ -42,7 +72,12 @@ export function prepare({ fixtureRoot = FIXTURE_ROOT, out }) {
   const metadata = { version: 1, cwd, runId: fixture.runId, issueId: fixture.issueId, auditId: fixture.input.auditId,
     profileDigest: profileFingerprint().digest, harnessDigest: harnessDigest(), fixtureDigests: FIXTURE_FILES.map(path => ({ path, digest: digestBytes(files[path]) })),
     expectedDigest: contentDigest(expected), packetDigest: prepared.packet.digest, requestDigest: prepared.request.digest,
-    qualification: 'NOT_RUN', budget: { priorCalls: 1, priorElapsedMs: PRIOR_ELAPSED_MS, remainingCalls: 1, remainingMs: LIMITS.totalMs - PRIOR_ELAPSED_MS } };
+    qualification: 'NOT_RUN', budget: amendment?.budget ?? effectiveBudget() };
+  if (amendment) {
+    const root = join(absolute, AMENDMENT_DIRECTORY); directories(root, true);
+    for (const [path, bytes] of amendment.sources) { directories(dirname(join(root, path)), true); publish(root, path, bytes, true); }
+    metadata.budgetAmendment = publish(absolute, AMENDMENT_PATH, amendment.amendment);
+  }
   publish(absolute, 'prepared.json', metadata); return metadata;
 }
 function validateOracle(expected) {
@@ -54,11 +89,17 @@ function validateOracle(expected) {
 export function inspectPrepared(prepared) {
   const metadata = readJson(prepared, 'prepared.json');
   shape(metadata, ['version', 'cwd', 'runId', 'issueId', 'auditId', 'profileDigest', 'harnessDigest', 'fixtureDigests',
-    'expectedDigest', 'packetDigest', 'requestDigest', 'qualification', 'budget']);
+    'expectedDigest', 'packetDigest', 'requestDigest', 'qualification', 'budget',
+    ...(Object.hasOwn(metadata, 'budgetAmendment') ? ['budgetAmendment'] : [])]);
   requireValue(metadata.version === 1 && metadata.qualification === 'NOT_RUN' && metadata.harnessDigest === harnessDigest()
     && metadata.profileDigest === profileFingerprint().digest, 'qualification_preparation_stale');
-  requireValue(metadata.cwd === join(resolve(prepared), 'subject') && equal(metadata.budget, {
-    priorCalls: 1, priorElapsedMs: PRIOR_ELAPSED_MS, remainingCalls: 1, remainingMs: LIMITS.totalMs - PRIOR_ELAPSED_MS }), 'qualification_budget');
+  let budget = effectiveBudget();
+  if (Object.hasOwn(metadata, 'budgetAmendment')) {
+    evidenceRef(metadata.budgetAmendment); requireValue(metadata.budgetAmendment.path === AMENDMENT_PATH, 'qualification_budget');
+    const retained = readAmendment(join(resolve(prepared), AMENDMENT_DIRECTORY), AMENDMENT_FILE);
+    requireValue(contentDigest(retained.amendment) === metadata.budgetAmendment.digest, 'qualification_amendment_digest'); budget = retained.budget;
+  }
+  requireValue(metadata.cwd === join(resolve(prepared), 'subject') && equal(metadata.budget, budget), 'qualification_budget');
   const input = loadPrepared(metadata);
   requireValue(contentDigest(input.packet) === metadata.packetDigest && input.preparation.requestDigest === metadata.requestDigest, 'qualification_binding');
   const expected = readJson(prepared, 'expected.json'); validateOracle(expected);
@@ -86,9 +127,11 @@ export function inspectQualification(prepared) {
 }
 export function budgetRequest(prepared, physicalCallId) {
   identifier(physicalCallId); const { metadata } = inspectPrepared(prepared);
-  return { version: 1, physicalCallId, attemptOrdinal: 2, priorCalls: 1, priorElapsedMs: PRIOR_ELAPSED_MS,
-    remainingMs: LIMITS.totalMs - PRIOR_ELAPSED_MS, processMs: LIMITS.processMs, preparedDigest: contentDigest(metadata),
-    profileDigest: metadata.profileDigest };
+  const prior = metadata.budget; const amended = Object.hasOwn(metadata, 'budgetAmendment');
+  if (amended) requireValue(physicalCallId === prior.physicalCallId, 'qualification_budget');
+  return { version: 1, physicalCallId, attemptOrdinal: prior.priorCalls + 1, priorCalls: prior.priorCalls, priorElapsedMs: prior.priorElapsedMs,
+    remainingMs: prior.remainingMs, processMs: LIMITS.processMs, preparedDigest: contentDigest(metadata),
+    profileDigest: metadata.profileDigest, ...(amended ? { priorRequests: prior.priorRequests, amendmentDigest: prior.amendmentDigest } : {}) };
 }
 export async function probe({ prepared, budget, env = {}, fetchImpl = globalThis.fetch, httpTimeoutMs = LIMITS.httpTimeoutMs }) {
   const { metadata, input } = inspectPrepared(prepared);
@@ -110,24 +153,26 @@ export async function probe({ prepared, budget, env = {}, fetchImpl = globalThis
   const passed = evidence !== null && elapsedMs <= LIMITS.processMs && elapsedMs <= budget.remainingMs;
   const output = { version: 1, classification: passed ? 'CANDIDATE-PASS' : 'INVALID', exitCode: passed ? 0 : 1,
     reason: passed ? 'final_protocol_artifacts_passed' : elapsedMs > LIMITS.processMs ? 'qualification_time_limit' : reason,
-    elapsedMs, physicalCallId: budget.physicalCallId, experimentAttempt: 2, directionAttempt: metadata.auditId,
+    elapsedMs, physicalCallId: budget.physicalCallId, experimentAttempt: budget.attemptOrdinal, directionAttempt: metadata.auditId,
     requests: result.requests, evidence, qualification: 'NOT_QUALIFIED_BY_HELPER',
     actualInvocation: 'DRIVER_JUDGMENT_REQUIRED', runtimeCarryforward: 'EXACT_PROFILE_REQUIRED' };
   publish(prepared, 'terminal.json', output); return output;
 }
 function argumentsFor(argv) {
   const [operation, ...args] = argv;
-  const expected = operation === 'prepare' ? ['--fixture-root', '--out'] : operation === 'probe' ? ['--prepared', '--budget'] : [];
-  requireValue(expected.length && args.length === expected.length * 2, 'invalid_arguments'); const options = {};
+  const required = operation === 'prepare' ? ['--fixture-root', '--out'] : operation === 'probe' ? ['--prepared', '--budget'] : [];
+  const expected = operation === 'prepare' ? [...required, '--budget-amendment'] : required;
+  requireValue(required.length && args.length % 2 === 0, 'invalid_arguments'); const options = {};
   for (let i = 0; i < args.length; i += 2) {
     requireValue(expected.includes(args[i]) && !Object.hasOwn(options, args[i]) && args[i + 1] && !args[i + 1].startsWith('--'), 'invalid_arguments'); options[args[i]] = args[i + 1];
   }
+  requireValue(required.every(key => Object.hasOwn(options, key)), 'invalid_arguments');
   return { operation, options };
 }
 if (process.argv[1] && resolve(process.argv[1]) === SELF) {
   try {
     const { operation, options } = argumentsFor(process.argv.slice(2));
-    const result = operation === 'prepare' ? prepare({ fixtureRoot: options['--fixture-root'], out: options['--out'] })
+    const result = operation === 'prepare' ? prepare({ fixtureRoot: options['--fixture-root'], out: options['--out'], budgetAmendmentPath: options['--budget-amendment'] })
       : await probe({ prepared: options['--prepared'], budget: readJson(dirname(resolve(options['--budget'])), options['--budget'].split('/').at(-1)), env: process.env });
     process.stdout.write(canonicalBytes(result)); process.exitCode = result.exitCode || 0;
   } catch (error) {

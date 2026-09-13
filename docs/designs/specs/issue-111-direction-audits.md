@@ -18,8 +18,11 @@ no daemon, provider registry, automatic retry or workflow runtime is introduced.
 
 Dependencies #107/#108 supply stage routing and continuity; #109 supplies the
 canonical baseline/policy/attempt sequence; #110 supplies a provisional independent
-transport qualification and one remaining qualification call. This issue must
-exercise the final protocol before claiming required-mode integration is ready.
+transport qualification and the original bounded experiment allowance. Its
+unamended behavior and explicit sourced extension are defined in
+[qualification accounting](#final-qualification-and-distinct-accounting). This
+issue must exercise the final protocol before claiming required-mode integration
+is ready.
 
 ## Acceptance criteria and proposed frozen contract
 
@@ -74,7 +77,7 @@ The prototype demonstrated exact `deepseek-flash`, two messages, no tools,
 thinking disabled, JSON output and normal stop. Its success does not qualify the
 new payload or broad semantic accuracy. The documented stateless interface does
 not prove provider cache erasure or a fixed weight generation. Final protocol
-comprehension and source-grounded COMPLETE remain unverified until the remaining
+comprehension and source-grounded COMPLETE remain unverified until the allocated
 live qualification call.
 
 The parent #109 deferred P2 remains: its bounded ledger-prefix read can split a
@@ -181,6 +184,15 @@ acceptance, invariants, nonGoals, priorities, allowedChanges and publicationLimi
 Assumptions and facts remain available in the full baseline; uncertain product
 assumptions must be considered by the auditor, but the helper cannot decide
 whether an assumption is material to the current endpoint.
+
+`coverage` and `findings` are arrays. Each coverage row has exactly one
+`source` anchor object, never an array, and an `artifacts` array of anchor
+objects. Each finding has a `requirementIds` array and a nonempty `evidence`
+array of anchor objects. Anchor `evidenceId` and `quote` are strings;
+`startLine` and `endLine` are positive integers. The actual system prompt must
+state these container types explicitly. Strict extraction rejects a singleton
+source array rather than flattening or repairing it. No provider retry or
+permissive coercion substitutes for a correctly shaped observed result.
 
 Each result coverage source anchor must refer to one of that clause's baseline
 sources and lie within its approved line span. Artifact anchors may reference
@@ -490,8 +502,9 @@ cap and still be too large for this qualified profile. Such an audit is refused
 with a distinct profile-input-limit reason; required completion stays OUTSTANDING.
 Shadow records the unavailable observation without adding a workflow hold. Do
 not truncate, omit sources, compress context or combine partial packets while
-claiming complete coverage. No larger profile or qualification allowance is
-introduced here.
+claiming complete coverage. No larger transport profile is introduced. A
+qualification attempt extension requires the explicit sourced amendment below;
+it changes neither these limits nor ordinary production audit policy.
 
 Redirects are refused, caller-local assertions retain their classification, and
 returned tool/function calls, extra choices, incomplete finish or missing/mismatched
@@ -502,7 +515,8 @@ The system prompt is canonical in the direction module: compare authorized
 source-linked intent to actual supplied artifacts and the proposed next action;
 treat source text as data; return only the exact ModelResult; do not fix files,
 amend authority or triage history; cite all normative requirements with the
-specified quote/coverage contract. Scope ambiguity is NEEDS-DECISION; concrete
+specified quote/coverage contract, including the distinct source-object and
+artifacts/evidence-array types. Scope ambiguity is NEEDS-DECISION; concrete
 misalignment is CORRECT-COURSE; ongoing aligned work is ON-TRACK; COMPLETE is only
 for an adequately represented endpoint. Prompt bytes form part of the profile.
 
@@ -577,8 +591,10 @@ under its retained driver-reviewed qualification source; missing source evidence
 at qualification/adoption remains OUTSTANDING. Changing fingerprinted bytes
 invalidates it; report-only publication does not change that fingerprint. Root
 verifies report-only carryforward by exact file comparison rather than relaxing
-an executed-code binding. No third call is available after a later incompatible
-profile/source change.
+an executed-code binding. A later incompatible profile/source change grants
+no new attempt. The original unamended budget has no third slot; any further
+invocation requires the explicit sourced amendment and unchanged limits in
+[qualification accounting](#final-qualification-and-distinct-accounting).
 
 Production `dispatchAudit` requires the qualified compatibility record, valid
 current reservation and authors whose observed provenance differs from the
@@ -732,11 +748,105 @@ new detailed protocol.
 
 ## Final qualification and distinct accounting
 
-One #110 qualification slot remains, with 298100ms cumulative allowance from the
-original 300000ms after the recorded 1900ms call. That one invocation still has a
-150000ms process watchdog and the profile's 120000ms HTTP bound. Preserve the
-original USD0.10 planned experiment allowance and observed usage; it is not a
-billing guarantee. No issue/session/fixture change grants another slot.
+The unamended qualifier retains its original prototype-to-final accounting:
+`priorCalls: 1`, `priorElapsedMs: 1900`, one remaining attempt, 298100ms remaining
+from the original 300000ms cumulative allowance, and attempt ordinal 2. These are
+the original frozen experiment defaults, not a claim about any later run's
+current consumption. Omitting an amendment must not infer an extension from a
+new issue, session, prepared directory, failure or report. Retained original
+attempts and subsequent actual observations remain in the driver-owned ledger
+and attributed evaluation report; this public contract records no later private
+run counts or owner decision.
+
+Each invocation retains a 150000ms process watchdog and the profile's 120000ms
+HTTP bound. Preserve the original USD0.10 planned experiment allowance and
+observed usage; this is a driver-reviewed spend basis, not a billing guarantee.
+Unknown usage needed to estimate remaining spend stops before the next launch.
+An attempt amendment changes neither the cumulative time allowance nor the
+request/output/response limits or production direction-audit allowance.
+
+### Explicit sourced one-attempt amendment
+
+The existing qualifier accepts an optional preparation input:
+
+```text
+prepare({fixtureRoot,out,budgetAmendmentPath})
+prepare --fixture-root PATH --out PATH --budget-amendment PATH
+
+BudgetAmendment = {
+  version: 1, physicalCallId: Id,
+  authorization: EvidenceRef, history: EvidenceRef,
+  priorAttempts: nonnegative integer,
+  priorRequests: nonnegative integer,
+  priorElapsedMs: nonnegative integer,
+  additionalAttempts: 1
+}
+```
+
+This extends only the existing prepare/probe path. The probe CLI is unchanged;
+no parallel dispatcher, provider registry, scheduler or new global limit is
+introduced. Default preparation and its original no-third-slot refusal remain
+unchanged. An amended call must use the exact sourced physicalCallId; it cannot
+silently borrow the original ordinal or relabel a later driver attempt as 2.
+
+The authorization reference names bounded nonsecret text retaining the operator
+continuation and the driver's concrete one-attempt allocation, unchanged planned
+spend ceiling and known usage/spend assessment. History is an immutable plain-text
+snapshot derived from the existing driver accounting source. It lists every
+prior attempt, original evidence locators, outcome, elapsed charge and observed
+HTTP request count. Original ledger and actual artifacts remain authoritative
+and unchanged; the snapshot is not a second writable ledger. The driver checks
+typed totals against both the snapshot and original sources. Hash agreement
+establishes retained bytes, not authenticated authority or complete history.
+
+Read the amendment as strict canonical JSON with exactly the fields above;
+reuse `shape`, `identifier`, `evidenceRef` and the confined source helpers. Resolve
+source references beneath the amendment file's directory and refuse traversal,
+symlinks, missing/changed sources and unsupported content. Read both snapshots
+as nonempty strict UTF-8 through `readArtifact` with `sensitive:true` and
+`maxBytes:LIMITS.requestBytes`. Refuse binary, secret-like content or overflow
+without truncation or redaction. Typed reference digests remain subject to
+`evidenceRef`; do not secret-scan the whole typed amendment JSON as an arbitrary
+string. This provides no arbitrary JSON exception or general archive parser.
+
+Require safe nonnegative integers, `priorRequests <= priorAttempts`, and
+`additionalAttempts === 1`. Derive
+`remainingMs = LIMITS.totalMs - priorElapsedMs` and require
+`remainingMs >= LIMITS.processMs` at amendment validation and prepared-artifact
+inspection, before reservation or any possible fetch. Unknown counts/time,
+exhausted time and positive-but-insufficient time all refuse. The root's process
+watchdog is still necessary: checking elapsed time after return is not a watchdog.
+A timeout or kill preserves conservative driver accounting; it does not invent
+a successful terminal or refund the grant.
+
+Before creating the prepared output, validate the amendment and its sources.
+Retain their exact bytes immutably under that output and bind the amendment and
+source digests into prepared metadata. Source snapshots remain evidence for
+budget/authority inspection; they never enter the model wire. Inspection reloads
+these retained bytes and derives the same budget. Refuse source changes,
+inconsistent metadata/totals, wrong physicalCallId, and stale prepared/profile/
+harness bindings before dispatch. Reuse existing read/publication helpers and
+output ownership checks; no standalone budget-state service is created.
+
+One qualifier-local effective-budget function serves `prepare`,
+`inspectPrepared`, `budgetRequest` and `probe`. Its unamended branch preserves
+the original behavior. Its amended branch derives `attemptOrdinal =
+priorAttempts + 1`, `priorCalls = priorAttempts`, explicit `priorRequests`,
+`remainingCalls = 1`, and the remaining time above. The legacy `priorCalls` field
+counts attempted slots, including a launch that never reaches HTTP. Bind the
+amendment digest, current prepared/profile digests and exact physicalCallId into
+the budget request. The terminal output's `experimentAttempt` derives from the
+budget ordinal instead of a literal; observed `requests` remains separate.
+Do not claim a next HTTP ordinal until a request actually starts.
+
+One invocation consumes the amended attempt even if no HTTP request starts.
+Existing immutable outputs refuse a second dispatch from the same prepared
+directory and preserve originals. They cannot prevent a driver from fabricating
+or re-adopting a grant through another directory. Actual authority, completeness
+of history and one-time adoption remain level 3 obligations; source-bound
+artifact checks do not authenticate them. No automatic further call follows a
+failure. Another extension requires a new explicitly sourced driver handoff
+within retained operator authority and its unchanged constraints.
 
 Use synthetic #109 state solely to demonstrate the final accounting/protocol
 path. Real issue111 audit policy remains off. The final synthetic fixture contains
@@ -763,8 +873,9 @@ prepares its real packet and explicit reservation, and produces no provider call
 The root-controlled probe reserves/records the one synthetic attempt, invokes the
 shared exchange once and retains the actual observed result and strict witness.
 
-Root decrements the remaining #110 experiment slot exactly once, cross-referencing
-the same physical invocation in the synthetic reservation/terminal evidence.
+Root charges the explicitly selected experiment attempt exactly once, retaining
+its actual driver ordinal and observed HTTP request count, and cross-references
+the same invocation in the synthetic reservation/terminal evidence.
 Synthetic state demonstrates product accounting; it is not a second permission
 to spend. No real issue111 production-audit allowance is silently initialized or
 charged, and neither counter creates retries for the other.
@@ -772,8 +883,9 @@ charged, and neither counter creates retries for the other.
 Use this exact root-owned execution order:
 
 1. Finish independent design debate, tests-first implementation, deterministic
-   checks and internal review. Run the ordinary ordered Fable then Flash
-   structural reviews before spending the last qualification slot. C3's actual
+   checks and internal review. Run the configured ordered independent structural
+   reviews, including authorized independent fallbacks, before spending the
+   explicitly allocated qualification attempt. C3's actual
    final-protocol invocation and required endpoint integration acceptance remain
    explicitly OUTSTANDING at this stage. A review noting that missing live proof
    records expected pending acceptance, not a completed milestone or permission
@@ -781,18 +893,22 @@ Use this exact root-owned execution order:
 2. Resolve admitted runtime/content defects within #111's existing shared repair
    allowance, preserving the ordered review rules. Once the structural candidate
    is clean, root freezes the complete executed-code/prompt/settings/profile
-   fingerprint and the concrete remaining-call handoff.
-3. Root makes the single remaining actual qualification call, inspects source
+   fingerprint, separate qualifier harness digest and the concrete sourced
+   one-attempt handoff, including current history and spend assessment.
+3. Root makes that single allocated qualification invocation, inspects source
    quotes, coverage and observations, and retains its evidence. Only success
    permits a qualified compatibility record. Failure or an incompatible later
    runtime/profile change leaves required integration and paid behavior acceptance
-   OUTSTANDING; no third call follows.
+   OUTSTANDING; no automatic retry or extra attempt follows. The unamended
+   budget remains exhausted; any later one-attempt extension uses the sourced
+   amendment contract above and preserves every prior attempt.
 4. After success, change only the qualification record and report, both outside
    the executed fingerprint. Finalize the report first, then its hash in the
    record. Verify exact runtime carryforward against the executed candidate and
    run network-free endpoint checking on the unchanged observed artifacts.
-5. Rerun the ordered Fable then Flash reviews on that publication revision and
-   complete the final native suite under normal publication rules. Neither
+5. Rerun the configured ordered independent reviews, including authorized
+   independent fallbacks, on that publication revision and complete the final
+   native suite under normal publication rules. Neither
    report-only carryforward nor the earlier structural reviews substitutes for
    current-revision final review. Any later runtime edit invalidates the call's
    compatibility proof rather than silently consuming another qualification slot.
@@ -810,7 +926,7 @@ author-host confinement.
 | `lib/direction/transport.mjs` and `.test.mjs` | Extract one fixed bounded exchange and explicit manual caller from the qualifier; no scheduling or provider registry. |
 | `lib/direction/qualification.json` | Add pending/qualified compatibility record; root fills actual proof after the final call. |
 | `scripts/check-direction-audit.mjs` and `.test.mjs` | Add strict manual artifact CLI. |
-| `scripts/qualify-direction-transport.mjs` and `.test.mjs` | Replace prototype-only formatting/extraction with final shared protocol and synthetic state demonstration; retain prior evidence. |
+| `scripts/qualify-direction-transport.mjs` and `.test.mjs` | Use final shared protocol and synthetic state demonstration; retain original unamended budget plus optional sourced one-attempt amendment, one effective-budget derivation and prior evidence. |
 | `scripts/fixtures/direction-transport/` | Update the tiny final qualification packet/state/source/check/oracle fixture; no consuming-project data. |
 | `skills/afk/references/direction-audit.md` | Add canonical mode/checkpoint/dispatch/terminal instructions. |
 | `skills/afk/SKILL.md`, references `continuity.md`, `publication.md`, `output.md`, `direction-state.md` | Add narrow conditional routes and clarify the fulfilled opaque-content consumer; no duplicate doctrine/state. |
@@ -850,7 +966,7 @@ the executor: the driver owns the two existing live Claude tests.
 
 | Area | Required deterministic coverage |
 | --- | --- |
-| Typed protocol | Strict schemas/enums/versions/IDs, exact normative row set, anchors/quotes, stable finding history, separate driver dispositions, acyclic binding hashes. |
+| Typed protocol | Strict schemas/enums/versions/IDs, exact normative row set, anchors/quotes, stable finding history, separate driver dispositions, acyclic binding hashes. Validate a correct ModelResult first, then wrap only coverage.source in a singleton array: extraction and mocked qualifier must reject invalid_schema, retain the response shape with null payload/invalid observation, consume one synthetic attempt and deny endpoint/qualification approval. The correctly shaped counterpart still passes the source-delivery challenge. |
 | Opaque boundary | Typed hash fields pass; free text/source secrets fail before dispatch/use; arbitrary digest-looking JSON keys do not bypass; shared source/result reference retains its stronger role; strict terminal witness accepted by unchanged #109. |
 | Source/target | Excluded/outside/symlink/nonregular/binary/invalid UTF-8/overflow reads; stable source capture, tracked Git versus working bytes, artifact path/object/mode origins, false supplied snapshot claims, revalidation of explicit ignored worktree evidence, branch/commit clean-worktree and actual-HEAD equality at every boundary, refusal of historical commits and dirty selections without silent selector changes, uncommitted dirty targets, initial design and current endpoint selection. Driver check-log provenance remains a claim. |
 | State lifecycle | Own reservation/terminal and harmless unrelated head advances accepted; baseline/policy amendment or real target change stale; replay/publication-unknown/pending reservation cannot dispatch twice; exhausted/unknown history no new call; terminal recording does not refund. |
@@ -859,13 +975,21 @@ the executor: the driver owns the two existing live Claude tests.
 | Completion/modes | Initial/signal/endpoint crossed with all four outcomes; only current endpoint COMPLETE eligible; incomplete coverage/finding/gap/uncertain row refuses endpoint; off preserves behavior, shadow does not add direction holds, required unavailable remains outstanding. |
 | Publication | Existing output refusal before call, exclusive dispatch, concurrent attempts, immutable bytes, strict witness and state result mapping for every transport outcome, post-call stale result retained historically. |
 | Qualification | Candidate uses actual final formatter/extractor/profile; pending stamp cannot satisfy normal dispatch; root-recorded matching proof permits net-free endpoint recheck, changed profile invalidates; prototype stamp cannot pass final protocol. Prove the report/record hash graph is acyclic; do not claim fabricated complete proofs are mechanically distinguishable from real calls. |
+| Qualification amendment | Original default refuses altered count/time and a third-slot claim. A synthetic sourced extension derives a later ordinal with separate prior request/time facts and no global-limit change. Missing/changed authority/history, digest mismatch, unknown/impossible totals, more than one added attempt, insufficient full-process time, wrong physicalCallId and stale prepared/profile/harness refuse before fetch. Repeat dispatch preserves originals with zero second fetches. Run both complete affected test files against ambient pending and accepted mock-qualified records using actual repaired bytes. |
 | Routes/exports | Conditional direct routes resolve, standalone endpoints retained, state CLI remains the accounting owner; report the two #112 script export obligations, oracle/scorers excluded. |
 | Semantic fixtures | Omitted requirement despite green tests; justified supporting-file change; reviewer preference expanding scope; contested correction. Check fixture representation only, not model detection. |
 
-After the new targeted RED tests, run the deterministic partial suite:
+For container guidance, retain the attributed actual invalid response as observed
+RED; do not modify its response/result/terminal or adopt a privately repaired
+diagnostic as proof. Existing exact-wire equality checks cover prompt delivery.
+Add no literal SYSTEM wording assertion: strict container negatives preserve
+rejection, and only a fresh actual invocation tests model compliance. Budget
+changes retain targeted tests-first RED/GREEN evidence.
+
+After the targeted checks, run the deterministic partial suite:
 
 ```bash
-node --test lib/direction/audit.test.mjs lib/direction/transport.test.mjs scripts/check-direction-audit.test.mjs scripts/qualify-direction-transport.test.mjs lib/direction/schema.test.mjs lib/direction/state.test.mjs scripts/direction-state.test.mjs lib/gate/file-boundary.test.mjs
+node --test lib/direction/audit.test.mjs lib/direction/transport.test.mjs scripts/check-direction-audit.test.mjs scripts/qualify-direction-transport.test.mjs lib/direction/schema.test.mjs lib/direction/state.test.mjs scripts/direction-state.test.mjs lib/gate/file-boundary.test.mjs scripts/gate-test-env.test.mjs
 node scripts/sync-marketplace.mjs
 node scripts/sync-marketplace.mjs --check
 node scripts/lint-skills.mjs
@@ -892,7 +1016,7 @@ sanitized evidence with distinct structural/live/semantic-accuracy rows.
 
 | Risk | Mitigation and remaining limitation |
 | --- | --- |
-| Final field/prompt complexity fails the one remaining call | Freeze smallest representative endpoint fixture within the demonstrated caps; deterministic checks first; honest outstanding result on failure. |
+| Final field/prompt complexity fails the allocated invocation | Freeze smallest representative endpoint fixture within the demonstrated caps; deterministic checks first; honest outstanding result on failure. |
 | Typed metadata mistaken for source secrets | Reuse exact schema positions and recomputed digests, strict free-text/source inspection and unchanged parent role boundary. |
 | Endpoint judgment credited with normal workflow authority | Return directionSatisfied only; retain tests/reviews/CI/owner gates in publication doctrine. |
 | Mutable target between tools or changing provider alias | Pre/post/current-use checks and timestamped alias observations; no continuous lock or weight-attestation claim. |
