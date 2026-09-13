@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, mkdirSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { copyDirectionTestRuntime } from './gate-test-env.mjs';
 import { prepare, probe, budgetRequest, inspectPrepared, inspectQualification } from './qualify-direction-transport.mjs';
 import { completeResult, FIXTURE_ROOT } from './fixtures/direction-transport/setup.mjs';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
 import { contentDigest } from '../lib/direction/schema.mjs';
 import { readDirectionState, appendDirectionRecord } from '../lib/direction/state.mjs';
 import { LIMITS, checkAudit, validateModelResult, terminalRequest, qualificationEvidence, readJson,
-  validateQualification, RUNTIME_FILES } from '../lib/direction/audit.mjs';
+  validateQualification } from '../lib/direction/audit.mjs';
 import { recordExchange, fixedExchange } from '../lib/direction/transport.mjs';
 
 function fixture(t) {
@@ -34,13 +34,14 @@ async function success(f) {
 }
 
 test('final qualification traverses actual packet, wire, COMPLETE result and terminal with one physical-call cross-reference', async t => {
+  const { audit } = await copyDirectionTestRuntime(t, { qualification: 'pending' });
   const f = fixture(t); assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
   const observed = await success(f); assert.equal(observed.classification, 'CANDIDATE-PASS'); assert.equal(observed.requests, 1);
   assert.equal(observed.physicalCallId, f.budget.physicalCallId); assert.equal(observed.qualification, 'NOT_QUALIFIED_BY_HELPER');
   assert.equal(observed.actualInvocation, 'DRIVER_JUDGMENT_REQUIRED');
   assert.equal(readDirectionState(f.metadata).accounting.charged, 1); assert.equal(readDirectionState(f.metadata).accounting.reserved, 0);
   assert.equal(inspectQualification(f.prepared).status, 'ARTIFACT_CANDIDATE_PASS');
-  const checked = checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id });
+  const checked = audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id });
   assert.equal(checked.protocolValid, true); assert.equal(checked.outcome, 'COMPLETE'); assert.equal(checked.directionSatisfied, false);
   assert.deepEqual(checked.reasons, ['qualification_pending']);
   await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => assert.fail('repeat dispatch') }));
@@ -163,6 +164,7 @@ test('terminal request remains independently repeatable without another dispatch
 });
 
 test('S111-2 unknown accounting after reservation refuses dispatch but retains completed observations and terminals', async t => {
+  const { audit } = await copyDirectionTestRuntime(t, { qualification: 'pending' });
   const f = fixture(t); const request = readJson(f.input.directory, 'reserve-request.json');
   assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request }).status, 'published');
   const reserveState = readDirectionState(f.metadata);
@@ -174,7 +176,7 @@ test('S111-2 unknown accounting after reservation refuses dispatch but retains c
   let calls = 0;
   await assert.rejects(recordExchange({ ...f.metadata, env, fetchImpl: async () => { calls++; } }), /accounting_unknown/);
   assert.equal(calls, 0);
-  const before = checkAudit({ ...f.metadata, stage: 'pre-dispatch' }); assert.equal(before.status, 'unavailable');
+  const before = audit.checkAudit({ ...f.metadata, stage: 'pre-dispatch' }); assert.equal(before.status, 'unavailable');
   assert.deepEqual(before.reasons, ['accounting_unknown']);
   assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: accountingRequest('known', 'known-again') }).status, 'published');
   const completed = await recordExchange({ ...f.metadata, env, fetchImpl: async () => {
@@ -186,7 +188,7 @@ test('S111-2 unknown accounting after reservation refuses dispatch but retains c
   assert.equal(completed.current, true);
   assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: terminalRequest({ ...f.metadata, operationId: 'terminal-after-unknown' }) }).status, 'published');
   for (const stage of ['result', 'endpoint']) {
-    const checked = checkAudit({ ...f.metadata, stage, endpointId: f.input.packet.endpoint.id });
+    const checked = audit.checkAudit({ ...f.metadata, stage, endpointId: f.input.packet.endpoint.id });
     assert.equal(checked.protocolValid, true); assert.equal(checked.outcome, 'COMPLETE'); assert.equal(checked.current, true);
     assert.ok(checked.reasons.includes('accounting_unknown')); assert.ok(checked.reasons.includes('qualification_pending'));
   }
@@ -205,10 +207,7 @@ test('matching artifact compatibility permits only the current endpoint and inva
     x => x.proof.result.phase = 'initial', x => x.proof.result.outcome = 'ON-TRACK', x => x.proof.review.reportDigest = null]) {
     const invalid = structuredClone(record); mutate(invalid); assert.throws(() => validateQualification(invalid));
   }
-  const copy = join(dirname(f.prepared), 'production'); const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  for (const path of RUNTIME_FILES) { mkdirSync(dirname(join(copy, path)), { recursive: true }); copyFileSync(join(root, path), join(copy, path)); }
-  writeFileSync(join(copy, 'lib/direction/qualification.json'), canonicalBytes(record));
-  const audit = await import(pathToFileURL(join(copy, 'lib/direction/audit.mjs')));
+  const { audit } = await copyDirectionTestRuntime(t, { qualification: record });
   const valid = audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id });
   assert.equal(valid.directionSatisfied, true); assert.equal(valid.status, 'valid');
   assert.equal(audit.checkAudit({ ...f.metadata, stage: 'result' }).directionSatisfied, false);
