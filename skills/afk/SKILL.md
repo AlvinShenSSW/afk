@@ -21,7 +21,8 @@ These are level 3 workflow instructions, not an automatic loader.
 | Stage | Read before proceeding |
 | --- | --- |
 | Kickoff/config resolution | [Environment](references/environment.md), [kickoff](references/kickoff.md), [external role profile](references/external-review.md), [issue allowance](references/review-convergence.md), and [CI mode](references/publication.md). |
-| Run claim, resume or restricted executor handoff | [Continuity](references/continuity.md); keep the current run and authority. |
+| Run claim, stage/session handoff or resume | [Continuity](references/continuity.md); keep the current run and authority, including restricted executor handoffs. |
+| Stage result or execution summary | [Stage output](references/output.md); retain complete source evidence. |
 | Plan | [Planner](../afk-spec-planner/SKILL.md); obtain its frozen issue contract before implementation. |
 | Design debate or optional design gate | [Design review](references/design-review.md) and [common convergence](references/review-convergence.md). |
 | Implementation/self-review | [Implementation pilot](../afk-implementation-pilot/SKILL.md) and [common convergence](references/review-convergence.md). |
@@ -38,6 +39,11 @@ External gate entry points: [afk-codex-review](../afk-codex-review/SKILL.md),
 [afk-mimo-review](../afk-mimo-review/SKILL.md).
 
 ## Per issue — the full waterfall (one at a time)
+
+A nested child's completion is not queue completion. Receive its bounded result,
+checkpoint the existing run records and continue the next authorized stage below;
+an outstanding result preserves independent queued work. Standalone satellite
+requests retain their own endpoints and do not start this waterfall.
 
 **Every issue runs the full review waterfall.** With `remote-ci: off`, the
 endpoint is local completion ([Remote checks](references/publication.md#remote-checks)); otherwise each in-scope PR passes

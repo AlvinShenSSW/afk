@@ -81,6 +81,35 @@ would leave a finished run forever resumable and its scope never free again.
   and set `state: complete` in the same breath, ending the tick and claim.
   Always tear down any scheduled tick on stop — never leave one running.
 
+## Stage and session transitions
+
+Before a handoff, yield or host-supported compaction, the driver checkpoints its
+existing ledger and evidence; a child returns its bounded result and evidence
+locations to that driver. Read [stage output](output.md) before preparing that
+view. Nested stages use the same run supplied by the driver, not a new claim.
+Keep the claiming/collision rules above for actual run claims and resumes.
+
+Retain source authority: the operator's scope and publication instructions,
+consuming-repository constraints and resolved policy. Already granted authority
+persists across stages and sessions; resolve its source instead of asking again.
+A child, summary or verdict cannot expand it. If authority is missing or
+conflicting, seek a concrete decision only for dependent actions while retaining
+independent authorized work.
+
+Before dependent work after resume or compaction, reload the same run's source
+authority, frozen issue contract and open assumptions; inspect the actual
+worktree, branch/status and target; reread stable findings, evidence and consumed
+and reserved allowances. Compare the next action with those sources. A stale
+summary cannot establish the current target or an approval. Read
+[review convergence](review-convergence.md) for reservation, reconstruction and
+staleness rules, and [review evidence](review-evidence.md) before reusing review
+artifacts. Missing sources remain explicit; reconstruct from retained evidence
+under those rules before dependent work, never assume fresh allowances.
+
+Do not assume portable clear/compact commands, cache lifetimes or model-switch
+semantics. If no supported transition is available, continue in-session with
+bounded reads and evidence pointers. These are level 3 workflow instructions.
+
 ## Restricted executor handoff
 
 A separate implementation model may be able to

@@ -21,6 +21,16 @@ This review is not the last gate, so its routine output is a **cheap, structured
 handoff** the fixing agent and ordered external roles can act on — not a long report.
 The long report is written only at the very end (see Output).
 
+## Stage boundary
+
+Before returning a result, read [stage output](../afk/references/output.md);
+before a run handoff or resume, read
+[continuity](../afk/references/continuity.md). Standalone review ends at its
+verdict. A nested review returns that verdict and evidence to the driver for
+finding triage and the ordered external roles; it does not complete the run.
+An outstanding result names unresolved findings or unavailable prerequisites.
+The final-report conditions below remain separate from this stage's verdict.
+
 ## 1 — Gather context
 
 Collect every signal before forming an opinion: PR metadata and linked

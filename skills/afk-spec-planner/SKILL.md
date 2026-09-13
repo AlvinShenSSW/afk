@@ -13,6 +13,15 @@ Act as the tech lead who turns an issue into a plan a developer (or
 produce a plan, not code. Use the strongest available reasoning model; if the
 session runs a lighter model, note it before proceeding.
 
+## Stage boundary
+
+Before returning a result, read [stage output](../afk/references/output.md);
+before a run handoff or resume, read
+[continuity](../afk/references/continuity.md). A standalone plan-only request
+ends at the plan, with no code or publication. A nested invocation returns its
+plan and evidence to the driver for the [next design step](../afk/references/design-review.md);
+it does not end the driver's authorized run or authorize implementation itself.
+
 ## Workflow
 
 ### 1 — Read the issue

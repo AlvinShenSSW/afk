@@ -18,6 +18,16 @@ An efficient coding model is appropriate here.
 **A plan is required.** Without one, redirect to `afk-spec-planner`. Do not
 re-derive the plan.
 
+## Stage boundary
+
+Before returning a result, read [stage output](../afk/references/output.md);
+before a run handoff or resume, read
+[continuity](../afk/references/continuity.md). Standalone work ends at the
+requested implementation and checks within its existing authorization. A nested
+invocation returns implementation and self-review evidence to the driver for
+internal review. The driver owns subsequent commit, publication and completion
+under retained authority; a delegated action needs that authority already supplied.
+
 ## Workflow
 
 ### 1 — Load the plan
@@ -84,8 +94,9 @@ blocker; otherwise report `OUTSTANDING` within the issue allowance.
 
 Summarize what was built, the acceptance-criteria status, deviations from the
 plan, files changed, tests added, the lens-by-lens results of the initial review and focused closure
-results, and final check results. Suggest running
-`afk-internal-review` next. Do not merge, push, or open a PR unless asked.
+results, and final check results. Return to the driver for
+`afk-internal-review` when nested; suggest that next stage when standalone.
+Do not merge, push, or open a PR without existing explicit authorization.
 
 For a restricted executor, read [continuity](../afk/references/continuity.md),
 section "Restricted executor handoff", before returning commit work to the driver.
