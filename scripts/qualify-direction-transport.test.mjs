@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { copyDirectionTestRuntime } from './gate-test-env.mjs';
+import { copyDirectionTestRuntime, spawnGate } from './gate-test-env.mjs';
 import { prepare, probe, budgetRequest, inspectPrepared, inspectQualification } from './qualify-direction-transport.mjs';
 import { completeResult, FIXTURE_ROOT } from './fixtures/direction-transport/setup.mjs';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
@@ -13,10 +14,10 @@ import { LIMITS, checkAudit, validateModelResult, terminalRequest, qualification
   validateQualification } from '../lib/direction/audit.mjs';
 import { recordExchange, fixedExchange } from '../lib/direction/transport.mjs';
 
-function fixture(t) {
+function fixture(t, { budgetAmendmentPath, physicalCallId = 'physical-final-call' } = {}) {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), 'afk-direction-final-'))); t.after(() => rmSync(temp, { recursive: true, force: true }));
-  const prepared = join(temp, 'prepared'); const metadata = prepare({ fixtureRoot: FIXTURE_ROOT, out: prepared });
-  const { input } = inspectPrepared(prepared); return { prepared, metadata, input, budget: budgetRequest(prepared, 'physical-final-call') };
+  const prepared = join(temp, 'prepared'); const metadata = prepare({ fixtureRoot: FIXTURE_ROOT, out: prepared, budgetAmendmentPath });
+  const { input } = inspectPrepared(prepared); return { prepared, metadata, input, budget: budgetRequest(prepared, physicalCallId) };
 }
 function envelope(packet, mutate = () => {}) {
   const value = { model: 'deepseek-flash', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(completeResult(packet)) } }] };
@@ -250,4 +251,127 @@ test('S111-1 retained delta function evidence cannot pass result, endpoint or qu
     assert.equal(checked.directionSatisfied, false); assert.deepEqual(checked.reasons, ['transport_invalid']);
   }
   assert.throws(() => inspectQualification(f.prepared), /transport_invalid/);
+});
+
+function amendmentFixture(t) {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'afk-budget-source-')));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const sources = { 'authorization.txt': 'Synthetic authority allocates one additional attempt within the unchanged limits.\n',
+    'history.txt': 'Synthetic retained accounting lists four attempted slots and two HTTP requests.\n' };
+  for (const [path, bytes] of Object.entries(sources)) writeFileSync(join(directory, path), bytes);
+  const reference = path => ({ path, digest: digestBytes(sources[path]) });
+  const amendment = { version: 1, physicalCallId: 'amended-call', authorization: reference('authorization.txt'), history: reference('history.txt'),
+    priorAttempts: 4, priorRequests: 2, priorElapsedMs: 2000, additionalAttempts: 1 };
+  const path = join(directory, 'grant.json');
+  const save = () => writeFileSync(path, canonicalBytes(amendment)); save();
+  return { directory, path, amendment, save, options: { budgetAmendmentPath: path, physicalCallId: amendment.physicalCallId } };
+}
+
+test('Q111-1 singleton source arrays remain invalid through the actual qualifier and terminal', async t => {
+  const f = fixture(t); const good = completeResult(f.input.packet); validateModelResult(good, f.input.packet);
+  const bad = structuredClone(good); bad.coverage.forEach(row => { row.source = [row.source]; });
+  assert.throws(() => validateModelResult(bad, f.input.packet), /invalid_schema/);
+  const observed = await probe({ prepared: f.prepared, budget: f.budget, env,
+    fetchImpl: async () => response(envelope(f.input.packet, x => { x.choices[0].message.content = JSON.stringify(bad); })) });
+  assert.equal(observed.classification, 'INVALID'); assert.equal(observed.reason, 'invalid_schema'); assert.equal(observed.requests, 1);
+  const result = readJson(f.input.directory, 'result.json'); const wire = readJson(f.input.directory, 'response.json');
+  assert.equal(result.payload, null); assert.equal(result.observation.classification, 'invalid'); assert.equal(wire.extraction, 'invalid');
+  assert.ok(JSON.parse(wire.envelope.choices[0].message.content).coverage.every(row => Array.isArray(row.source)));
+  const state = readDirectionState(f.metadata); assert.equal(state.accounting.charged, 1); assert.equal(state.attempts[0].terminal.value.kind, 'malformed');
+  assert.equal(checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id }).directionSatisfied, false);
+  assert.throws(() => inspectQualification(f.prepared));
+});
+
+test('Q111-1 sourced amendment derives the real ordinal and preserves single dispatch', async t => {
+  const grant = amendmentFixture(t); const f = fixture(t, grant.options);
+  assert.equal(f.metadata.budget.priorCalls, 4); assert.equal(f.metadata.budget.priorRequests, 2);
+  assert.equal(f.metadata.budget.remainingCalls, 1); assert.equal(f.budget.attemptOrdinal, 5);
+  assert.equal(f.budget.remainingMs, LIMITS.totalMs - 2000); assert.equal(f.budget.processMs, LIMITS.processMs);
+  assert.equal(f.budget.amendmentDigest, contentDigest(grant.amendment));
+  assert.deepEqual(readJson(f.prepared, f.metadata.budgetAmendment.path), grant.amendment);
+  rmSync(grant.directory, { recursive: true, force: true });
+  assert.equal(inspectPrepared(f.prepared).metadata.budget.priorCalls, 4);
+  const observed = await success(f); assert.equal(observed.classification, 'CANDIDATE-PASS'); assert.equal(observed.experimentAttempt, 5);
+  assert.equal(observed.physicalCallId, 'amended-call'); assert.equal(observed.requests, 1);
+  assert.equal(inspectQualification(f.prepared).status, 'ARTIFACT_CANDIDATE_PASS');
+  const original = readFileSync(join(f.prepared, 'terminal.json')); let calls = 0;
+  await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => { calls++; } }));
+  assert.equal(calls, 0); assert.deepEqual(readFileSync(join(f.prepared, 'terminal.json')), original);
+});
+
+test('Q111-1 an amended unavailable invocation consumes its slot without inventing HTTP', async t => {
+  const grant = amendmentFixture(t); const f = fixture(t, grant.options);
+  const observed = await probe({ prepared: f.prepared, budget: f.budget, env: {}, fetchImpl: async () => assert.fail('no credentials') });
+  assert.equal(observed.experimentAttempt, 5); assert.equal(observed.requests, 0); assert.equal(observed.classification, 'INVALID');
+  assert.equal(readDirectionState(f.metadata).accounting.charged, 1);
+});
+
+for (const [name, mutate] of [
+  ['unknown attempts', x => x.priorAttempts = null], ['unknown time', x => x.priorElapsedMs = null],
+  ['impossible requests', x => x.priorRequests = x.priorAttempts + 1], ['multiple added slots', x => x.additionalAttempts = 2],
+  ['ordinal overflow', x => x.priorAttempts = Number.MAX_SAFE_INTEGER],
+  ['exhausted time', x => x.priorElapsedMs = LIMITS.totalMs],
+  ['insufficient positive time', x => x.priorElapsedMs = LIMITS.totalMs - LIMITS.processMs + 1],
+  ['bad source digest', x => x.history.digest = 'a'.repeat(64)], ['outside source', x => x.history.path = '../outside.txt'],
+]) {
+  test(`Q111-1 amendment ${name} refuses before creating a fixture`, t => {
+    const grant = amendmentFixture(t); mutate(grant.amendment); grant.save(); const out = join(grant.directory, 'prepared');
+    assert.throws(() => prepare({ fixtureRoot: FIXTURE_ROOT, out, budgetAmendmentPath: grant.path })); assert.equal(existsSync(out), false);
+  });
+}
+
+for (const kind of ['missing authority', 'missing history', 'empty', 'secret', 'binary', 'UTF-8', 'overflow', 'symlink']) {
+  test(`Q111-1 amendment source ${kind} refuses before fixture publication`, t => {
+    const grant = amendmentFixture(t); const source = join(grant.directory, 'history.txt');
+    if (kind === 'missing authority') rmSync(join(grant.directory, 'authorization.txt'));
+    else if (kind === 'missing history') rmSync(source);
+    else if (kind === 'symlink') { rmSync(source); symlinkSync('authorization.txt', source); }
+    else {
+      const bytes = { empty: '', secret: 'a'.repeat(64), binary: Buffer.from([0]), 'UTF-8': Buffer.from([0xc3, 0x28]), overflow: 'x'.repeat(LIMITS.requestBytes + 1) }[kind];
+      writeFileSync(source, bytes); grant.amendment.history.digest = digestBytes(bytes); grant.save();
+    }
+    const out = join(grant.directory, 'prepared');
+    assert.throws(() => prepare({ fixtureRoot: FIXTURE_ROOT, out, budgetAmendmentPath: grant.path })); assert.equal(existsSync(out), false);
+  });
+}
+
+for (const change of ['authority', 'history', 'amendment', 'metadata', 'insufficient time', 'profile', 'harness']) {
+  test(`Q111-1 retained amendment ${change} tamper refuses before fetch`, async t => {
+    const grant = amendmentFixture(t); const f = fixture(t, grant.options); let calls = 0;
+    const metadata = readJson(f.prepared, 'prepared.json');
+    const retained = join(f.prepared, 'budget-amendment');
+    if (change === 'authority') writeFileSync(join(retained, 'authorization.txt'), 'Changed authority.\n');
+    if (change === 'history') writeFileSync(join(retained, 'history.txt'), 'Changed history.\n');
+    if (change === 'amendment' || change === 'insufficient time') {
+      const value = readJson(f.prepared, metadata.budgetAmendment.path);
+      if (change === 'amendment') value.priorAttempts = 0; else value.priorElapsedMs = LIMITS.totalMs - LIMITS.processMs + 1;
+      writeFileSync(join(f.prepared, metadata.budgetAmendment.path), canonicalBytes(value));
+      if (change === 'insufficient time') { metadata.budgetAmendment.digest = contentDigest(value); writeFileSync(join(f.prepared, 'prepared.json'), canonicalBytes(metadata)); }
+    }
+    if (change === 'metadata') metadata.budget.priorCalls = 0;
+    if (change === 'profile') metadata.profileDigest = 'a'.repeat(64);
+    if (change === 'harness') metadata.harnessDigest = 'a'.repeat(64);
+    if (['metadata', 'profile', 'harness'].includes(change)) writeFileSync(join(f.prepared, 'prepared.json'), canonicalBytes(metadata));
+    await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => { calls++; } }));
+    assert.equal(calls, 0); assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
+  });
+}
+
+test('Q111-1 amended budget binds physical id and exact prepared digest before fetch', async t => {
+  const grant = amendmentFixture(t); const f = fixture(t, grant.options); let calls = 0;
+  assert.throws(() => budgetRequest(f.prepared, 'different-call'), /qualification_budget/);
+  for (const mutation of [{ physicalCallId: 'different-call' }, { preparedDigest: 'a'.repeat(64) }, { amendmentDigest: 'b'.repeat(64) }, { priorRequests: 0 }]) {
+    await assert.rejects(probe({ prepared: f.prepared, budget: { ...f.budget, ...mutation }, env, fetchImpl: async () => { calls++; } }));
+  }
+  assert.equal(calls, 0); assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
+});
+
+test('Q111-1 prepare CLI accepts the sourced amendment without a provider call', t => {
+  const grant = amendmentFixture(t); const out = join(grant.directory, 'prepared');
+  const cli = fileURLToPath(new URL('./qualify-direction-transport.mjs', import.meta.url));
+  const result = spawnGate([cli, 'prepare', '--fixture-root', FIXTURE_ROOT, '--out', out, '--budget-amendment', grant.path],
+    { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).budget.priorCalls, 4);
+  assert.equal(readDirectionState(inspectPrepared(out).metadata).accounting.charged, 0);
 });
