@@ -438,7 +438,7 @@ test('F112-1 issue112 D6 exact resume locates complete retained source and allow
   assert.equal(f.runner.aggregateEvaluation(f.directory).auditAttempts,0);assert.equal(rows[0].deterministic,'fail');assert.ok(rows[0].issues.includes('repair-budget-conflict'));
 }));
 
-test('issue112 D9 exact generated history preserves IDs and reports unchanged request refusal before charge',()=>directionTemporary(async root=>{
+test('issue113 D9 exact generated history preserves IDs and prepares retained source bytes',()=>directionTemporary(async root=>{
   const original=createFixture({directory:join(root,'subject'),scenarioId:'S1'}),capture=directionRunner.captureMeasurementSources({workspace:original.directory,head:original.current});
   const m=directionRunner.materializeMeasurement({directory:join(root,'measurement'),trialId:'M-D9-C-ASTRA-R1',captureId:'audit-1',capture,task:directionRunner.directionTaskFor('D9'),provenance:'Inert original observation; no execution here.\n'});m.support=repo;
   directionRunner.initializeDirectionMeasurement(m);const first=await directionRunner.controlledMeasurementAudit(m,{auditId:'audit-1',phase:'initial',model:'gpt-6-astra',finding:true});
@@ -448,7 +448,9 @@ test('issue112 D9 exact generated history preserves IDs and reports unchanged re
   assert.equal(history.findings[0].finding.id,'MOCK-A6');assert.equal(history.findings.some(x=>x.finding.id==='DRIFT-A6'),false);
   const renamed=structuredClone(history);renamed.findings[0].finding.id='DRIFT-A6';
   assert.throws(()=>directionRunner.prepareMeasurementAudit(m,{auditId:'rename',phase:'endpoint',model:'gpt-6-astra',history:renamed}),/history_finding_mismatch/);
-  let second;try{second=directionRunner.prepareMeasurementAudit(m,{auditId:'audit-2',phase:'endpoint',model:'gpt-6-astra',history});assert.ok(second.requestBytes<=16384);}catch(error){assert.match(error.message,/profile_input_limit/);}
+  const second=directionRunner.prepareMeasurementAudit(m,{auditId:'audit-2',phase:'endpoint',model:'gpt-6-astra',history});
+  assert.ok(second.requestBytes>16384);assert.deepEqual(second.packet.history.findings,history.findings);
+  assert.equal(second.packet.history.audits.length,1);assert.deepEqual(second.packet.history.audits[0].evidence,first.packet.evidence);
   assert.equal(first.charged,1);
   assert.equal(readFileSync(join(run,packetPath),'utf8'),canonicalBytes(first.packet));
 }));
@@ -478,7 +480,7 @@ test('issue112 command interface rejects missing handoff and legacy handoff with
   }
 });
 
-test('issue112 D9 complete generated checkpoint sizing preserves refusals and two-author ceiling',()=>directionTemporary(async root=>{
+test('issue113 D9 complete generated checkpoints preserve two historical contexts and two-author ceiling',()=>directionTemporary(async root=>{
   const id='M-D9-C-ASTRA-R1',f=await prepared112(root,{main:[id]});
   await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1']);
   await f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1','P112-A2']);
@@ -486,7 +488,21 @@ test('issue112 D9 complete generated checkpoint sizing preserves refusals and tw
   const observed=JSON.parse(readFileSync(join(f.directory,'trials',id,'observed.json')));
   assert.equal(observed.invocations.length,2);assert.equal(observed.invocations[1].resumedFrom,observed.invocations[0].sessionId);
   assert.equal(observed.audits.length,3);assert.ok(observed.audits[0].requestBytes<=16384);
-  for(const audit of observed.audits.slice(1)){assert.equal(audit.status,'unavailable');assert.match(audit.reason,/profile_input_limit/);assert.equal(audit.attempted,false);assert.equal(audit.historyAudits,1);}
+  assert.deepEqual(observed.audits.map(a=>a.historyAudits),[0,1,2]);
+  for(const [index,audit] of observed.audits.entries()){
+    assert.equal(audit.classification,'completed');assert.equal(audit.actualAuditorCalls,0);
+    if(index>0)assert.ok(audit.requestBytes>16384);
+    const run=join(audit.measurement.cwd,'.afk/runs',audit.measurement.runId);
+    const packet=JSON.parse(readFileSync(join(run,'issues/synthetic/audits',audit.auditId,'packet.json')));
+    assert.equal(packet.history.audits.length,index);
+    for(const prior of observed.audits.slice(0,index)){
+      const priorPacket=JSON.parse(readFileSync(join(run,'issues/synthetic/audits',prior.auditId,'packet.json')));
+      const retained=packet.history.audits.find(row=>row.auditId===prior.auditId);
+      assert.deepEqual(retained.evidence,priorPacket.evidence);assert.deepEqual(retained.baseline,priorPacket.baseline);
+      assert.deepEqual(retained.target,priorPacket.target);
+      assert.deepEqual(packet.history.findings.filter(row=>row.auditId===prior.auditId).map(row=>row.finding),prior.result.findings);
+    }
+  }
   console.log('D112-1 exact generated checkpoints '+JSON.stringify(observed.audits.map(a=>({auditId:a.auditId,requestBytes:a.requestBytes??null,historyAudits:a.historyAudits??null,status:a.status??a.classification,reason:a.reason?.includes('profile_input_limit')?'profile_input_limit':null,actualAuditorCalls:a.actualAuditorCalls}))));
   assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,4);
 }));
