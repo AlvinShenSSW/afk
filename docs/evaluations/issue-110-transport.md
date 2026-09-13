@@ -1,16 +1,15 @@
 # Issue 110 transport qualification
 
-Status: **NOT RUN**. Deterministic helper tests do not qualify an independent
-model invocation. No prototype or final-schema qualification is claimed here.
-The driver updates this report after inspecting the implementation and retaining
-the authorized experiment's evidence.
+Status: **QUALIFIED-PROTOTYPE** after driver inspection of one live invocation
+on 2026-09-13. This qualifies the demonstrated synthetic delivery/result path;
+final-schema compatibility and broad direction accuracy remain OUTSTANDING.
 
 ## Candidate and boundaries
 
-The planned surface is one manual Node HTTP request to DeepSeek Chat Completions,
+The qualified prototype surface is one manual Node HTTP request to DeepSeek Chat Completions,
 requesting exact alias `deepseek-flash`, with thinking disabled, no tool
-definitions and `tool_choice: "none"`. The synthetic artifact has Codex author
-provenance, subject to driver confirmation. Settings are experiment-specific;
+definitions and `tool_choice: "none"`. The driver confirmed Codex authorship of the synthetic artifact and request.
+DeepSeek was independent of that author family. Settings are experiment-specific;
 they neither change review defaults nor qualify an untested downstream profile.
 
 The [frozen design](../designs/specs/issue-110-direction-transport.md) owns the
@@ -21,10 +20,10 @@ bytes, not a native diff shortcut or a reference the model must fetch.
 | Capability | Current evidence |
 | --- | --- |
 | Deterministic request, path, artifact and result checks | Helper tests; these use mocks, not a provider. |
-| Live packet/source delivery and concrete discrepancy judgment | NOT RUN |
-| Actual provider envelope identity and terminal behavior | NOT RUN |
-| Fresh stateless request without prior transcript | Local construction tested; live invocation NOT RUN. |
-| Complete tools-absent interface | Local wire and output handling tested; live invocation NOT RUN. |
+| Live packet/source delivery and concrete discrepancy judgment | Exact challenge returned; artifact subtraction correctly identified against the sum requirement. |
+| Actual provider envelope identity and terminal behavior | Envelope `model: deepseek-flash`, HTTP 200, normal `stop`, exit 0. Alias only. |
+| Fresh stateless request without prior transcript | Live exact body contained two messages and embedded sources, with no prior transcript or session identifier. |
+| Complete tools-absent interface | Live body omitted tools and set `tool_choice: none`; no returned tool calls or execution dispatcher. |
 | Final #109 packet/result contract | OUTSTANDING; prototype namespace is provisional. |
 | Broad semantic direction accuracy | OUTSTANDING; not established by a transport challenge. |
 | Author-host confinement and behavior trials | OUTSTANDING; [issue 98's limitations](issue-98-pilot.md) remain. |
@@ -70,3 +69,62 @@ preserves the second slot for final-schema revalidation. The #109/#111 owner
 records final compatibility before integration acceptance; changed wire fields,
 profiles or extraction require an unconsumed live slot. Exhaustion leaves
 required-mode integration and paid behavior acceptance OUTSTANDING.
+
+## Observed prototype and retained evidence
+
+The driver inspected the complete prepared request and both embedded sources
+before dispatch. The live result returned `canyon-lilac-47`, bound the packet,
+phase and target digests, selected `CORRECT-COURSE`, and cited `artifact.mjs:2`:
+`return left - right;`. Its finding recommended `left + right`, matching R1's
+requirement for a sum. The top-level next action repeated the supplied review
+question; the concrete correction appeared in finding F1. This is narrow
+fixture evidence, not a general semantic accuracy score.
+
+The helper emitted `CANDIDATE-PASS` and deliberately left qualification to the
+driver. The driver checked source delivery, the concrete discrepancy, exact
+envelope identity, empty tool interface and immutable artifact bindings before
+recording this report's `QUALIFIED-PROTOTYPE` disposition. Provider alias identity
+does not establish generation or weight identity. Stateless request construction
+does not establish provider cache deletion.
+
+| Binding | Value |
+| --- | --- |
+| Execution revision | `e070201a4d72329eb7cbde8901d429185e67b979` |
+| Helper SHA-256 | `36d493fef33bedaa19b9388d8a3e2191ac8fd9e9b45a2dab0af88cc96ca5af05` |
+| Packet SHA-256 | `c989d05d4c88835550bd9bd33f0cfc398c050935077d6a23896d76c86558cd82` |
+| Request SHA-256 | `903e8abcdee39a3bcee2f5eb0e2bab30bd9521a584775e4b1936207cbc96d8fc` |
+| Requirement source SHA-256 | `d8652678709f15d5d92bb8560a729f70d11088cb64190467485244667c8ea50d` |
+| Artifact source SHA-256 | `4f554dc9dd1f89403b22180079e613acb83f34beb5175daa890405df8335b5f1` |
+| Extracted result artifact SHA-256 | `eadc819a27419d7ab0a34faab21e3287a692210a8823db7d5110be9720e06376` |
+| Sanitized response artifact SHA-256 | `3441dedfc41fcd8565859f52efa378bf86a89e9a61acd51d65c2bd5c41fee66a` |
+| Original response-byte SHA-256 | `3f32168c56641e820056eee18a915561017b0ec5771a4e7d6a087eb3b59110ef` |
+
+The live interval was 06:35:05.140–06:35:07.001 UTC; the driver charged
+1900 milliseconds including process execution and publication. One of two
+qualification slots is consumed, leaving one slot and 298100 milliseconds of
+cumulative invocation allowance; the second call still has a 150-second process
+limit. Raw usage reported 624 input tokens, 178 output tokens and zero cached
+input tokens. Cache input is a subset of total input. At the recorded peak
+rates, observed usage estimates USD 0.0004008; this is not a billing receipt.
+
+The current private run retains the complete request, packet, withheld oracle,
+prepared/dispatch/response/result/terminal artifacts, stdout/stderr and
+driver-owned qualification accounting under attempt `issue110-qualification-1`.
+The response observation redacts hash-shaped strings; the validated extracted
+result retains binding hashes. Original and sanitized response digests therefore
+refer to distinct byte sequences. No raw credential, private project source,
+provider request identifier or local filesystem path is published here.
+
+Required deterministic checks passed with 122 tests, including exact local
+assertion classification, preexisting output refusal before dispatch and
+concurrent-attempt arbitration. The required Markdown check passed. S110-3 is a
+deferred P2: malformed non-JSON response text is sanitized, but its `redacted`
+metadata can underreport that transformation. Such a response remains INVALID.
+
+The next qualification owner must retain this consumed slot and revalidate the
+final #109/#111 protocol. Changed wire fields, prompts, thinking settings,
+delivery or extraction require the remaining live slot before integration
+acceptance. Neither successful PR reviews nor this provisional result can
+substitute. The report update follows the execution revision without changing
+helper, fixtures or dependency bytes; the driver retains that carryforward
+verification. Author-host confinement and behavior acceptance remain OUTSTANDING.
