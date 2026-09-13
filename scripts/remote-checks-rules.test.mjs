@@ -1,3 +1,4 @@
+import { readInstruction, assertRoute, section } from './instruction-test-helpers.mjs';
 // The check rule is prose an agent chooses to follow — nothing here makes it
 // run. These pin the sentences three refutation rounds turned on, plus
 // doesNotMatch guards on the wordings each round refuted, so a reworded
@@ -12,7 +13,9 @@ import { test } from 'node:test';
 const read = (p) =>
   readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
-const afk = read('../skills/afk/SKILL.md');
+const afk = read('../skills/afk/references/publication.md');
+const driver = readInstruction('skills/afk/SKILL.md');
+const convergence = readInstruction('skills/afk/references/review-convergence.md');
 const pilot = read('../skills/afk-implementation-pilot/SKILL.md');
 const internal = read('../skills/afk-internal-review/SKILL.md');
 const template = read('../templates/afk-config.example.md');
@@ -80,15 +83,14 @@ test('a check never ends the waterfall anywhere but at its own step', () => {
   assert.match(afk, /a check read earlier never ends an issue's waterfall/);
 });
 
-test('every rule that turns on a check reads the same object', () => {
-  // Green, the ready enumeration, the merge bar and the unfinished-stage rule
-  // diverged across earlier drafts; each names the reading now.
-  assert.match(afk, /full test\nsuite \+ the revision's check reading\)/);
-  assert.match(afk, /that commit's\n  check reading resolved \("Remote checks"\)/);
-  assert.match(afk, /an\nunresolved check reading \("Remote checks"\), or an unmet frozen-contract item/);
-  assert.match(afk, /an open admitted P1, an unresolved check\nreading, or/);
-  assert.doesNotMatch(afk, /deterministic CI green/);
-  assert.doesNotMatch(afk, /remote CI not run/);
+test('waterfall, convergence and merge bar route to the canonical check reading', () => {
+  assertRoute(driver, 'references/publication.md#remote-checks');
+  assertRoute(convergence, 'publication.md');
+  assert.match(driver, /full test\nsuite \+ the revision's check reading\)/);
+  assert.match(driver, /that commit's\n  check reading resolved/);
+  assert.match(afk, /unresolved check reading.*unmet frozen-contract item/);
+  assert.match(convergence, /an open admitted P1, an unresolved check\nreading, or/);
+  for (const text of [driver, afk, convergence]) assert.doesNotMatch(text, /deterministic CI green/);
 });
 
 test('the tradeoff is stated in the driver and reaches the report', () => {
@@ -100,8 +102,8 @@ test('the tradeoff is stated in the driver and reaches the report', () => {
   // report must not render it as "no check was required".
   assert.match(afk, /named no required check or never answered — which of the two it was/);
   assert.match(afk, /these are two different\n  facts/);
-  const start = afk.indexOf('**Remote checks.**');
-  const end = afk.indexOf('**Merge bar.**');
+  const start = afk.indexOf('## Remote checks');
+  const end = afk.indexOf('## Merge bar');
   // Fail closed: a renamed heading would slice to '' and pass every guard.
   assert.ok(start !== -1 && end > start, 'the rule must be bounded by both headings');
   // The AGENTS.md section is cited by its own title; only prose is guarded.
@@ -150,7 +152,7 @@ test('local completion preserves reviews without remote work or automatic public
   assert.match(afk, /`off` skips remote check reads, polling, and dispatch/);
   assert.match(afk, /do not automatically push, open a PR, mark it ready, or merge/);
   assert.match(afk, /`LOCAL-COMPLETE`/);
-  assert.match(afk, /all configured independent roles and the final local suite/);
+  assert.match(driver, /all configured independent roles and the final local suite/);
   assert.match(afk, /does not disable repository workflows or cancel existing runs/);
   assert.match(pilot, /With `remote-ci: off`, skip this stage/);
   assert.match(internal, /With `remote-ci: off`, omit the forge check read/);
@@ -162,5 +164,5 @@ test('forge readiness precedes remote validation and never proves AFK merge read
   assert.match(afk, /Draft-stage `skipped` result/);
   assert.match(afk, /actual completed `success`/);
   assert.match(afk, /including when the forge treats it as advisory/);
-  assert.match(afk, /does not consume or reset the review-cycle allowance/);
+  assert.match(convergence, /does not consume or reset the review-cycle allowance/);
 });
