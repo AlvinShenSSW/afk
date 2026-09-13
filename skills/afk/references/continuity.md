@@ -112,6 +112,11 @@ and retained expected bindings; a narrative summary cannot repair invalid state.
 Absent records remain direction-off. Existing lifecycle and content-repair
 accounting retain their owners.
 
+When retained policy enables audits, read [direction audits](direction-audit.md)
+at resume and stage/signal boundaries before choosing the next audit action.
+Reload actual target and matching reservation/result bindings; a missing expected
+sequence cannot disable retained required policy or replenish an old attempt.
+
 Do not assume portable clear/compact commands, cache lifetimes or model-switch
 semantics. If no supported transition is available, continue in-session with
 bounded reads and evidence pointers. These are level 3 workflow instructions.
