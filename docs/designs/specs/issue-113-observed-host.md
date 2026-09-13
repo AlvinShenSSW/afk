@@ -610,7 +610,6 @@ items, mismatched streamed input, and allowed complete exec/wait/sleep sequences
 Recorder tests require no release, preserved real-shaped synthetic usage and no
 second dispatch after denial. All fixtures are synthetic with mocked HTTPS.
 
-
 ### Capacity regression fixture isolation
 
 The changed runtime correctly rejects the retained live qualification as stale.
