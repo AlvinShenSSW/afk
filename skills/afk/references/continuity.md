@@ -106,6 +106,12 @@ staleness rules, and [review evidence](review-evidence.md) before reusing review
 artifacts. Missing sources remain explicit; reconstruct from retained evidence
 under those rules before dependent work, never assume fresh allowances.
 
+When direction records exist, read [direction state](direction-state.md) before
+reloading their baseline, policy and audit consumption. Use the canonical sequence
+and retained expected bindings; a narrative summary cannot repair invalid state.
+Absent records remain direction-off. Existing lifecycle and content-repair
+accounting retain their owners.
+
 Do not assume portable clear/compact commands, cache lifetimes or model-switch
 semantics. If no supported transition is available, continue in-session with
 bounded reads and evidence pointers. These are level 3 workflow instructions.

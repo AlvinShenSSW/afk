@@ -19,7 +19,7 @@ const triggers = {
   'afk-deepseek-review': ['/afk-deepseek-review', 'run deepseek review', 'DeepSeek external gate'],
   'afk-mimo-review': ['/afk-mimo-review', 'run mimo review', 'MiMo external gate'],
 };
-const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity', 'output'];
+const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity', 'output', 'direction-state'];
 const gateNames = Object.keys(triggers).filter((name) => /-(codex|claude|kimi|glm|deepseek|mimo)-review$/.test(name));
 const reference = (name) => `skills/afk/references/${name}.md`;
 

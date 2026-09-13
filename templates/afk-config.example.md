@@ -26,6 +26,12 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
                          # kickoff override only; consumed cycles survive resumes
                          # exhaustion leaves unresolved repairs outstanding
 
+## direction
+mode: off
+max-audit-attempts: 4
+# Frozen sources and explicit operator amendments preserve consumed calls.
+# Existing runs stay off until explicitly initialized with recoverable history.
+
 ## forge
 # forge:                 # github · azure-devops. Omit to detect from the origin
                          # remote, else github. Set it when the remote host is
