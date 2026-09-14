@@ -43,7 +43,7 @@ plugin is built around:
 - **Self-review is not review.** Every external role runs as a *different*
   model from the one that wrote the code, read-only, on the real diff. A role
   that matches the implementer steps aside for an independent fallback.
-- **Bounded review limits churn.** Two review-driven fix cycles per issue are
+- **Bounded review limits churn.** Six review-driven fix cycles per issue are
   the default; verified closure is still required. Exhaustion leaves unresolved
   work outstanding without an automatic permission loop.
 - **A draft PR is not a finish line.** The waterfall has one end state: green
@@ -167,9 +167,14 @@ operator to authorize; minor and out-of-scope notes remain non-blocking.
 Only corrections inseparable from the minimal P1 fix may accompany it, with
 recorded causal necessity. Sharing a file does not authorize extra work.
 
-The default allowance is two review-driven fix/re-review cycles per issue;
+The default allowance is six review-driven fix/re-review cycles per issue;
 initial implementation and initial reviews are separate. An explicit kickoff
 instruction or `## review` → `max-fix-cycles` configuration may change it.
+Only explicitly authorized resource-budget increases scale existing finite
+model-call and cost ceilings; extra repair cycles alone leave those caps unchanged.
+An unset cap creates no ceiling or budget-reconstruction prerequisite. The recorded ratio
+applies once to original totals and includes consumed and reserved amounts;
+it does not expand task scope or silently amend an active run on upgrade.
 Phases, roles and resumes share the recorded allowance. Initial review is
 comprehensive; re-review covers accepted finding closure, the repair diff and
 affected regressions. Evidence can reopen a finding; reviewer identity cannot.

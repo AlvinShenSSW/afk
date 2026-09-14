@@ -8,7 +8,7 @@ stage's own output and exit conditions. For role selection read
 
 ## Review-cycle allowance
 
-Default to **two review-driven fix/re-review cycles per issue**. A cycle is a
+Default to **six review-driven fix/re-review cycles per issue**. A cycle is a
 batch of review-driven content changes followed by closure and regression review.
 Initial implementation and initial reviews do not consume cycles. Resolve the
 allowance at kickoff: explicit operator instruction, else `## review` →
@@ -16,6 +16,27 @@ allowance at kickoff: explicit operator instruction, else `## review` →
 valid explicit values are nonnegative integers. Invalid values are a reported
 config error and permit no automatic repair until resolved. The driver cannot
 increase its own allowance mid-run.
+
+Only an operator-authorized resource-budget increase scales existing finite
+model-call and cost ceilings. Approval of more repair cycles alone leaves those
+ceilings unchanged. Use an explicit operator ratio when supplied; otherwise,
+when proportional resource scaling is authorized, divide the new cycle allowance
+by the allowance recorded with the original budget totals. Apply the factor once
+to those original totals, round integer call ceilings down, and retain consumed
+and reserved amounts. Never multiply the remaining balance or compound the same
+amendment on resume. A zero or unknown original cycle baseline prevents ratio
+inference, not an explicit ratio applied to known finite totals. Missing budget
+totals for a known finite budget leave its amendment unresolved. An unset cap
+creates no ceiling or budget-reconstruction prerequisite. Do not solicit a
+micro-budget approval merely to continue authorized work without a cap.
+Operator instruction still outranks config and default.
+
+Record the source, original and amended ceilings before dependent calls. A new
+default alone does not amend an active run. Preserve immutable execution handoffs
+and predecessor accounting; unknown usage stays unknown, with any finite
+conservative hold recorded separately under an explicit reservation policy.
+Larger ceilings alone do not cure missing accounting. Task scope, deadlines,
+per-invocation limits, retry permissions and review requirements remain separate.
 
 Use the existing run ledger, keyed by issue, for allowance/source, consumed
 cycles, accepted finding IDs and dispositions, repair revision, validation and
@@ -41,7 +62,7 @@ Codex native diff review accepts no custom focus prompt: its driver applies this
 triage boundary and records that reviewer-focus limitation.
 
 Complete the current cycle's checks even when it consumes the final allowance;
-it may finish clean without an extra empty review. Do not start a third automatic cycle
+it may finish clean without an extra empty review. Do not start a seventh automatic cycle
 under the default. If further repair is needed, leave the PR not ready with
 `OUTSTANDING`, unresolved findings, attempts and a suggested next action; continue
 independent queued work. Never auto-merge or downgrade a verified blocker to fit
