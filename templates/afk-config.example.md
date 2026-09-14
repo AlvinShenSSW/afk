@@ -31,6 +31,8 @@ mode: off
 max-audit-attempts: 4
 # Frozen sources and explicit operator amendments preserve consumed calls.
 # Existing runs stay off until explicitly initialized with recoverable history.
+# Shadow adds observations without direction-only holds; required needs a current
+# source-grounded endpoint COMPLETE alongside ordinary checks and authority.
 
 ## forge
 # forge:                 # github · azure-devops. Omit to detect from the origin

@@ -1,8 +1,10 @@
 {
-  "outcome": "CORRECT-COURSE",
-  "deliveryToken": "canyon-lilac-47",
-  "requirementId": "R1",
-  "source": "artifact.mjs",
-  "line": 2,
-  "excerpt": "return left - right;"
+  "version": 1,
+  "phase": "endpoint",
+  "outcome": "COMPLETE",
+  "sourceId": "request",
+  "sourceLine": 3,
+  "sourceMarker": "canyon-lilac-47",
+  "artifactId": "implementation",
+  "checkId": "check"
 }

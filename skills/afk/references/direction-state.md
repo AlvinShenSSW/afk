@@ -76,8 +76,12 @@ The helper cannot authenticate authority, prevent external bypass or qualify a
 provider. Final packet/result/profile compatibility remains separate from the
 provisional #110 transport experiment and requires later evidence.
 
+Read [direction audits](direction-audit.md) before preparing, dispatching or using
+an enabled audit. That consumer validates packet/result content and deterministic
+response derivation; state remains the sole owner of charged attempts.
+
 Only the exact packet reference in a reservation and result reference in a
-terminal defer content secret inspection to #111. This helper still checks their
+terminal defer content secret inspection to the audit consumer. This helper still checks their
 confinement, excluded paths, byte limits, strict UTF-8/NUL and exact digests,
 and never emits or dispatches raw opaque bytes. Before dispatching a packet or
 using a result, #111 must validate and sanitize that content. All Source,

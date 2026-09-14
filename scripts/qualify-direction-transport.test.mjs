@@ -1,281 +1,377 @@
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { prepare, probe, LIMITS, CANDIDATE } from './qualify-direction-transport.mjs';
+import { copyDirectionTestRuntime, spawnGate } from './gate-test-env.mjs';
+import { prepare, probe, budgetRequest, inspectPrepared, inspectQualification } from './qualify-direction-transport.mjs';
+import { completeResult, FIXTURE_ROOT } from './fixtures/direction-transport/setup.mjs';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
-import { supportVisible } from './evaluate-agent-behavior.mjs';
+import { contentDigest } from '../lib/direction/schema.mjs';
+import { readDirectionState, appendDirectionRecord } from '../lib/direction/state.mjs';
+import { LIMITS, checkAudit, validateModelResult, terminalRequest, qualificationEvidence, readJson,
+  validateQualification } from '../lib/direction/audit.mjs';
+import { recordExchange, fixedExchange } from '../lib/direction/transport.mjs';
 
-const fixture = fileURLToPath(new URL('./fixtures/direction-transport', import.meta.url));
-const credential = 'synthetic-qualification-key';
-function setup(t) {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'afk-qualification-')));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const fixtureRoot = join(root, 'fixture');
-  cpSync(fixture, fixtureRoot, { recursive: true });
-  return { root, fixtureRoot, out: join(root, 'attempt') };
+function fixture(t, { budgetAmendmentPath, physicalCallId = 'physical-final-call' } = {}) {
+  const temp = realpathSync(mkdtempSync(join(tmpdir(), 'afk-direction-final-'))); t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const prepared = join(temp, 'prepared'); const metadata = prepare({ fixtureRoot: FIXTURE_ROOT, out: prepared, budgetAmendmentPath });
+  const { input } = inspectPrepared(prepared); return { prepared, metadata, input, budget: budgetRequest(prepared, physicalCallId) };
 }
-const read = (dir, name) => JSON.parse(readFileSync(join(dir, name), 'utf8'));
-const write = (dir, name, value) => writeFileSync(join(dir, name), canonicalBytes(value));
-function completion(dir, edit = (x) => x) {
-  const metadata = read(dir, 'prepared.json');
-  const packet = read(dir, 'packet.json');
-  const expected = read(dir, 'expected.json');
-  return edit({
-    packetDigest: metadata.packetDigest, phase: packet.phase, targetDigest: packet.targetDigest,
-    outcome: expected.outcome, deliveryToken: expected.deliveryToken,
-    findings: [{ id: 'D1', requirementId: expected.requirementId, source: expected.source,
-      line: expected.line, excerpt: expected.excerpt, nextAction: 'Correct the operation before proceeding.' }],
-    nextAction: 'Return the discrepancy to the author.',
+function envelope(packet, mutate = () => {}) {
+  const value = { model: 'deepseek-flash', choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(completeResult(packet)) } }] };
+  mutate(value); return value;
+}
+const response = value => new Response(JSON.stringify(value), { status: 200 });
+const env = { DEEPSEEK_API_KEY: 'fixture-key' };
+async function success(f) {
+  return probe({ prepared: f.prepared, budget: f.budget, env,
+    fetchImpl: async (_url, options) => {
+      const body = JSON.parse(options.body); assert.equal(body.messages.length, 2); assert.equal(Object.hasOwn(body, 'tools'), false);
+      assert.equal(body.tool_choice, 'none'); assert.equal(body.thinking.type, 'disabled'); assert.equal(options.redirect, 'error');
+      assert.equal(options.body, f.input.request); return response(envelope(f.input.packet));
+    } });
+}
+
+test('final qualification traverses actual packet, wire, COMPLETE result and terminal with one physical-call cross-reference', async t => {
+  const { audit } = await copyDirectionTestRuntime(t, { qualification: 'pending' });
+  const f = fixture(t); assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
+  const observed = await success(f); assert.equal(observed.classification, 'CANDIDATE-PASS'); assert.equal(observed.requests, 1);
+  assert.equal(observed.physicalCallId, f.budget.physicalCallId); assert.equal(observed.qualification, 'NOT_QUALIFIED_BY_HELPER');
+  assert.equal(observed.actualInvocation, 'DRIVER_JUDGMENT_REQUIRED');
+  assert.equal(readDirectionState(f.metadata).accounting.charged, 1); assert.equal(readDirectionState(f.metadata).accounting.reserved, 0);
+  assert.equal(inspectQualification(f.prepared).status, 'ARTIFACT_CANDIDATE_PASS');
+  const checked = audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id });
+  assert.equal(checked.protocolValid, true); assert.equal(checked.outcome, 'COMPLETE'); assert.equal(checked.directionSatisfied, false);
+  assert.deepEqual(checked.reasons, ['qualification_pending']);
+  await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => assert.fail('repeat dispatch') }));
+});
+
+for (const kind of ['outcome', 'findings', 'coverage', 'malformed']) {
+  test(`D111-1 ${kind} substitution rejected at result, endpoint and qualification consumers`, async t => {
+    const f = fixture(t); await success(f);
+    const original = readJson(f.input.directory, 'result.json'); const wire = readJson(f.input.directory, 'response.json');
+    const terminalPath = join(f.metadata.cwd, '.afk', 'runs', f.metadata.runId,
+      readDirectionState(f.metadata).attempts[0].terminal.path);
+    const terminalRecord = JSON.parse(readFileSync(terminalPath, 'utf8'));
+    const payload = completeResult(f.input.packet); const retained = structuredClone(payload);
+    if (kind === 'outcome') retained.outcome = 'CORRECT-COURSE';
+    if (kind === 'findings') { retained.outcome = 'CORRECT-COURSE'; retained.findings = [{ id: 'F1', requirementIds: ['O1'],
+      evidence: [payload.coverage[0].source], explanation: 'A correction is needed.', recommendedAction: 'Recheck source coverage.' }]; }
+    if (kind === 'coverage') retained.coverage[0].explanation = 'Another valid explanation.';
+    validateModelResult(payload, f.input.packet); if (kind !== 'malformed') validateModelResult(retained, f.input.packet);
+    wire.envelope.choices[0].message.content = kind === 'malformed' ? '{' : canonicalBytes(retained);
+    original.observation.response.digest = contentDigest(wire);
+    writeFileSync(join(f.input.directory, 'response.json'), canonicalBytes(wire));
+    writeFileSync(join(f.input.directory, 'result.json'), canonicalBytes(original));
+    terminalRecord.payload.terminal.result.digest = contentDigest(original);
+    writeFileSync(terminalPath, canonicalBytes(terminalRecord));
+    assert.equal(readDirectionState(f.metadata).status, 'valid');
+    for (const stage of ['result', 'endpoint']) {
+      const checked = checkAudit({ ...f.metadata, stage, endpointId: f.input.packet.endpoint.id });
+      assert.equal(checked.protocolValid, false); assert.equal(checked.outcome, null); assert.equal(checked.directionSatisfied, false);
+      assert.equal(checked.status, 'invalid'); assert.match(checked.reasons[0], /response_payload_mismatch|invalid_result_json/);
+    }
+    assert.throws(() => qualificationEvidence(f.metadata), /response_payload_mismatch|invalid_result_json/);
+    assert.throws(() => inspectQualification(f.prepared), /response_payload_mismatch|invalid_result_json/);
   });
 }
-function envelope(dir, edit = (x) => x) {
-  return edit({ model: CANDIDATE.model, choices: [{ finish_reason: 'stop',
-    message: { role: 'assistant', content: JSON.stringify(completion(dir)) } }] });
-}
-const response = (value, status = 200) => new Response(JSON.stringify(value), { status });
-async function run(out, fetchImpl, extra = {}) {
-  return probe({ prepared: out, env: { DEEPSEEK_API_KEY: credential }, fetchImpl, ...extra });
-}
-
-test('preparation binds exact sources and excludes the oracle from the wire', (t) => {
-  const args = setup(t); prepare(args);
-  const packet = read(args.out, 'packet.json');
-  const body = readFileSync(join(args.out, 'request.json'), 'utf8');
-  const meta = read(args.out, 'prepared.json');
-  assert.equal(digestBytes(body), meta.requestDigest);
-  assert.equal(digestBytes(canonicalBytes(packet)), meta.packetDigest);
-  for (const source of packet.sources) {
-    assert.equal(source.content, readFileSync(join(args.fixtureRoot, source.path), 'utf8'));
-    assert.equal(source.digest, digestBytes(source.content));
-  }
-  assert.equal(body.includes('expected.json'), false);
-  assert.equal(body.includes('"oracle"'), false);
-  assert.equal(Buffer.byteLength(body) <= LIMITS.requestBytes, true);
-  assert.throws(() => prepare(args), /exists|directory/);
-});
-
-test('one tools-absent fresh request has exact prepared bytes and observed identity', async (t) => {
-  const args = setup(t); prepare(args);
-  let calls = 0;
-  const terminal = await run(args.out, async (url, options) => {
-    calls++;
-    assert.equal(url, CANDIDATE.endpoint);
-    assert.equal(options.redirect, 'error');
-    assert.equal(options.body, readFileSync(join(args.out, 'request.json'), 'utf8'));
-    assert.equal(options.headers.Authorization, `Bearer ${credential}`);
-    const body = JSON.parse(options.body);
-    assert.deepEqual(body.messages.map((x) => x.role), ['system', 'user']);
-    assert.equal(Object.hasOwn(body, 'tools'), false);
-    assert.equal(body.tool_choice, 'none');
-    assert.deepEqual(body.thinking, { type: 'disabled' });
-    assert.equal(body.model, CANDIDATE.model);
-    assert.equal(body.max_tokens, LIMITS.outputTokens);
-    return response(envelope(args.out));
-  }, { env: { DEEPSEEK_API_KEY: credential, DEEPSEEK_BASE_URL: 'https://invalid.example', AGENT_RELAY_TOKEN_PARAM: 'unsafe' } });
-  assert.equal(calls, 1);
-  assert.equal(terminal.classification, 'CANDIDATE-PASS');
-  assert.equal(terminal.exitCode, 0);
-  assert.deepEqual(terminal.usage, { input: null, output: null, cacheRead: null });
-  assert.equal(terminal.identity.source, 'provider-response.model');
-  assert.equal(terminal.identity.observed, CANDIDATE.model);
-  await assert.rejects(run(args.out, () => { throw Error('must not retry'); }), /exists|reuse/);
-});
 
 for (const [name, mutate, reason] of [
-  ['missing identity', (x) => { delete x.model; }, 'identity'],
-  ['mismatched identity', (x) => { x.model = 'different-model'; }, 'identity'],
-  ['length finish', (x) => { x.choices[0].finish_reason = 'length'; }, 'finish'],
-  ['empty result', (x) => { x.choices[0].message.content = ''; }, 'empty'],
-  ['tool call', (x) => { x.choices[0].message.tool_calls = [{ function: { name: 'exec' } }]; }, 'tool'],
-  ['function call', (x) => { x.choices[0].message.function_call = { name: 'exec' }; }, 'tool'],
-  ['extra choice', (x) => { x.choices.push(x.choices[0]); }, 'choices'],
-  ['non-string content', (x) => { x.choices[0].message.content = { model: CANDIDATE.model }; }, 'content'],
-]) test(`invalid response: ${name} preserves observations without retry`, async (t) => {
-  const args = setup(t); prepare(args);
-  let calls = 0;
-  const terminal = await run(args.out, async () => {
-    calls++; return response(envelope(args.out, (x) => { mutate(x); return x; }));
+  ['identity', x => x.model = 'different', 'identity_mismatch'],
+  ['missing identity', x => delete x.model, 'identity_mismatch'],
+  ['length', x => x.choices[0].finish_reason = 'length', 'incomplete_finish'],
+  ['tools', x => x.choices[0].message.tool_calls = [], 'unexpected_tool_call'],
+  ['function', x => x.choices[0].message.function_call = {}, 'unexpected_tool_call'],
+  ['delta function', x => x.choices[0].delta = { function_call: { name: 'unexpected', arguments: '{}' } }, 'unexpected_tool_call'],
+  ['delta tools', x => x.choices[0].delta = { tool_calls: [] }, 'unexpected_tool_call'],
+  ['extra choice', x => x.choices.push(x.choices[0]), 'invalid_choices'],
+  ['empty', x => x.choices[0].message.content = '', 'empty'],
+  ['malformed', x => x.choices[0].message.content = '{', 'invalid_result_json'],
+  ['binding', x => { const p = JSON.parse(x.choices[0].message.content); p.targetDigest = 'a'.repeat(64); x.choices[0].message.content = JSON.stringify(p); }, 'result_binding'],
+]) {
+  test(`fixed exchange retains ${name} refusal and no semantic approval`, async t => {
+    const f = fixture(t); const observed = await fixedExchange({ packet: f.input.packet, request: f.input.request, env,
+      fetchImpl: async () => response(envelope(f.input.packet, mutate)) });
+    assert.equal(observed.observation.reason, reason); assert.equal(observed.payload, null); assert.equal(observed.response.extraction, 'invalid');
+    if (['tools', 'function', 'delta function', 'delta tools'].includes(name)) assert.equal(observed.observation.toolCallsPresent, true);
+    assert.equal(observed.observation.usage.input, null);
   });
-  assert.equal(calls, 1);
-  assert.equal(terminal.classification, 'INVALID');
-  assert.match(terminal.reason, new RegExp(reason));
-  assert.ok(read(args.out, 'response.json').envelope);
-});
+}
 
-for (const [name, change] of [
-  ['stale binding', (x) => { x.packetDigest = 'a'.repeat(64); }],
-  ['wrong challenge', (x) => { x.deliveryToken = 'incorrect'; }],
-  ['wrong judgment', (x) => { x.outcome = 'ON-TRACK'; }],
-  ['outside evidence', (x) => { x.findings[0].source = '../private.txt'; }],
-  ['wrong excerpt', (x) => { x.findings[0].excerpt = 'absent'; }],
-  ['duplicate finding', (x) => { x.findings.push({ ...x.findings[0] }); }],
-  ['unknown field', (x) => { x.additional = true; }],
-]) test(`result validation refuses ${name}`, async (t) => {
-  const args = setup(t); prepare(args);
-  const e = envelope(args.out);
-  e.choices[0].message.content = JSON.stringify(completion(args.out, (x) => { change(x); return x; }));
-  const terminal = await run(args.out, async () => response(e));
-  assert.equal(terminal.classification, 'INVALID');
-  assert.equal(terminal.exitCode, 1);
-});
-
-test('missing credential and quota are distinct unavailable evidence', async (t) => {
-  const a = setup(t); prepare(a);
-  const missing = await probe({ prepared: a.out, env: {}, fetchImpl: () => { throw Error('unexpected fetch'); } });
-  assert.equal(missing.classification, 'ENVIRONMENT-BLOCKED');
-  assert.equal(missing.reason, 'no_key');
-  const b = setup(t); prepare(b);
-  const quota = await run(b.out, async () => response({}, 429));
-  assert.equal(quota.classification, 'ENVIRONMENT-BLOCKED');
-  assert.equal(quota.reason, 'rate_limit');
-});
-
-test('transport errors do not persist credentials and malformed bodies remain invalid', async (t) => {
-  const a = setup(t); prepare(a);
-  const failure = await run(a.out, async () => { throw Error(credential); });
-  assert.equal(failure.classification, 'ENVIRONMENT-BLOCKED');
-  assert.equal(JSON.stringify(failure).includes(credential), false);
-  const b = setup(t); prepare(b);
-  const invalid = await run(b.out, async () => new Response('{broken'));
-  assert.equal(invalid.classification, 'INVALID');
-  assert.equal(invalid.reason, 'bad_json');
-  assert.equal(read(b.out, 'response.json').unparsedText, '{broken');
-});
-
-for (const phase of ['fetch', 'body']) test(`abort remains active during ${phase}`, async (t) => {
-  const args = setup(t); prepare(args);
-  let aborted = false;
-  const terminal = await run(args.out, async (_url, { signal }) => {
-    if (phase === 'fetch') return new Promise((_resolve, reject) => {
-      signal.addEventListener('abort', () => { aborted = true; reject(new DOMException('abort', 'AbortError')); });
-    });
-    return new Response(new ReadableStream({ start(controller) {
-      signal.addEventListener('abort', () => { aborted = true; controller.error(new DOMException('abort', 'AbortError')); });
-    } }));
-  }, { httpTimeoutMs: 15 });
-  assert.equal(aborted, true);
-  assert.equal(terminal.classification, 'TIMEOUT');
-  assert.equal(terminal.exitCode, 3);
-});
-
-test('response byte overflow cancels its stream without truncating into success', async (t) => {
-  const args = setup(t); prepare(args);
-  let cancelled = false;
-  const terminal = await run(args.out, async () => new Response(new ReadableStream({
-    start(controller) { controller.enqueue(new Uint8Array(LIMITS.responseBytes + 1)); },
-    cancel() { cancelled = true; },
-  })));
-  assert.equal(cancelled, true);
-  assert.equal(terminal.classification, 'INVALID');
-  assert.equal(terminal.reason, 'response_limit');
-});
-
-test('credential redaction preserves validated result binding hashes', async (t) => {
-  const args = setup(t); prepare(args);
-  const e = envelope(args.out);
-  const result = completion(args.out); result.nextAction = `Never publish ${credential}`;
-  e.choices[0].message.content = JSON.stringify(result);
-  e.usage = { prompt_tokens: 50, completion_tokens: 20, prompt_cache_hit_tokens: 10 };
-  const terminal = await run(args.out, async () => response(e));
-  const saved = readFileSync(join(args.out, 'result.json'), 'utf8');
-  assert.equal(saved.includes(credential), false);
-  assert.equal(read(args.out, 'result.json').result.packetDigest, read(args.out, 'prepared.json').packetDigest);
-  assert.deepEqual(terminal.usage, { input: 50, output: 20, cacheRead: 10 });
-  assert.equal(read(args.out, 'response.json').redacted, true);
-});
-
-for (const kind of ['traversal', 'excluded', 'missing', 'symlink', 'oversized', 'utf8']) test(`preparation refuses ${kind} source`, (t) => {
-  const args = setup(t);
-  const packet = read(args.fixtureRoot, 'packet.json');
-  if (kind === 'traversal') { packet.sourcePaths[0] = '../requirements.md'; write(args.fixtureRoot, 'packet.json', packet); }
-  if (kind === 'excluded') { packet.sourcePaths[0] = '.env'; write(args.fixtureRoot, 'packet.json', packet); }
-  if (kind === 'missing') rmSync(join(args.fixtureRoot, 'requirements.md'));
-  if (kind === 'symlink') { rmSync(join(args.fixtureRoot, 'requirements.md')); symlinkSync(join(args.fixtureRoot, 'artifact.mjs'), join(args.fixtureRoot, 'requirements.md')); }
-  if (kind === 'oversized') writeFileSync(join(args.fixtureRoot, 'requirements.md'), 'x'.repeat(LIMITS.requestBytes + 1));
-  if (kind === 'utf8') writeFileSync(join(args.fixtureRoot, 'requirements.md'), Buffer.from([0xff]));
-  assert.throws(() => prepare(args));
-});
-
-test('symlink output ancestors and changed prepared bytes are refused', async (t) => {
-  const args = setup(t);
-  symlinkSync(args.root, join(args.root, 'alias'));
-  assert.throws(() => prepare({ ...args, out: join(args.root, 'alias', 'attempt') }), /directory|symlink/);
-  prepare(args);
-  writeFileSync(join(args.out, 'request.json'), '{}');
-  await assert.rejects(run(args.out, () => { throw Error('must not fetch'); }), /digest|request|canonical/);
-});
-
-test('an interrupted dispatch marker cannot be reused or replaced', async (t) => {
-  const args = setup(t); prepare(args);
-  write(args.out, 'dispatch.json', { interrupted: true });
-  await assert.rejects(run(args.out, () => { throw Error('must not fetch'); }), /exists|reuse/);
-  assert.deepEqual(read(args.out, 'dispatch.json'), { interrupted: true });
-});
-
-test('total encoded request overflow is rejected even when individual sources fit', (t) => {
-  const args = setup(t);
-  writeFileSync(join(args.fixtureRoot, 'requirements.md'), readFileSync(join(args.fixtureRoot, 'requirements.md'), 'utf8') + '\t'.repeat(7000));
-  assert.throws(() => prepare(args), /request_limit/);
-});
-
-test('a nonregular source and sensitive fixture data are rejected before preparation', (t) => {
-  const a = setup(t);
-  rmSync(join(a.fixtureRoot, 'requirements.md')); mkdirSync(join(a.fixtureRoot, 'requirements.md'));
-  assert.throws(() => prepare(a), /non_regular/);
-  const b = setup(t);
-  writeFileSync(join(b.fixtureRoot, 'requirements.md'), `R1: api_key=sk-${'z'.repeat(25)}`);
-  assert.throws(() => prepare(b), /sensitive_source/);
-});
-
-test('producer changes and unexpected redirects cannot become candidate passes', async (t) => {
-  const a = setup(t); prepare(a);
-  const meta = read(a.out, 'prepared.json'); meta.helperDigest = '0'.repeat(64); write(a.out, 'prepared.json', meta);
-  await assert.rejects(run(a.out, () => { throw Error('must not fetch'); }), /producer_digest/);
-  const b = setup(t); prepare(b);
-  const terminal = await run(b.out, async () => ({ redirected: true, url: 'https://invalid.example', status: 200, ok: true }));
-  assert.equal(terminal.classification, 'INVALID');
-  assert.equal(terminal.reason, 'unexpected_redirect');
-});
-
-for (const name of ['dispatch.json', 'response.json', 'result.json', 'terminal.json']) test(`existing ${name} refuses dispatch before any fetch`, async (t) => {
-  const args = setup(t); prepare(args);
-  write(args.out, name, { previous: true });
-  let calls = 0;
-  await assert.rejects(run(args.out, async () => { calls++; return response(envelope(args.out)); }), /exists/);
-  assert.equal(calls, 0);
-  assert.deepEqual(read(args.out, name), { previous: true });
-  assert.equal(existsSync(join(args.out, 'dispatch.json')), name === 'dispatch.json');
-});
-
-test('concurrent invocations retain exclusive dispatch arbitration', async (t) => {
-  const args = setup(t); prepare(args);
-  let finish;
-  let calls = 0;
-  const first = run(args.out, async () => {
-    calls++;
-    await new Promise((resolve) => { finish = resolve; });
-    return response(envelope(args.out));
+for (const name of ['dispatch.json', 'response.json', 'result.json', 'terminal-witness.txt']) {
+  test(`every future output conflict (${name}) refuses before fetch and preserves bytes`, async t => {
+    const f = fixture(t); writeFileSync(join(f.input.directory, name), 'original'); let calls = 0;
+    await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => { calls++; } }));
+    assert.equal(calls, 0); assert.equal(readFileSync(join(f.input.directory, name), 'utf8'), 'original');
+    assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
   });
-  await assert.rejects(run(args.out, async () => { calls++; throw Error('duplicate request'); }), /exists/);
-  finish();
-  assert.equal((await first).classification, 'CANDIDATE-PASS');
-  assert.equal(calls, 1);
+}
+
+test('exclusive record arbitration allows one mocked dispatch from the same charged reservation', async t => {
+  const f = fixture(t); const request = readJson(f.input.directory, 'reserve-request.json');
+  assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request }).status, 'published'); let calls = 0;
+  const options = { ...f.metadata, env, fetchImpl: async () => { calls++; await new Promise(resolve => setTimeout(resolve, 10)); return response(envelope(f.input.packet)); } };
+  const settled = await Promise.allSettled([recordExchange(options), recordExchange(options)]);
+  assert.equal(calls, 1); assert.equal(settled.filter(x => x.status === 'fulfilled').length, 1);
 });
 
-test('invalid JSON content is retained as an envelope, not passed as a result', async (t) => {
-  const args = setup(t); prepare(args);
-  const e = envelope(args.out); e.choices[0].message.content = 'not JSON';
-  const terminal = await run(args.out, async () => response(e));
-  assert.equal(terminal.reason, 'bad_json');
-  assert.equal(read(args.out, 'response.json').envelope.choices[0].message.content, 'not JSON');
+test('a stalled response body is cancelled by the bounded HTTP abort', async t => {
+  const f = fixture(t); let cancelled = false;
+  const observed = await fixedExchange({ packet: f.input.packet, request: f.input.request, env, httpTimeoutMs: 20,
+    fetchImpl: async () => new Response(new ReadableStream({ pull() { return new Promise(() => {}); }, cancel() { cancelled = true; } })) });
+  assert.equal(observed.observation.classification, 'timeout'); assert.equal(cancelled, true); assert.equal(observed.payload, null);
 });
 
-test('qualification support never enters behavior author exports', () => {
-  for (const path of ['scripts/qualify-direction-transport.mjs', 'scripts/fixtures/direction-transport/packet.json',
-    'scripts/fixtures/direction-transport/expected.json', 'docs/evaluations/issue-110-transport.md']) {
-    assert.equal(supportVisible(path), false, path);
+test('response overflow is cancelled before parsing and never truncated into approval', async t => {
+  const f = fixture(t); let cancelled = false;
+  const observed = await fixedExchange({ packet: f.input.packet, request: f.input.request, env,
+    fetchImpl: async () => new Response(new ReadableStream({ start(c) { c.enqueue(new Uint8Array(LIMITS.responseBytes + 1)); }, cancel() { cancelled = true; } })) });
+  assert.equal(observed.observation.reason, 'response_limit'); assert.equal(cancelled, true); assert.equal(observed.response, null);
+});
+
+test('injectable redirect assertion retains its local classification', async t => {
+  const f = fixture(t);
+  const observed = await fixedExchange({ packet: f.input.packet, request: f.input.request, env,
+    fetchImpl: async () => ({ status: 200, ok: true, redirected: true, url: 'https://other.invalid' }) });
+  assert.equal(observed.observation.reason, 'unexpected_redirect'); assert.equal(observed.observation.classification, 'invalid');
+});
+
+test('missing credentials records a strict witness and consumed unavailable attempt without fetch', async t => {
+  const f = fixture(t); let calls = 0;
+  const result = await probe({ prepared: f.prepared, budget: f.budget, env: {}, fetchImpl: async () => { calls++; } });
+  assert.equal(calls, 0); assert.equal(result.classification, 'INVALID');
+  const state = readDirectionState(f.metadata); assert.equal(state.accounting.charged, 1);
+  assert.equal(state.attempts[0].terminal.value.kind, 'unavailable'); assert.equal(state.attempts[0].terminal.value.result, null);
+  const witness = readFileSync(join(f.input.directory, 'terminal-witness.txt'), 'utf8');
+  assert.doesNotMatch(witness, /[a-f0-9]{64}/); assert.match(witness, /dispatch: not-started/);
+});
+
+test('qualification budget cannot reset prior consumption or claim a third slot', async t => {
+  const f = fixture(t); let calls = 0;
+  for (const mutation of [{ priorCalls: 0 }, { attemptOrdinal: 3 }, { priorElapsedMs: 0 }, { remainingMs: 300000 }]) {
+    await assert.rejects(probe({ prepared: f.prepared, budget: { ...f.budget, ...mutation }, env, fetchImpl: async () => { calls++; } }), /qualification_budget/);
   }
+  assert.equal(calls, 0);
+});
+
+test('terminal request remains independently repeatable without another dispatch', async t => {
+  const f = fixture(t); const request = readJson(f.input.directory, 'reserve-request.json'); appendDirectionRecord({ cwd: f.metadata.cwd, request });
+  await recordExchange({ ...f.metadata, env, fetchImpl: async () => response(envelope(f.input.packet)) });
+  const a = terminalRequest({ ...f.metadata, operationId: 'terminal-first' });
+  const b = terminalRequest({ ...f.metadata, operationId: 'terminal-rebuilt' });
+  assert.deepEqual(a.payload, b.payload); assert.equal(readDirectionState(f.metadata).accounting.charged, 1);
+});
+
+test('S111-2 unknown accounting after reservation refuses dispatch but retains completed observations and terminals', async t => {
+  const { audit } = await copyDirectionTestRuntime(t, { qualification: 'pending' });
+  const f = fixture(t); const request = readJson(f.input.directory, 'reserve-request.json');
+  assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request }).status, 'published');
+  const reserveState = readDirectionState(f.metadata);
+  assert.equal(reserveState.accounting.remaining, 0);
+  const accountingRequest = (knowledge, operationId) => ({ version: 1, runId: f.metadata.runId, issueId: f.metadata.issueId, operationId,
+    expectedHead: readDirectionState(f.metadata).head, operation: 'reconcile', payload: { accounting: { knowledge, priorAttempts: [],
+      reason: 'Retained accounting evidence changed.', evidence: [f.input.packet.baseline.sources[0].evidence] } } });
+  assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: accountingRequest('unknown', 'unknown-before') }).status, 'published');
+  let calls = 0;
+  await assert.rejects(recordExchange({ ...f.metadata, env, fetchImpl: async () => { calls++; } }), /accounting_unknown/);
+  assert.equal(calls, 0);
+  const before = audit.checkAudit({ ...f.metadata, stage: 'pre-dispatch' }); assert.equal(before.status, 'unavailable');
+  assert.deepEqual(before.reasons, ['accounting_unknown']);
+  assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: accountingRequest('known', 'known-again') }).status, 'published');
+  const completed = await recordExchange({ ...f.metadata, env, fetchImpl: async () => {
+    calls++;
+    assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: accountingRequest('unknown', 'unknown-during') }).status, 'published');
+    return response(envelope(f.input.packet));
+  } });
+  assert.equal(calls, 1);
+  assert.equal(completed.current, true);
+  assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: terminalRequest({ ...f.metadata, operationId: 'terminal-after-unknown' }) }).status, 'published');
+  for (const stage of ['result', 'endpoint']) {
+    const checked = audit.checkAudit({ ...f.metadata, stage, endpointId: f.input.packet.endpoint.id });
+    assert.equal(checked.protocolValid, true); assert.equal(checked.outcome, 'COMPLETE'); assert.equal(checked.current, true);
+    assert.ok(checked.reasons.includes('accounting_unknown')); assert.ok(checked.reasons.includes('qualification_pending'));
+  }
+  assert.equal(readDirectionState(f.metadata).accounting.charged, 1);
+});
+
+test('matching artifact compatibility permits only the current endpoint and invalid proof fails closed', async t => {
+  const f = fixture(t); await success(f); const evidence = qualificationEvidence(f.metadata);
+  const record = { version: 1, status: 'qualified', profileDigest: evidence.profileDigest,
+    proof: { profile: evidence.profile, request: evidence.request, response: evidence.response, result: evidence.result,
+      review: { reportPath: 'report.md', reportDigest: digestBytes('Synthetic test proof, not an actual call.'),
+        executionRevision: f.input.packet.target.currentHead, evidenceSetDigest: evidence.evidenceSetDigest } } };
+  validateQualification(record);
+  for (const mutate of [x => x.proof.profile.runtimeFiles.pop(), x => x.proof.request.messageRoles.push('user'),
+    x => x.proof.request.toolsPresent = true, x => x.proof.response.envelope.model = 'other',
+    x => x.proof.result.phase = 'initial', x => x.proof.result.outcome = 'ON-TRACK', x => x.proof.review.reportDigest = null]) {
+    const invalid = structuredClone(record); mutate(invalid); assert.throws(() => validateQualification(invalid));
+  }
+  const { audit } = await copyDirectionTestRuntime(t, { qualification: record });
+  const valid = audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id });
+  assert.equal(valid.directionSatisfied, true); assert.equal(valid.status, 'valid');
+  assert.equal(audit.checkAudit({ ...f.metadata, stage: 'result' }).directionSatisfied, false);
+  assert.equal(audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: 'different' }).directionSatisfied, false);
+  const state = readDirectionState(f.metadata);
+  assert.equal(appendDirectionRecord({ cwd: f.metadata.cwd, request: { version: 1, runId: f.metadata.runId, issueId: f.metadata.issueId,
+    operationId: 'accounting-unknown', expectedHead: state.head, operation: 'reconcile', payload: { accounting: {
+      knowledge: 'unknown', priorAttempts: [], reason: 'Retained history needs reconciliation.', evidence: [f.input.packet.baseline.sources[0].evidence] } } } }).status, 'published');
+  const stillObserved = audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id });
+  assert.equal(stillObserved.directionSatisfied, true); assert.equal(stillObserved.protocolValid, true);
+  assert.equal(stillObserved.outcome, 'COMPLETE'); assert.ok(stillObserved.reasons.includes('accounting_unknown'));
+  writeFileSync(join(f.metadata.cwd, 'artifact.mjs'), 'Changed candidate.\n');
+  assert.equal(audit.checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id }).status, 'stale');
+});
+
+test('failed extraction cannot support a separately valid payload', async t => {
+  const f = fixture(t); await success(f); const value = readJson(f.input.directory, 'result.json');
+  const wire = readJson(f.input.directory, 'response.json'); wire.extraction = 'invalid'; wire.envelope.choices[0].message.content = 'diagnostic';
+  value.observation.response.digest = contentDigest(wire);
+  const state = readDirectionState(f.metadata); const path = join(f.metadata.cwd, '.afk', 'runs', f.metadata.runId, state.attempts[0].terminal.path);
+  const terminal = JSON.parse(readFileSync(path, 'utf8')); terminal.payload.terminal.result.digest = contentDigest(value);
+  writeFileSync(join(f.input.directory, 'response.json'), canonicalBytes(wire)); writeFileSync(join(f.input.directory, 'result.json'), canonicalBytes(value));
+  writeFileSync(path, canonicalBytes(terminal));
+  for (const stage of ['result', 'endpoint']) assert.deepEqual(checkAudit({ ...f.metadata, stage, endpointId: f.input.packet.endpoint.id }).reasons, ['response_extraction_invalid']);
+  assert.throws(() => inspectQualification(f.prepared), /response_extraction_invalid/);
+});
+
+test('S111-1 retained delta function evidence cannot pass result, endpoint or qualification acceptance', async t => {
+  const f = fixture(t); await success(f);
+  const result = readJson(f.input.directory, 'result.json'); const wire = readJson(f.input.directory, 'response.json');
+  wire.envelope.choices[0].delta = { function_call: { name: 'unexpected', arguments: '{}' } };
+  result.observation.toolCallsPresent = true; result.observation.response.digest = contentDigest(wire);
+  const path = join(f.metadata.cwd, '.afk', 'runs', f.metadata.runId, readDirectionState(f.metadata).attempts[0].terminal.path);
+  const terminal = JSON.parse(readFileSync(path, 'utf8')); terminal.payload.terminal.result.digest = contentDigest(result);
+  writeFileSync(join(f.input.directory, 'response.json'), canonicalBytes(wire)); writeFileSync(join(f.input.directory, 'result.json'), canonicalBytes(result));
+  writeFileSync(path, canonicalBytes(terminal));
+  assert.equal(readDirectionState(f.metadata).status, 'valid');
+  for (const stage of ['result', 'endpoint']) {
+    const checked = checkAudit({ ...f.metadata, stage, endpointId: f.input.packet.endpoint.id });
+    assert.equal(checked.directionSatisfied, false); assert.deepEqual(checked.reasons, ['transport_invalid']);
+  }
+  assert.throws(() => inspectQualification(f.prepared), /transport_invalid/);
+});
+
+function amendmentFixture(t) {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'afk-budget-source-')));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const sources = { 'authorization.txt': 'Synthetic authority allocates one additional attempt within the unchanged limits.\n',
+    'history.txt': 'Synthetic retained accounting lists four attempted slots and two HTTP requests.\n' };
+  for (const [path, bytes] of Object.entries(sources)) writeFileSync(join(directory, path), bytes);
+  const reference = path => ({ path, digest: digestBytes(sources[path]) });
+  const amendment = { version: 1, physicalCallId: 'amended-call', authorization: reference('authorization.txt'), history: reference('history.txt'),
+    priorAttempts: 4, priorRequests: 2, priorElapsedMs: 2000, additionalAttempts: 1 };
+  const path = join(directory, 'grant.json');
+  const save = () => writeFileSync(path, canonicalBytes(amendment)); save();
+  return { directory, path, amendment, save, options: { budgetAmendmentPath: path, physicalCallId: amendment.physicalCallId } };
+}
+
+test('Q111-1 singleton source arrays remain invalid through the actual qualifier and terminal', async t => {
+  const f = fixture(t); const good = completeResult(f.input.packet); validateModelResult(good, f.input.packet);
+  const bad = structuredClone(good); bad.coverage.forEach(row => { row.source = [row.source]; });
+  assert.throws(() => validateModelResult(bad, f.input.packet), /invalid_schema/);
+  const observed = await probe({ prepared: f.prepared, budget: f.budget, env,
+    fetchImpl: async () => response(envelope(f.input.packet, x => { x.choices[0].message.content = JSON.stringify(bad); })) });
+  assert.equal(observed.classification, 'INVALID'); assert.equal(observed.reason, 'invalid_schema'); assert.equal(observed.requests, 1);
+  const result = readJson(f.input.directory, 'result.json'); const wire = readJson(f.input.directory, 'response.json');
+  assert.equal(result.payload, null); assert.equal(result.observation.classification, 'invalid'); assert.equal(wire.extraction, 'invalid');
+  assert.ok(JSON.parse(wire.envelope.choices[0].message.content).coverage.every(row => Array.isArray(row.source)));
+  const state = readDirectionState(f.metadata); assert.equal(state.accounting.charged, 1); assert.equal(state.attempts[0].terminal.value.kind, 'malformed');
+  assert.equal(checkAudit({ ...f.metadata, stage: 'endpoint', endpointId: f.input.packet.endpoint.id }).directionSatisfied, false);
+  assert.throws(() => inspectQualification(f.prepared));
+});
+
+test('Q111-1 sourced amendment derives the real ordinal and preserves single dispatch', async t => {
+  const grant = amendmentFixture(t); const f = fixture(t, grant.options);
+  assert.equal(f.metadata.budget.priorCalls, 4); assert.equal(f.metadata.budget.priorRequests, 2);
+  assert.equal(f.metadata.budget.remainingCalls, 1); assert.equal(f.budget.attemptOrdinal, 5);
+  assert.equal(f.budget.remainingMs, LIMITS.totalMs - 2000); assert.equal(f.budget.processMs, LIMITS.processMs);
+  assert.equal(f.budget.amendmentDigest, contentDigest(grant.amendment));
+  assert.deepEqual(readJson(f.prepared, f.metadata.budgetAmendment.path), grant.amendment);
+  rmSync(grant.directory, { recursive: true, force: true });
+  assert.equal(inspectPrepared(f.prepared).metadata.budget.priorCalls, 4);
+  const observed = await success(f); assert.equal(observed.classification, 'CANDIDATE-PASS'); assert.equal(observed.experimentAttempt, 5);
+  assert.equal(observed.physicalCallId, 'amended-call'); assert.equal(observed.requests, 1);
+  assert.equal(inspectQualification(f.prepared).status, 'ARTIFACT_CANDIDATE_PASS');
+  const original = readFileSync(join(f.prepared, 'terminal.json')); let calls = 0;
+  await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => { calls++; } }));
+  assert.equal(calls, 0); assert.deepEqual(readFileSync(join(f.prepared, 'terminal.json')), original);
+});
+
+test('Q111-1 an amended unavailable invocation consumes its slot without inventing HTTP', async t => {
+  const grant = amendmentFixture(t); const f = fixture(t, grant.options);
+  const observed = await probe({ prepared: f.prepared, budget: f.budget, env: {}, fetchImpl: async () => assert.fail('no credentials') });
+  assert.equal(observed.experimentAttempt, 5); assert.equal(observed.requests, 0); assert.equal(observed.classification, 'INVALID');
+  assert.equal(readDirectionState(f.metadata).accounting.charged, 1);
+});
+
+for (const [name, mutate] of [
+  ['unknown attempts', x => x.priorAttempts = null], ['unknown time', x => x.priorElapsedMs = null],
+  ['impossible requests', x => x.priorRequests = x.priorAttempts + 1], ['multiple added slots', x => x.additionalAttempts = 2],
+  ['ordinal overflow', x => x.priorAttempts = Number.MAX_SAFE_INTEGER],
+  ['exhausted time', x => x.priorElapsedMs = LIMITS.totalMs],
+  ['insufficient positive time', x => x.priorElapsedMs = LIMITS.totalMs - LIMITS.processMs + 1],
+  ['bad source digest', x => x.history.digest = 'a'.repeat(64)], ['outside source', x => x.history.path = '../outside.txt'],
+]) {
+  test(`Q111-1 amendment ${name} refuses before creating a fixture`, t => {
+    const grant = amendmentFixture(t); mutate(grant.amendment); grant.save(); const out = join(grant.directory, 'prepared');
+    assert.throws(() => prepare({ fixtureRoot: FIXTURE_ROOT, out, budgetAmendmentPath: grant.path })); assert.equal(existsSync(out), false);
+  });
+}
+
+for (const kind of ['missing authority', 'missing history', 'empty', 'secret', 'binary', 'UTF-8', 'overflow', 'symlink']) {
+  test(`Q111-1 amendment source ${kind} refuses before fixture publication`, t => {
+    const grant = amendmentFixture(t); const source = join(grant.directory, 'history.txt');
+    if (kind === 'missing authority') rmSync(join(grant.directory, 'authorization.txt'));
+    else if (kind === 'missing history') rmSync(source);
+    else if (kind === 'symlink') { rmSync(source); symlinkSync('authorization.txt', source); }
+    else {
+      const bytes = { empty: '', secret: 'a'.repeat(64), binary: Buffer.from([0]), 'UTF-8': Buffer.from([0xc3, 0x28]), overflow: 'x'.repeat(LIMITS.requestBytes + 1) }[kind];
+      writeFileSync(source, bytes); grant.amendment.history.digest = digestBytes(bytes); grant.save();
+    }
+    const out = join(grant.directory, 'prepared');
+    assert.throws(() => prepare({ fixtureRoot: FIXTURE_ROOT, out, budgetAmendmentPath: grant.path })); assert.equal(existsSync(out), false);
+  });
+}
+
+for (const change of ['authority', 'history', 'amendment', 'metadata', 'insufficient time', 'profile', 'harness']) {
+  test(`Q111-1 retained amendment ${change} tamper refuses before fetch`, async t => {
+    const grant = amendmentFixture(t); const f = fixture(t, grant.options); let calls = 0;
+    const metadata = readJson(f.prepared, 'prepared.json');
+    const retained = join(f.prepared, 'budget-amendment');
+    if (change === 'authority') writeFileSync(join(retained, 'authorization.txt'), 'Changed authority.\n');
+    if (change === 'history') writeFileSync(join(retained, 'history.txt'), 'Changed history.\n');
+    if (change === 'amendment' || change === 'insufficient time') {
+      const value = readJson(f.prepared, metadata.budgetAmendment.path);
+      if (change === 'amendment') value.priorAttempts = 0; else value.priorElapsedMs = LIMITS.totalMs - LIMITS.processMs + 1;
+      writeFileSync(join(f.prepared, metadata.budgetAmendment.path), canonicalBytes(value));
+      if (change === 'insufficient time') { metadata.budgetAmendment.digest = contentDigest(value); writeFileSync(join(f.prepared, 'prepared.json'), canonicalBytes(metadata)); }
+    }
+    if (change === 'metadata') metadata.budget.priorCalls = 0;
+    if (change === 'profile') metadata.profileDigest = 'a'.repeat(64);
+    if (change === 'harness') metadata.harnessDigest = 'a'.repeat(64);
+    if (['metadata', 'profile', 'harness'].includes(change)) writeFileSync(join(f.prepared, 'prepared.json'), canonicalBytes(metadata));
+    await assert.rejects(probe({ prepared: f.prepared, budget: f.budget, env, fetchImpl: async () => { calls++; } }));
+    assert.equal(calls, 0); assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
+  });
+}
+
+test('Q111-1 amended budget binds physical id and exact prepared digest before fetch', async t => {
+  const grant = amendmentFixture(t); const f = fixture(t, grant.options); let calls = 0;
+  assert.throws(() => budgetRequest(f.prepared, 'different-call'), /qualification_budget/);
+  for (const mutation of [{ physicalCallId: 'different-call' }, { preparedDigest: 'a'.repeat(64) }, { amendmentDigest: 'b'.repeat(64) }, { priorRequests: 0 }]) {
+    await assert.rejects(probe({ prepared: f.prepared, budget: { ...f.budget, ...mutation }, env, fetchImpl: async () => { calls++; } }));
+  }
+  assert.equal(calls, 0); assert.equal(readDirectionState(f.metadata).accounting.charged, 0);
+});
+
+test('Q111-1 prepare CLI accepts the sourced amendment without a provider call', t => {
+  const grant = amendmentFixture(t); const out = join(grant.directory, 'prepared');
+  const cli = fileURLToPath(new URL('./qualify-direction-transport.mjs', import.meta.url));
+  const result = spawnGate([cli, 'prepare', '--fixture-root', FIXTURE_ROOT, '--out', out, '--budget-amendment', grant.path],
+    { encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).budget.priorCalls, 4);
+  assert.equal(readDirectionState(inspectPrepared(out).metadata).accounting.charged, 0);
 });

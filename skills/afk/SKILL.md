@@ -24,6 +24,7 @@ These are level 3 workflow instructions, not an automatic loader.
 | Run claim, stage/session handoff or resume | [Continuity](references/continuity.md); keep the current run and authority, including restricted executor handoffs. |
 | Stage result or execution summary | [Stage output](references/output.md); retain complete source evidence. |
 | Explicit direction-state initialization, check or amendment | [Direction state](references/direction-state.md); no automatic audit activation or dispatch. |
+| Retained direction policy enables a stage/signal audit or endpoint check | [Direction audits](references/direction-audit.md); preserve off/shadow/required behavior and the selected endpoint. |
 | Plan | [Planner](../afk-spec-planner/SKILL.md); obtain its frozen issue contract before implementation. |
 | Design debate or optional design gate | [Design review](references/design-review.md) and [common convergence](references/review-convergence.md). |
 | Implementation/self-review | [Implementation pilot](../afk-implementation-pilot/SKILL.md) and [common convergence](references/review-convergence.md). |

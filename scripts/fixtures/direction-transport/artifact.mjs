@@ -1,3 +1,1 @@
-export function combine(left, right) {
-  return left - right;
-}
+export const combine = (a, b) => a + b;

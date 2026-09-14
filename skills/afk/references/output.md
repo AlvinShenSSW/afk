@@ -28,6 +28,12 @@ direction fields, read [direction state (#109)](direction-state.md); derive this
 view from its canonical records without independently writable copies. Narrative
 repair-cycle accounting remains under its existing owner.
 
+For enabled audit evidence, read [direction audits](direction-audit.md). Derive
+phase/endpoint, active and target digests, attempt, observed identity, transport
+and protocol validity, outcome, currentness and direction satisfaction from the
+retained artifacts. Name pending qualification and semantic evaluation separately;
+never infer workflow readiness from a helper exit code.
+
 ## Command and review evidence
 
 The caller retains complete available stdout and stderr in the run's ignored

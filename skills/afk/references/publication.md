@@ -4,6 +4,10 @@ Read before resolving CI mode, publishing, assessing readiness or ending a run.
 Use [review convergence](review-convergence.md) for findings, allowance and
 revision invalidation, and [continuity](continuity.md) for retained run evidence.
 
+When retained direction policy enables endpoint auditing, read
+[direction audits](direction-audit.md) before completion. Apply its mode-specific
+direction condition alongside the existing checks, authority and chosen endpoint.
+
 After final is clean, run the full native suite once on the same commit. A test
 failure or content fix restarts ordered roles; a green suite with unchanged
 stamps permits the local endpoint when `off`. Otherwise mark the PR Ready for
