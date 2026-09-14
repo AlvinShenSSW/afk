@@ -19,7 +19,7 @@ const triggers = {
   'afk-deepseek-review': ['/afk-deepseek-review', 'run deepseek review', 'DeepSeek external gate'],
   'afk-mimo-review': ['/afk-mimo-review', 'run mimo review', 'MiMo external gate'],
 };
-const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity'];
+const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity', 'output'];
 const gateNames = Object.keys(triggers).filter((name) => /-(codex|claude|kimi|glm|deepseek|mimo)-review$/.test(name));
 const reference = (name) => `skills/afk/references/${name}.md`;
 
@@ -61,7 +61,8 @@ test('driver and standalone entry points explicitly route their applicable share
     assert.match(text, /`CLEAN`/); assert.match(text, /`OUTSTANDING`/);
   }
   const planner = read('skills/afk-spec-planner/SKILL.md');
-  assert.doesNotMatch(planner, /references\/(?:design-review|external-review|publication)\.md/);
+  assert.doesNotMatch(planner, /references\/(?:external-review|publication)\.md/);
+  assertRoute(planner, '../afk/references/design-review.md');
   assert.match(planner, /Produce no code/);
   for (const name of ['afk-implementation-pilot', 'afk-internal-review']) {
     const text = read(`skills/${name}/SKILL.md`);

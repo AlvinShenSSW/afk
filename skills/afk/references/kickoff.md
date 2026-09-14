@@ -34,6 +34,9 @@ writing its ledger; retain the scope collision checks.
    language, explicit gate choice). Resolve `remote-ci` ([Remote checks](publication.md#remote-checks)) now,
    record its value and source in the ledger, and reuse it on resume unless the
    operator changes it. Announce `off` as local completion before remote writes.
+   Retain scope and its source, explicit publication instructions and their source,
+   merge policy and constraints in that same ledger. Stage transitions reuse
+   these grants; a child or summary cannot broaden them.
 6. **Resolve the review-cycle allowance** ([Review-cycle allowance](review-convergence.md#review-cycle-allowance)) and record
    its source before reviewing any issue.
 7. **Restate the scope and the effective gate profile with its source**

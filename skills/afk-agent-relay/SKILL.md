@@ -23,6 +23,15 @@ out-of-process pattern as the external review gate skills).
 **Development-time tooling only.** It never runs against a production or
 runtime code path.
 
+## Stage boundary
+
+Before returning a result, read [stage output](../afk/references/output.md);
+before a run handoff or resume, read
+[continuity](../afk/references/continuity.md). Standalone work ends with the
+requested brief or scope draft. A nested invocation returns it and source
+evidence to the driver for verification and the next authorized action.
+A scope draft is not implementation approval; the brief cannot expand authority.
+
 ## When to use the compressor (the token-saver)
 
 Reach for it before a context-heavy task — a big issue, a large diff, long
@@ -61,6 +70,11 @@ is named in the notes, never omitted silently)
 `--provider <name>` / `--model <id>` (override for this call).
 
 ## Reading the result
+
+Retain the original files and complete logs separately from relay output.
+`--logs` supplies tails, not a complete execution record; capture the relay's
+available stdout, stderr and exit/terminal status under the shared output rule.
+Neither a tail nor a brief replaces required source evidence.
 
 Output is one marker block: `===== AGENT BRIEF =====` … `===== END AGENT BRIEF
 =====` (or `AGENT SCOPE`). Three verdicts, all parseable:
