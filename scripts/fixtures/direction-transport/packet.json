@@ -1,0 +1,17 @@
+{
+  "schema": "afk-direction-qualification-v0",
+  "runId": "synthetic-transport",
+  "issueId": "synthetic-arithmetic",
+  "authors": ["codex"],
+  "baseline": {
+    "version": 1,
+    "requirements": [{ "id": "R1", "source": "requirements.md", "line": 3 }]
+  },
+  "phase": "implementation",
+  "policy": { "purpose": "qualification-only", "auditorFamily": "deepseek" },
+  "coverage": [{ "requirementId": "R1", "source": "artifact.mjs", "line": 2, "status": "represented" }],
+  "priorFindings": [],
+  "nextAction": "Decide whether the implementation satisfies R1 before review.",
+  "sourcePaths": ["requirements.md", "artifact.mjs"],
+  "target": { "path": "artifact.mjs" }
+}

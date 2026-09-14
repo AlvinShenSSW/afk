@@ -1,0 +1,8 @@
+{
+  "outcome": "CORRECT-COURSE",
+  "deliveryToken": "canyon-lilac-47",
+  "requirementId": "R1",
+  "source": "artifact.mjs",
+  "line": 2,
+  "excerpt": "return left - right;"
+}
