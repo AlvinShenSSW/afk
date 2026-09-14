@@ -63,6 +63,13 @@ audited is a silent hold. Unlabelled hex runs stay refused. Author-written
 digests in retained history are shown to the auditor in reversible sixteen-digit
 groups instead of being dropped.
 
+An upstream stream aborted mid-response leaves a launch with unknown usage. The
+handoff spend policy `stop-before-next-launch` refuses every later launch, which
+protects a finite ceiling; a campaign whose spend, input and output ceilings are
+all null may instead declare `retain-and-continue`, which records the launch as
+unknown, never as zero, and keeps launching. The policy is refused with any
+finite ceiling.
+
 ## Evaluation authorization compatibility
 
 The existing observed evaluator cannot represent an uncapped new authorization:

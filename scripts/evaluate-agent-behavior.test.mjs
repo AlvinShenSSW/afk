@@ -299,7 +299,7 @@ function directionTemporary(fn) {
   const root=mkdtempSync('/tmp/afk-direction-evaluator-');
   return Promise.resolve().then(()=>fn(root)).finally(()=>rmSync(root,{recursive:true,force:true}));
 }
-function handoff112({models=['ASTRA'],main=[],controls=[],status='planned',host}={}) {
+function handoff112({models=['ASTRA'],main=[],controls=[],status='planned',host,retainUnknown=false}={}) {
   const hash='a'.repeat(64),source={ref:{path:'authority.md',digest:hash},startLine:1,endLine:1};
   const allModels=models.map(key=>({key,model:key==='ASTRA'?'gpt-6-astra':'gpt-5.6-sol',effort:'medium',host:host??{executableDigest:hash,launchTemplateDigest:hash,configurationDigest:hash,version:'synthetic'}}));
   const rows=main.map(id=>({id,phases:id.includes('-D6-')?['author-1','author-resume']:id.includes('-D7-')?(id.endsWith('R1')?['author-1']:['author-1','driver-return']):id.includes('-D8-')?['audit-1','author-1']:id.includes('-D9-')?['audit-1','author-1','audit-2','author-resume','audit-3']:['audit-1','author-1','audit-2']}));
@@ -309,13 +309,23 @@ function handoff112({models=['ASTRA'],main=[],controls=[],status='planned',host}
     observability:{wholeToolInventory:'required',instructionInventory:'required',execBoundary:'required',exactResumeBoundary:'required',terminalAndCleanup:'required',requestedAndObservedModel:'required',nativeCatalog:'required-for-controls',completeReferenceDelivery:'required-for-read-claims',unknownActions:'retain-unknown',unknownUsage:'retain-unknown'},
     auditor:{revision:'d'.repeat(40),profileDigest:hash,qualification:null,condition:'controlled'},bounds:{prerequisiteMs:2000,invocationMs:2000,resumeMs:2000,auditMs:2000,sliceTrials:4,sliceMs:20000,totalMs:60000,outputBytes:8388608,graceMs:100,
       maxAuthorInvocations:rows.reduce((n,r)=>n+r.phases.filter(p=>!p.startsWith('audit')).length,0)+controlRows.length,maxPrerequisiteInvocations:models.length*2,maxAuditAttempts:rows.reduce((n,r)=>n+r.phases.filter(p=>p.startsWith('audit')).length,0),
-      spend:{currency:'USD',plannedMaxMicrousd:1000000,inputTokens:10000,outputTokens:10000,basis:source,unknownUsage:'stop-before-next-launch'}},budgetSource:source};
+      spend:{currency:'USD',plannedMaxMicrousd:retainUnknown?null:1000000,inputTokens:retainUnknown?null:10000,outputTokens:retainUnknown?null:10000,basis:source,
+        unknownUsage:retainUnknown?'retain-and-continue':'stop-before-next-launch'}},budgetSource:source};
 }
 
 test('issue112 handoff binds exact rows, phases, all four slots and independent positive execution limits',()=>{
   const h=handoff112({models:['ASTRA','SOL'],main:['M-D9-C-ASTRA-R1']});assert.equal(directionRunner.validateExecutionHandoff(h),h);
   for(const mutate of [x=>x.prerequisites.push('P112-A3'),x=>x.prerequisites[1]='P112-A1',x=>x.bounds.maxAuditAttempts=4,x=>x.bounds.totalMs=0,x=>x.bounds.outputBytes++,x=>x.bounds.sliceTrials=5,x=>x.models[0].effort='high',x=>x.models[0].model='other',x=>x.selected.main[0].phases.push('author-3'),x=>x.authorization.status='authorized',x=>x.extra=true,x=>delete x.budgetSource,x=>x.observability.wholeToolInventory='optional']) {
     const bad=structuredClone(h);mutate(bad);assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff/);
+  }
+});
+test('issue113 retained unknown usage is accepted only when every spend ceiling is absent',()=>{
+  const retained=handoff112({retainUnknown:true});assert.equal(directionRunner.validateExecutionHandoff(retained),retained);
+  for(const key of ['plannedMaxMicrousd','inputTokens','outputTokens']){
+    const bad=structuredClone(retained);bad.bounds.spend[key]=1000;assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff spend/);
+  }
+  for(const policy of ['retain-and-continue','retain-unknown']){
+    const bad=handoff112();bad.bounds.spend.unknownUsage=policy;assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff spend/);
   }
 });
 test('issue113 optional observed handoff adds finite request authority without replacing the four prerequisite slots',()=>{
@@ -363,7 +373,7 @@ async function syntheticObservedHost({args,model,tools,builtin,wrongBoundary}){
   console.log(JSON.stringify({type:'item.completed',item:{id:'boundary',type:'command_execution',command,exit_code:0,aggregated_output:JSON.stringify({outsideReadDenied:true,outsideWriteDenied:true,networkDenied:true,environmentClean:true,supportVisibility:true,scorerReadDenied:true,evaluatorReadDenied:true,gitNodeAllowed:true})}}));
   console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:9999,output_tokens:9999}}));
 }
-async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false,baselineAbsentControls=false,uncapped=false}={}) {
+async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,retainUnknown=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false,baselineAbsentControls=false,uncapped=false}={}) {
   const {execFileSync}=await import('node:child_process'),{copyFileSync}=await import('node:fs'),{digestBytes}=await import('../lib/gate/review-receipt.mjs');
   const source=join(root,'source');mkdirSync(source);fixtureGit(source,['init','--template=','-q','-b','synthetic']);
   const files=[...new Set([...execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&supportVisible(p)),...EVALUATOR_RUNTIME_FILES])];
@@ -392,7 +402,7 @@ async function prepared112(root,{main=[],controls=[],status='authorized',unknown
     writeFileSync(script,text.replace(marker,marker+`await (${syntheticObservedHost.toString()})({args,model,tools:${JSON.stringify(nativeTools)},builtin:${JSON.stringify(nativeBuiltin)},wrongBoundary:${wrongBoundary}});process.exit(0);`));}
   let baselineRevision=revision;
   if(baselineAbsentControls){fixtureGit(source,['rm','-q','skills/afk/references/environment.md','scripts/direction-state.mjs']);writeFileSync(join(source,'skills/afk/SKILL.md'),'---\nname: afk\ndescription: Synthetic inline baseline.\n---\nInline baseline instructions.\n');baselineRevision=commit(source,'Synthetic unsupported baseline');fixtureGit(source,['checkout',revision,'--','.']);}
-  const handoff=handoff112({main,controls,status,host:{...runner.directionHostFingerprints(binary,{observer:observedHost}),version:'synthetic-test-host'}});
+  const handoff=handoff112({main,controls,status,retainUnknown,host:{...runner.directionHostFingerprints(binary,{observer:observedHost}),version:'synthetic-test-host'}});
   if(observedHost){const proof='{}';writeFileSync(join(root,'native-proof.txt'),proof);
     const files=Object.fromEntries(nativeWitnessSourcePaths().map(path=>[path,{path:'native-proof.txt',digest:digestBytes(proof)}]));
     const profile=JSON.stringify({version:1,models:[{model:'gpt-6-astra',files}]});writeFileSync(join(root,'native-profile.json'),profile);
@@ -460,6 +470,17 @@ test('issue112 unknown usage consumes first slot and refuses another launch',()=
   const f=await prepared112(root,{unknownUsage:true});await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});
   await assert.rejects(f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true}),/unknown usage/);
   assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,1);assert.equal(f.runner.aggregateEvaluation(f.directory).prerequisites.find(p=>p.id==='P112-A2').consumed,false);
+}));
+
+test('issue113 retained unknown usage consumes the first slot without refusing the next launch',()=>directionTemporary(async root=>{
+  const f=await prepared112(root,{unknownUsage:true,retainUnknown:true});
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});
+  qualify112Fixture(f.directory,f.handoff,['P112-A1']);
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true});
+  const report=f.runner.aggregateEvaluation(f.directory);
+  assert.equal(report.hostLaunches,2);assert.equal(report.unknownLaunches,2);
+  assert.equal(report.prerequisites.find(p=>p.id==='P112-A1').consumed,true);
+  assert.equal(report.prerequisites.find(p=>p.id==='P112-A2').consumed,true);
 }));
 
 test('issue112 whole-tool and read controls never infer visibility from a command/path mention',()=>directionTemporary(async root=>{

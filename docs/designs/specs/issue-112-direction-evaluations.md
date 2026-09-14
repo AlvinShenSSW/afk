@@ -1014,7 +1014,7 @@ ExecutionHandoff = {
     spend: {
       currency: "USD", plannedMaxMicrousd: Count,
       inputTokens: Count, outputTokens: Count,
-      basis: Source, unknownUsage: "stop-before-next-launch"
+      basis: Source, unknownUsage: "stop-before-next-launch" | "retain-and-continue"
     }
   },
   budgetSource: Source

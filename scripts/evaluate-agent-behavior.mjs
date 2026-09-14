@@ -17,7 +17,7 @@ import { ACCEPTANCE, DECISION_SCHEMA, FIXTURE_VERSION, LIMITS, SCENARIOS, TASK, 
 import { EVALUATION_PATH, FEATURES, hostArguments, permissionArgs, runBounded, shellEnvironmentArgs, toolEnvironment } from '../lib/evaluation/host.mjs';
 import { BOUNDARY_FIELDS, nativeBoundaryEvidence } from '../lib/evaluation/native-witness.mjs';
 import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
-import { campaignUsage, strictEvaluationJson as strictJson, validateObserver, observerProfileReferences, loadObserverProfile, campaignObserverProfile,
+import { campaignUsage, countableLaunchUsage, strictEvaluationJson as strictJson, validateObserver, observerProfileReferences, loadObserverProfile, campaignObserverProfile,
   openObservedCollector, prepareObservedSession, observedPhysicalUsage, readObservedInvocation } from '../lib/evaluation/observed-execution.mjs';
 import { controlSourcePlan, observeNativeControl, observeControlBehavior } from '../lib/evaluation/native-control.mjs';
 import { decodeNativeRequest, decodeNativeResponse, nativeResponseItems, checkNativeRelease, NATIVE_RESPONSE_ROUTES } from '../lib/evaluation/native-wire.mjs';
@@ -562,7 +562,11 @@ export function validateExecutionHandoff(handoff) {
     requireEvaluation(b.outputBytes<=LIMITS.outputBytes&&b.graceMs<=LIMITS.graceMs&&b.sliceTrials<=LIMITS.sliceTrials,'handoff upper bound');
     requireEvaluation(b.maxAuthorInvocations===author&&author<=DIRECTION_LIMITS.maxAuthorInvocations&&b.maxPrerequisiteInvocations===slots.length&&b.maxAuditAttempts===audits&&audits<=DIRECTION_LIMITS.maxAuditAttempts,'handoff schedule counts');
     shape(b.spend,['currency','plannedMaxMicrousd','inputTokens','outputTokens','basis','unknownUsage']);
-    requireEvaluation(b.spend.currency==='USD'&&['plannedMaxMicrousd','inputTokens','outputTokens'].every(k=>b.spend[k]===null||count(b.spend[k]))&&b.spend.unknownUsage==='stop-before-next-launch','handoff spend');
+    const ceilings=['plannedMaxMicrousd','inputTokens','outputTokens'];
+    // Retaining unknown usage is accepted only where no ceiling exists to protect, so one aborted upstream
+    // stream cannot end a campaign that has no spend ceiling; any ceiling restores the stop.
+    requireEvaluation(b.spend.currency==='USD'&&ceilings.every(k=>b.spend[k]===null||count(b.spend[k]))
+      &&(b.spend.unknownUsage==='stop-before-next-launch'||b.spend.unknownUsage==='retain-and-continue'&&ceilings.every(k=>b.spend[k]===null)),'handoff spend');
     evaluationSource(b.spend.basis);evaluationSource(handoff.budgetSource);return handoff;
   }catch(error){throw new Error(`issue112 handoff invalid: ${error.message}`);}
 }
@@ -715,9 +719,10 @@ function directionRemainingWall(directory,manifest,cap) {
 function directionAuthority(directory,manifest) {
   requireEvaluation(manifest.handoff.authorization.status==='authorized','planned handoff cannot execute');
   requireEvaluation(!existsSync(join(directory,'cleanup-failed.json')),'cleanup unresolved');
-  if(manifest.handoff.observer)observedPhysicalUsage({directory,observer:manifest.handoff.observer,executionHandoffDigest:manifest.executionHandoffDigest});
-  const {input,output}=campaignUsage(directory);
-  const spend=manifest.handoff.bounds.spend;requireEvaluation((spend.plannedMaxMicrousd===null||spend.plannedMaxMicrousd>0)&&(spend.inputTokens===null||input<spend.inputTokens)&&(spend.outputTokens===null||output<spend.outputTokens),'sourced spend or token planning ceiling exhausted');
+  const spend=manifest.handoff.bounds.spend;
+  if(manifest.handoff.observer)observedPhysicalUsage({directory,observer:manifest.handoff.observer,executionHandoffDigest:manifest.executionHandoffDigest,unknownUsage:spend.unknownUsage});
+  const {input,output}=campaignUsage(directory,{unknownUsage:spend.unknownUsage});
+  requireEvaluation((spend.plannedMaxMicrousd===null||spend.plannedMaxMicrousd>0)&&(spend.inputTokens===null||input<spend.inputTokens)&&(spend.outputTokens===null||output<spend.outputTokens),'sourced spend or token planning ceiling exhausted');
   directionRemainingWall(directory,manifest,manifest.handoff.bounds.totalMs);
 }
 function reserveDirectionLaunch(directory,manifest,id,kind,execution=directionBudget(directory,manifest)) {
@@ -1171,8 +1176,15 @@ export function aggregateDirectionEvaluation(directory,manifest=loadDirectionEva
       subjectEndpointStatus:result?.subjectEndpointStatus??'unobserved',measurementEndpointSatisfied:result?.measurementEndpointSatisfied??false,metrics:result?.metrics??null};
   });
   const attempts=directionStarted(directory),slots=PREREQUISITES.map(p=>({id:p.id,model:p.model,selected:manifest.handoff.prerequisites.includes(p.id),consumed:attempts.some(r=>r.id===p.id)}));
+  const unknownLaunches=attempts.filter(a=>{
+    const path=join(directory,'artifacts',a.id,'result.json');if(!existsSync(path))return true;
+    const result=strictJson(strictText(directory,path));
+    // Controlled audit attempts are uncharged by campaign accounting, so they are not unknown consumption.
+    return !(a.kind==='audit'&&result.controlled===true)&&!countableLaunchUsage(result.usage);
+  }).length;
   return {version:DIRECTION_VERSION,campaign:'issue112',executionHandoffDigest:manifest.executionHandoffDigest,baseline:manifest.handoff.revisions.baseline,implementation:manifest.handoff.revisions.candidate,
     evaluator:manifest.handoff.revisions.evaluator,denominators:{main:72,controls:180,legacyUnmet:14},rows,prerequisites:slots,hostLaunches:attempts.filter(a=>a.kind!=='audit').length,
+    unknownLaunches,
     auditAttempts:attempts.filter(a=>a.kind==='audit').length,behavioralAcceptanceComplete:false,
     limitations:['Deterministic fixture observations are not actual model behavior.','Original subject endpoint/freshness remains separate from measurement approval.',
       'Native selection, full reference delivery and complete tool inventory require actual retained host evidence.','Unknown provider usage and unattempted cells remain visible.',
