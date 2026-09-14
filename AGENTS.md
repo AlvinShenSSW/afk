@@ -30,16 +30,22 @@ preferences and run evidence stay in their ignored `.afk/` directory.
 - **Fail toward less exposure.** On unreliable input, a check fails closed; any
   fail-open path is named and justified.
 
-## Completion quality and scope
+## Completion quality and proportionality
 
-Complete the accepted behavior with relevant boundary, failure-path and regression
-checks and the configured independent reviews. Necessary context and model
-capability are part of quality; cost savings do not justify omitting them.
-Every added mechanism must address an accepted requirement or demonstrated defect;
-prefer existing mechanisms and the smallest complete causal correction. Hypothetical
-flexibility is not a reason to add a framework or expand scope. Test depth follows
-actual risk, not a test-count target. Use the canonical review-convergence rules
-for repeated non-progress, without creating a separate supervision workflow.
+- **Finish the accepted behavior.** Ship it with the boundary, failure-path and
+  regression checks that the change actually needs, plus the configured
+  independent reviews. Context and model capability are part of quality; do not
+  cut them to save cost.
+- **Every mechanism names the defect it prevents.** A new check, gate, helper or
+  workflow must stop a defect someone actually hits; otherwise it is not built.
+  Prefer the existing mechanism and the smallest causal fix. A gate that cannot
+  change the outcome is ceremony, not quality.
+- **Depth follows risk, not counts.** Test depth, case matrices and evidence
+  requirements scale with the actual risk of the change. Hypothetical
+  flexibility does not justify a framework, a larger scope or a stricter gate.
+- **Repeated non-progress uses the existing root-cause checkpoint** in
+  [review convergence](skills/afk/references/review-convergence.md); do not
+  add a separate supervision layer.
 
 ## What this plugin can and cannot enforce
 
