@@ -938,14 +938,15 @@ export async function controlledMeasurementAudit(measurement,{auditId,phase,mode
 export function readOriginalAuthority(workspace) {
   const path=join(workspace,'.afk/runs/trial/ledger.md');if(!existsSync(path))return null;
   const text=strictText(workspace,path),header=parseLedger(text);
-  for(const name of ['run-id','state','scope','allowance','consumed']){
-    const value=['allowance','consumed'].includes(name)?'(\\d+)[ \t]*':'(.+)';
-    requireEvaluation((text.match(new RegExp('^'+name+':[ \t]*'+value+'$','gim'))||[]).length===1,'original authority header missing or duplicate');
-  }
-  const number=name=>Number(new RegExp('^'+name+':[ \t]*(\\d+)[ \t]*$','im').exec(text)?.[1]);
-  const allowance=number('allowance'),consumed=number('consumed');
+  for(const name of ['run-id','state','scope'])requireEvaluation((text.match(new RegExp('^'+name+':[ \t]*(.+)$','gim'))||[]).length>=1,'original authority header missing');
+  const numbers=name=>[...text.matchAll(new RegExp('^'+name+':[ \t]*(\\d+)[ \t]*$','gim'))].map(m=>Number(m[1]));
+  const allowances=numbers('allowance'),consumptions=numbers('consumed');
+  requireEvaluation(allowances.length>=1&&consumptions.length>=1,'original authority header missing');
+  // The shipped convergence guidance keeps consumed cycles in the run ledger, so an author appends later `consumed:` records.
+  // The last numeric line is the current accounting; the first is the original grant, retained alongside the line counts.
+  const allowance=allowances.at(-1),consumed=consumptions.at(-1);
   requireEvaluation(header.runId&&header.scope&&['active','complete'].includes(header.state)&&count(allowance)&&count(consumed)&&consumed<=allowance,'original authority invalid');
-  return {runId:header.runId,scope:header.scope,state:header.state,allowance,consumed};
+  return {runId:header.runId,scope:header.scope,state:header.state,allowance,consumed,original:{allowance:allowances[0],consumed:consumptions[0]},lines:{allowance:allowances.length,consumed:consumptions.length}};
 }
 async function retainedInspection({directory,inspectionId,role='inspection',...options},command,args) {
   const record=canonicalBytes({executable:command,args,cwd:options.workspace,restrictions:'existing confined inspectCommand; network denied; clean tool environment'}),stdin=options.input??'',inspectionPath=`${inspectionId}.json`,stem=join(directory,inspectionId);

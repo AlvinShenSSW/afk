@@ -824,14 +824,20 @@ test('uncapped campaign still executes prerequisites and confined inspections wi
   assert.equal(inspected.stdout,'complete');assert.equal(inspected.cleanup,true);
 }));
 
-test('original numeric authority remains distinct from appended explanatory prose',()=>temporary(root=>{
+test('original numeric authority remains distinct from appended explanatory prose and later ledger accounting',()=>temporary(root=>{
   const fixture=direction.createDirectionFixture({directory:join(root,'subject'),scenarioId:'D1'});
   const path=join(fixture.directory,'.afk/runs/trial/ledger.md'),original=readFileSync(path,'utf8'),expected=directionRunner.readOriginalAuthority(fixture.directory);
+  assert.deepEqual({allowance:expected.allowance,consumed:expected.consumed,lines:expected.lines},{allowance:2,consumed:0,lines:{allowance:1,consumed:1}});
   writeFileSync(path,original+'\n## Verification\nAllowance: two, from the retained request; consumed remains zero.\n');
   assert.deepEqual(directionRunner.readOriginalAuthority(fixture.directory),expected);
-  for(const suffix of ['\nallowance: 3\n','\nAllowance: 3\n','\nconsumed: 1\n']){
-    writeFileSync(path,original+suffix);assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/duplicate/);
-  }
+  // An actual author appended a cycle record with its own consumed line; the last numeric line is the current accounting.
+  writeFileSync(path,original+'\n## Cycle 1\nconsumed: 1\n');
+  const updated=directionRunner.readOriginalAuthority(fixture.directory);
+  assert.deepEqual({allowance:updated.allowance,consumed:updated.consumed,original:updated.original,lines:updated.lines},{allowance:2,consumed:1,original:{allowance:2,consumed:0},lines:{allowance:1,consumed:2}});
+  assert.equal(direction.preservedRunAuthority(expected,updated),true);
+  writeFileSync(path,original+'\nAllowance: 3\n');assert.equal(directionRunner.readOriginalAuthority(fixture.directory).allowance,3);
+  assert.equal(direction.preservedRunAuthority(expected,directionRunner.readOriginalAuthority(fixture.directory)),false);
+  writeFileSync(path,original+'\nconsumed: 5\n');assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority invalid/);
   writeFileSync(path,original.replace('allowance: 2','allowance: unknown'));
   assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority/);
 }));
