@@ -1,9 +1,12 @@
 ---
 name: afk-spec-planner
-description: "afk-spec-planner: Part of the afk pipeline. Reads a tracked issue and produces a complete, reviewable implementation plan — spec review, approach, file-level breakdown, risks, and a test plan — then stops before any code. Hands off to afk-implementation-pilot. Triggers include \"/afk-spec-planner\", \"plan issue N\", \"spec this out\"."
+description: "afk-spec-planner: Part of the afk pipeline. Turn a tracked issue into a reviewable implementation plan; stop before code. Triggers include \"/afk-spec-planner\", \"plan issue N\", \"spec this out\"."
 ---
 
 # afk-spec-planner
+
+Read [AFK environment](../afk/references/environment.md) before resolving
+configuration, local state or bundled helper paths.
 
 Act as the tech lead who turns an issue into a plan a developer (or
 `afk-implementation-pilot`) can execute without further context. Read-only:
@@ -86,9 +89,7 @@ Output, in this shape:
 - **Handoff notes** — anything the implementer must know before starting.
 
 Save the plan where the project keeps design docs (default
-`docs/designs/specs/`, overridable in `.afk/config.md`). Resolve `.afk/` from the
-repository's main working tree — the first non-bare `worktree` record of
-`git worktree list --porcelain` — never the current directory.
+`docs/designs/specs/`, overridable in `.afk/config.md`). Use [environment](../afk/references/environment.md) for the shared config location.
 
 ## Hard rules
 

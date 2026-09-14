@@ -24,19 +24,24 @@ function commit(root, message) { fixtureGit(root, ['add', '.']); fixtureGit(root
 test('identical support visibility excludes copied scorers, tests, designs and reports', () => {
   for (const path of ['lib/evaluation/scenarios.mjs','scripts/evaluate-agent-behavior.mjs',
     'scripts/evaluate-agent-behavior.test.mjs','lib/gate/protocol.test.mjs','skills/afk-agent-relay/tests/redact.test.mjs',
-    'docs/designs/specs/issue-98-behavior-evaluations.md','docs/evaluations/issue-98-pilot.md']) assert.equal(supportVisible(path), false, path);
+    'docs/designs/specs/issue-98-behavior-evaluations.md','docs/evaluations/issue-98-pilot.md', 'AGENTS.md', 'docs/maintaining-skills.md',
+    'docs/designs/specs/issue-107-instruction-routing.md', 'scripts/instruction-test-helpers.mjs']) assert.equal(supportVisible(path), false, path);
   for (const path of ['skills/afk/SKILL.md','skills/afk-claude-review/claude-gate.mjs','lib/gate/protocol.mjs',
-    'scripts/check-review-receipts.mjs','docs/designs/specs/issue-96-review-context.md']) assert.equal(supportVisible(path), true, path);
+    'scripts/check-review-receipts.mjs','docs/designs/specs/issue-96-review-context.md',
+    'skills/afk/references/review-evidence.md', 'docs/designs/specs/issue-97-review-receipts.md']) assert.equal(supportVisible(path), true, path);
 });
 
 test('production support preserves original paths/bytes and refuses a second export', () => temporary(async (root) => {
   const source = join(root, 'source'); mkdirSync(source); fixtureGit(source, ['init','-q','-b','fixture']);
-  for (const [path, text] of [['skills/afk/SKILL.md','exact production bytes\n'], ['lib/evaluation/scenarios.mjs','secret scorer\n']]) {
+  for (const [path, text] of [['skills/afk/SKILL.md','exact production bytes\n'], ['skills/afk/references/review-evidence.md','exact reference bytes\n'], ['lib/evaluation/scenarios.mjs','secret scorer\n'], ['AGENTS.md','author-only instructions\n']]) {
     mkdirSync(join(source, path, '..'), { recursive: true }); writeFileSync(join(source, path), text);
   }
   const sha = commit(source, 'seed'); const output = join(root, 'support');
   const manifest = exportSupport({ repository: source, revision: sha, directory: output });
-  assert.deepEqual(Object.keys(manifest.files), ['skills/afk/SKILL.md']);
+  assert.deepEqual(Object.keys(manifest.files), ['skills/afk/SKILL.md', 'skills/afk/references/review-evidence.md']);
+  assert.equal(manifest.revision, sha);
+  assert.equal(readFileSync(join(output,'skills/afk/references/review-evidence.md'),'utf8'), 'exact reference bytes\n');
+  assert.throws(() => readFileSync(join(output,'AGENTS.md')));
   assert.equal(readFileSync(join(output,'skills/afk/SKILL.md'),'utf8'),'exact production bytes\n');
   assert.throws(() => readFileSync(join(output,'lib/evaluation/scenarios.mjs')));
   assert.throws(() => exportSupport({ repository: source, revision: sha, directory: output }));

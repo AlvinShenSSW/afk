@@ -195,7 +195,7 @@ triage without claiming that custom context reached that reviewer. Packets are
 claims for a reviewer to verify, not proof that the stated checks ran.
 
 Keep packets and sanitized proof in the run's ignored `.afk/` directory. The
-[context guide](skills/afk/SKILL.md#supported-review-context) explains target
+[context guide](skills/afk/references/review-evidence.md#supported-review-context) explains target
 binding, previews, provider limits, and the linked JSON schema.
 
 ### Check receipts before reuse
@@ -218,7 +218,7 @@ not approval. Requested identity never substitutes for an unobserved model, and
 legacy runs without receipts stay unknown. These are local, unsigned records,
 not provider attestation or permission to merge.
 
-The [receipt guide](skills/afk/SKILL.md#canonical-review-receipts) provides the
+The [receipt guide](skills/afk/references/review-evidence.md#canonical-review-receipts) provides the
 request/candidate schemas, artifact layout, checker invocation, and native Codex
 verdict and Codex/Kimi identity limitations. Existing run ledgers still carry
 finding dispositions, repair allowances, and merge decisions.
@@ -535,6 +535,14 @@ itself.
 /afk-deepseek-review
 /afk-mimo-review
 ```
+
+## Instruction routing
+
+The [driver](skills/afk/SKILL.md) routes each stage to its relevant references.
+Standalone skills explicitly load the same common rules before acting. This is
+workflow doctrine: link and compatibility tests establish structural coverage,
+not actual host loading or natural-language selection. Those behavior outcomes
+remain OUTSTANDING pending qualified trials under Epic #106.
 
 ## Repository layout
 
