@@ -18,22 +18,22 @@ invariants, reports, and run ledgers live in the consuming repository's
 gitignored `.afk/` directory — nothing about your project is ever written back
 into the plugin.
 
-## What's new in 1.0.0
+## What's new in 1.2.0
 
-[Version 1.0.0](https://github.com/AlvinShenSSW/afk/releases/tag/v1.0.0) makes
-review evidence explicit so a resumed run can distinguish verified closure from
-missing or stale information:
+Version 1.2.0 adds stage-specific instruction routing, explicit handoff context,
+versioned intent records, bounded direction-audit helpers and evaluation tooling.
+Project `AGENTS.md` routes detailed guidance to the relevant stage.
 
-- [Review context](#carry-findings-into-re-review) carries the frozen scope,
-  named findings, dispositions, and current-revision proof to supported reviewers.
-- [Review receipts](#check-receipts-before-reuse) retain the inputs and outcomes
-  needed to check whether earlier review evidence still matches the candidate.
-- [Behavior evaluations](#behavior-evaluations) expose unnecessary repairs,
-  missed defects, and unsafe readiness through repeatable, bounded scenarios.
+Direction auditing remains **off by default**. Shadow and required modes are
+experimental opt-in capabilities; paired behavior evaluation remains open under
+issue #113 and Epic #106. Structural checks and narrow transport qualification do not
+establish improved long-task alignment or guaranteed task supervision.
+Read the [rollout decision and rollback guide](docs/direction-rollout.md) before
+enabling auditing or amending an existing run.
 
-The two-cycle repair allowance and independent-review rules from 0.9.0 remain
-unchanged. The new helpers support those rules; they do not add an orchestration
-runtime or establish that agents obey them.
+Existing review evidence, independent reviewers, repair allowances and repository
+gates continue to apply. The separate native observation implementation in
+PR #123 is not included in this release.
 
 ## Why
 
