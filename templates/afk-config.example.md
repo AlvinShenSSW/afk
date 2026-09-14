@@ -23,7 +23,8 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
 
 ## review
 # max-fix-cycles:        # nonnegative integer; blank defaults to six per issue
-                         # kickoff override only; consumed cycles survive resumes
+                         # operator increases scale existing call/cost total ceilings
+                         # original baseline and consumed/reserved amounts survive resumes
                          # exhaustion leaves unresolved repairs outstanding
 
 ## direction

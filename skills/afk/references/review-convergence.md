@@ -17,6 +17,24 @@ valid explicit values are nonnegative integers. Invalid values are a reported
 config error and permit no automatic repair until resolved. The driver cannot
 increase its own allowance mid-run.
 
+An operator-approved increase also scales existing finite model-call and cost
+ceilings proportionally unless that instruction retains a separate cap. Use an
+explicit operator ratio when supplied; otherwise divide the new cycle allowance
+by the allowance recorded with the original budget totals. Apply the factor once
+to those original totals, round integer call ceilings down, and retain consumed
+and reserved amounts. Never multiply the remaining balance or compound the same
+amendment on resume. A zero or unknown original cycle baseline prevents ratio
+inference, not an explicit ratio applied to known finite totals. Missing budget
+totals remain unresolved. Operator instruction still outranks config and default.
+
+Record the source, original and amended ceilings before dependent calls. A new
+default alone does not amend an active run. Preserve immutable execution handoffs
+and predecessor accounting; unknown usage stays unknown, with any finite
+conservative hold recorded separately under an explicit reservation policy.
+Larger ceilings alone do not cure missing accounting. Task scope, deadlines,
+per-invocation limits, retry permissions and review requirements remain separate.
+See the [budget design](../../../docs/designs/specs/proportional-review-budgets.md).
+
 Use the existing run ledger, keyed by issue, for allowance/source, consumed
 cycles, accepted finding IDs and dispositions, repair revision, validation and
 net-progress results. Reserve the next cycle before the first review-driven content edit.
