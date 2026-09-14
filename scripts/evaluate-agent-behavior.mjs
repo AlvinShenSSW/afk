@@ -20,7 +20,7 @@ import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
 import { campaignUsage, strictEvaluationJson as strictJson, validateObserver, observerProfileReferences, loadObserverProfile, campaignObserverProfile,
   openObservedCollector, prepareObservedSession, observedPhysicalUsage, readObservedInvocation } from '../lib/evaluation/observed-execution.mjs';
 import { controlSourcePlan, observeNativeControl, observeControlBehavior } from '../lib/evaluation/native-control.mjs';
-import { decodeNativeRequest, decodeNativeResponse, nativeResponseItems, checkNativeRelease } from '../lib/evaluation/native-wire.mjs';
+import { decodeNativeRequest, decodeNativeResponse, nativeResponseItems, checkNativeRelease, NATIVE_RESPONSE_ROUTES } from '../lib/evaluation/native-wire.mjs';
 import { nativeHostIdentity, provisionNativeCatalog, verifyNativeCatalog } from '../lib/evaluation/native-host.mjs';
 export { hostArguments, runBounded } from '../lib/evaluation/host.mjs';
 
@@ -1254,7 +1254,7 @@ export function nativeControlObservation({directory,manifest,trial,fixture,suppo
   for(const row of observed.exchanges){
     requireEvaluation(row.forwarded&&row.released,'native control exchange not delivered');
     const terminal=strictJson(read(row.terminal));requireEvaluation(terminal.version===2,'native control transport metadata missing');
-    const request=decodeNativeRequest(read(row.request),{maxBytes:manifest.handoff.observer.maxBytes}),response=decodeNativeResponse(read(row.response),{maxBytes:manifest.handoff.observer.maxBytes,responseMetadata:terminal.responseMetadata,requestedModel:trial.model});
+    const request=decodeNativeRequest(read(row.request),{maxBytes:manifest.handoff.observer.maxBytes}),response=decodeNativeResponse(read(row.response),{maxBytes:manifest.handoff.observer.maxBytes,responseMetadata:terminal.responseMetadata,transport:{upstream:NATIVE_RESPONSE_ROUTES[manifest.handoff.observer.authMode],status:terminal.status},requestedModel:trial.model});
     requireEvaluation(checkNativeRelease(response,request).allowed,'native control release unavailable');
     catalog=strictJson(read(row.catalog));sourceEvidence.push(row.request,row.response,row.catalog,row.terminal);
     exchanges.push({invocationId:id,sessionId:result.sessionId,ordinal:row.ordinal,request,response});

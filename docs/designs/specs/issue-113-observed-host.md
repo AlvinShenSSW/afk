@@ -864,6 +864,16 @@ Native response metadata uses finite JSON because provider fields can contain
 fractions; integer-only authority and receipt formats remain unchanged. Terminal
 records retain the actual media type and encoding because body framing cannot
 establish missing transport metadata. Historical missing headers remain unknown.
+Only a retained null Content-Type may use a distinct body-validated SSE
+interpretation, after complete bounded framing, identity and usage validation.
+The recorder uses the fixed Responses HTTPS route and HTTP 200; replay verifies
+the matching configured route, dispatch, status and body binding. A decoder's
+transport fields alone confer no source qualification. Missing legacy metadata,
+explicit non-SSE types and non-identity encodings remain unavailable. Delivery
+still requires the existing tool release checks; a denied call retains known
+usage without becoming an authorized action. All consumers share the decoder.
+Tests cover both interpretations, missing-origin/status evidence, malformed or
+conflicting streams, interpretation tampering and known charges after denial.
 
 An empty terminal output array may use the complete ordered item-done census.
 Release still requires contiguous unique indexes, matching added/done identities,

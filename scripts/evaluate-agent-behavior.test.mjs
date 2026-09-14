@@ -415,11 +415,11 @@ function qualify112Fixture(directory,handoff,ids) {
 }
 const require112Crypto=await import('node:crypto');
 
-function observedUpstreamFixture(t,{streamedCall=false}={}){
+function observedUpstreamFixture(t,{streamedCall=false,missingMedia=false}={}){
   const prior=process.env.AFK_OBSERVED_UPSTREAM_BEARER;process.env.AFK_OBSERVED_UPSTREAM_BEARER='synthetic-owned-upstream';
   t.after(()=>{if(prior===undefined)delete process.env.AFK_OBSERVED_UPSTREAM_BEARER;else process.env.AFK_OBSERVED_UPSTREAM_BEARER=prior;});
   const calls=[];t.mock.method(https,'request',(url,options,callback)=>{
-    const request=new EventEmitter();request.destroy=()=>{};request.end=bytes=>{const body=JSON.parse(bytes);calls.push({model:body.model,url:String(url)});queueMicrotask(()=>{const response=new PassThrough();response.statusCode=200;response.headers={'content-type':'text/event-stream'};callback(response);response.end(witnessResponse({ordinal:streamedCall?1:2,model:body.model,script:'text(ALL_TOOLS)'}));});};return request;
+    const request=new EventEmitter();request.destroy=()=>{};request.end=bytes=>{const body=JSON.parse(bytes);calls.push({model:body.model,url:String(url)});queueMicrotask(()=>{const response=new PassThrough();response.statusCode=200;response.headers=missingMedia?{}:{'content-type':'text/event-stream'};callback(response);response.end(witnessResponse({ordinal:streamedCall?1:2,model:body.model,script:'text(ALL_TOOLS)'}));});};return request;
   });return calls;
 }
 test('issue113 source-isolated native first/resume and D6 use physical usage instead of CLI totals',t=>directionTemporary(async root=>{
@@ -777,7 +777,7 @@ test('unsupported baseline controls keep their rows without a prerequisite, auth
   assert.ok(controls.every(id=>aggregate.rows.find(row=>row.id===id).deterministic==='unsupported'));
 }));
 test('native control producer rechecks wire and catalog sources without treating CLI path hints as selection',async t=>directionTemporary(async root=>{
-  observedUpstreamFixture(t,{streamedCall:true});const id='C-F01-C-ASTRA',f=await prepared112(root,{controls:[id],observedHost:true});
+  observedUpstreamFixture(t,{streamedCall:true,missingMedia:true});const id='C-F01-C-ASTRA',f=await prepared112(root,{controls:[id],observedHost:true});
   for(const prerequisite of ['P112-A1','P112-A2'])await f.runner.runPrerequisite({directory:f.directory,id:prerequisite,codex:f.binary,execute:true});
   const [result]=await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
   assert.equal(result.selection,'unqualified');assert.equal(result.loading,'unobserved');assert.equal(result.behavior,'unobserved');
@@ -786,7 +786,8 @@ test('native control producer rechecks wire and catalog sources without treating
   assert.match(observation.nativeOrder.reason,/parentage/);assert.equal(observation.nativeOrder.status,'unobserved');
   const terminalRef=observation.sourceEvidence.find(ref=>ref.path.endsWith('-terminal.json'));assert.ok(terminalRef);
   const terminalPath=join(f.directory,terminalRef.path),original=readFileSync(terminalPath),terminal=JSON.parse(original);
-  assert.equal(terminal.observation.response.output.length,0);terminal.responseMetadata.contentType='application/json';
+  assert.equal(terminal.observation.response.output.length,0);assert.equal(terminal.responseMetadata.contentType,null);
+  assert.equal(terminal.observation.interpretation,'body-validated-sse');terminal.responseMetadata.contentType='application/json';
   writeFileSync(terminalPath,JSON.stringify(terminal));
   const fixture=JSON.parse(readFileSync(join(f.directory,'trials',id,'fixture.json'))),observed=JSON.parse(readFileSync(join(f.directory,'trials',id,'observed.json')));
   assert.throws(()=>f.runner.nativeControlObservation({directory:realpathSync(f.directory),manifest:JSON.parse(readFileSync(join(f.directory,'manifest.json'))),
