@@ -883,6 +883,15 @@ usage without becoming an authorized action. All consumers share the decoder.
 Tests cover both interpretations, missing-origin/status evidence, malformed or
 conflicting streams, interpretation tampering and known charges after denial.
 
+An exact inert keepalive event remains in the original stream and event inventory
+because a complete native response may include this transport heartbeat. One
+shared predicate accepts only type `keepalive` and a nonnegative safe-integer
+`sequence_number`, with no additional fields. It contributes no terminal, identity,
+usage or executable item. Decoder terminal ordering and release item checks remain
+unchanged; malformed or post-terminal heartbeats cannot become valid responses.
+Synthetic witnesses include the heartbeat so first/resume source validation and
+physical usage replay exercise the same interpretation as live recording.
+
 An empty terminal output array may use the complete ordered item-done census.
 Release still requires contiguous unique indexes, matching added/done identities,
 exact executable deltas and the existing tool policy. Nonempty partial terminal
