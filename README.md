@@ -43,7 +43,7 @@ plugin is built around:
 - **Self-review is not review.** Every external role runs as a *different*
   model from the one that wrote the code, read-only, on the real diff. A role
   that matches the implementer steps aside for an independent fallback.
-- **Bounded review limits churn.** Two review-driven fix cycles per issue are
+- **Bounded review limits churn.** Six review-driven fix cycles per issue are
   the default; verified closure is still required. Exhaustion leaves unresolved
   work outstanding without an automatic permission loop.
 - **A draft PR is not a finish line.** The waterfall has one end state: green
