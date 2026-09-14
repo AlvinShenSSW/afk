@@ -23,7 +23,7 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
 
 ## review
 # max-fix-cycles:        # nonnegative integer; blank defaults to six per issue
-                         # operator increases scale existing call/cost total ceilings
+                         # resource-cap increases need explicit budget authorization
                          # original baseline and consumed/reserved amounts survive resumes
                          # exhaustion leaves unresolved repairs outstanding
 

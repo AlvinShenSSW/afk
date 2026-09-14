@@ -170,8 +170,9 @@ recorded causal necessity. Sharing a file does not authorize extra work.
 The default allowance is six review-driven fix/re-review cycles per issue;
 initial implementation and initial reviews are separate. An explicit kickoff
 instruction or `## review` → `max-fix-cycles` configuration may change it.
-Operator-approved increases also scale existing finite model-call and cost
-ceilings proportionally, unless a separate cap is retained. The recorded ratio
+Only explicitly authorized resource-budget increases scale existing finite
+model-call and cost ceilings; extra repair cycles alone leave those caps unchanged.
+An unset cap creates no ceiling or budget-reconstruction prerequisite. The recorded ratio
 applies once to original totals and includes consumed and reserved amounts;
 it does not expand task scope or silently amend an active run on upgrade.
 Phases, roles and resumes share the recorded allowance. Initial review is

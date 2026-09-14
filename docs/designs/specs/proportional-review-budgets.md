@@ -6,9 +6,10 @@ workflow policy, not a new billing or orchestration runtime.
 
 ## Contract
 
-An operator-approved increase scales existing finite model-call and cost ceilings
-unless the instruction retains a separate cap. An explicit multiplier wins.
-Otherwise use the new cycle allowance divided by the cycle allowance paired with
+Only an operator-authorized resource-budget increase scales existing finite
+model-call and cost ceilings. More repair cycles alone leave explicit resource
+caps unchanged. An explicit multiplier wins. If proportional budget scaling is
+authorized without a multiplier, use the new cycle allowance divided by the cycle allowance paired with
 the original budget totals. Each amendment derives from that same recorded
 baseline, once; multiplying a remaining balance or repeatedly compounding the
 same amendment would distort the authorized total. Integer call ceilings round
@@ -16,8 +17,10 @@ down. Keep original, consumed, reserved and amended amounts and their authority.
 
 A zero or unknown original cycle baseline prevents inference of a multiplier;
 it does not invalidate an explicit multiplier on known finite budget totals.
-Missing original totals, invalid factors or an unknown cost conversion remain
-unresolved. Do not infer dollars from tokens without a recorded pricing basis.
+Missing original totals of a known finite budget, invalid factors or an unknown
+cost conversion leave the dependent amendment unresolved. An absent cap creates
+no resource ceiling, missing-budget dependency or reason to solicit micro-budget
+approval. Do not infer dollars from tokens without a recorded pricing basis.
 Operator instruction retains precedence over config, then the default.
 A default upgrade alone cannot silently amend an active run.
 

@@ -17,15 +17,19 @@ valid explicit values are nonnegative integers. Invalid values are a reported
 config error and permit no automatic repair until resolved. The driver cannot
 increase its own allowance mid-run.
 
-An operator-approved increase also scales existing finite model-call and cost
-ceilings proportionally unless that instruction retains a separate cap. Use an
-explicit operator ratio when supplied; otherwise divide the new cycle allowance
+Only an operator-authorized resource-budget increase scales existing finite
+model-call and cost ceilings. Approval of more repair cycles alone leaves those
+ceilings unchanged. Use an explicit operator ratio when supplied; otherwise,
+when proportional resource scaling is authorized, divide the new cycle allowance
 by the allowance recorded with the original budget totals. Apply the factor once
 to those original totals, round integer call ceilings down, and retain consumed
 and reserved amounts. Never multiply the remaining balance or compound the same
 amendment on resume. A zero or unknown original cycle baseline prevents ratio
 inference, not an explicit ratio applied to known finite totals. Missing budget
-totals remain unresolved. Operator instruction still outranks config and default.
+totals for a known finite budget leave its amendment unresolved. An unset cap
+creates no ceiling or budget-reconstruction prerequisite. Do not solicit a
+micro-budget approval merely to continue authorized work without a cap.
+Operator instruction still outranks config and default.
 
 Record the source, original and amended ceilings before dependent calls. A new
 default alone does not amend an active run. Preserve immutable execution handoffs
