@@ -823,3 +823,15 @@ test('uncapped campaign still executes prerequisites and confined inspections wi
   const inspected=await f.runner.inspectCommand({workspace:fixture.directory,support:f.source,codex:f.binary,execution:{deadline:Infinity,graceMs:50}},process.execPath,['-e',"process.stdout.write('complete')"]);
   assert.equal(inspected.stdout,'complete');assert.equal(inspected.cleanup,true);
 }));
+
+test('original numeric authority remains distinct from appended explanatory prose',()=>temporary(root=>{
+  const fixture=direction.createDirectionFixture({directory:join(root,'subject'),scenarioId:'D1'});
+  const path=join(fixture.directory,'.afk/runs/trial/ledger.md'),original=readFileSync(path,'utf8'),expected=directionRunner.readOriginalAuthority(fixture.directory);
+  writeFileSync(path,original+'\n## Verification\nAllowance: two, from the retained request; consumed remains zero.\n');
+  assert.deepEqual(directionRunner.readOriginalAuthority(fixture.directory),expected);
+  for(const suffix of ['\nallowance: 3\n','\nAllowance: 3\n','\nconsumed: 1\n']){
+    writeFileSync(path,original+suffix);assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/duplicate/);
+  }
+  writeFileSync(path,original.replace('allowance: 2','allowance: unknown'));
+  assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority/);
+}));

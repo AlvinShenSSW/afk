@@ -2,11 +2,11 @@
 
 The owner selected **retain off for release 1.2.0** on 2026-09-14 in the active execution handoff, adopting the [bounded release scope](designs/specs/release-1.2.0-scope.md). The release contains the merged #107–#112 improvements and this documentation. It excludes PR #123's native observation implementation. #113 and Epic #106 remain open for missing behavioral acceptance; #114 delivers the retain-off decision and rollback guidance.
 
-Direction remains an experimental opt-in addition. The template defaults to `off` with a four-attempt direction limit. Shadow and required modes are not promoted to production defaults. Retaining off does not require a positive behavior pilot or a newly qualified transport. It also does not change an existing initialized run's policy, authorize another model experiment or reset any allowance.
+Direction remains an experimental opt-in addition. The current template defaults to `off` without a direction-attempt cap. Explicit finite policies, including historical built-in-four policies, retain their recorded limits until an authorized amendment. Shadow and required modes are not promoted to production defaults. Retaining off does not require a positive behavior pilot or a newly qualified transport. It also does not change an existing initialized run's policy, authorize another model experiment or reset any allowance.
 
 The canonical operational contracts are [direction state](../skills/afk/references/direction-state.md), [direction audits](../skills/afk/references/direction-audit.md), [environment and shared-run location](../skills/afk/references/environment.md), and [review convergence](../skills/afk/references/review-convergence.md). This guide defines no additional state schema or allowance.
 
-## Evidence for the decision
+## Historical evidence for the 1.2.0 decision
 
 The historical [#113 report](evaluations/issue-113-pilot.md) records source-capability **NO-GO** with **0/72 main observations, 0/180 controls and four unattempted prerequisites**. Its frozen source assessment and original publication reviews remain attributed to their own revisions. These are unavailable samples, not measured zero-cost behavior or failed author invocations. The planned 92 main author stages and 180 control stages are not observed execution.
 
@@ -23,11 +23,11 @@ The historical [#113 report](evaluations/issue-113-pilot.md) records source-capa
 
 The [#111 qualification report](evaluations/issue-111-direction-audits.md) retains four driver attempts, three HTTP requests and 7,463 charged ms, including an invalid response. Its retained-rate estimate of USD 0.0027609 is not a provider bill. #98's separate unmet `0/14` remains owned by its [original report](evaluations/issue-98-pilot.md). Structural reviews and native test-suite activity are separate from behavioral samples; unknown usage is not zero.
 
-Subsequent investigation on **unreleased PR #123** used a different profile. Its small real qualifier passed; a separate 35,173-byte request retaining two controlled history audits returned HTTP 200 but failed `coverage_artifact`, because an artifact list cited source-kind evidence. Those two requests bring the retained qualification/capacity history to six attempts, five HTTP requests and 25,551 charged ms. They are not author trials. That profile remains pending and is excluded from this release; its result neither replaces nor broadens the released profile's qualification.
+At the 1.2.0 release checkpoint, subsequent investigation on **unreleased PR #123** had used a different profile. Its small real qualifier passed; a separate 35,173-byte request retaining two controlled history audits returned HTTP 200 but failed `coverage_artifact`, because an artifact list cited source-kind evidence. Those two requests bring the retained qualification/capacity history to six attempts, five HTTP requests and 25,551 charged ms. They are not author trials. That historical profile was pending and excluded from 1.2.0; its result neither replaced nor broadened that release profile's qualification. The [current full-history qualification](evaluations/issue-113-history-qualification.md) records the later corrected profile and its bounded evidence; it does not rewrite these observations or establish all author behavior.
 
-Critical Epic behavior remains OUTSTANDING: AC1 instruction loading/selection, AC2 authorized completion, AC4 direction detection/justified changes and AC6 faithful continuity. AC3/AC5 structural intent/accounting evidence grants no behavioral credit. AC7 requires honest attribution. This retain-off decision addresses AC8's owner-decision component without asserting full Epic acceptance.
+At that checkpoint, critical Epic behavior remained OUTSTANDING: AC1 instruction loading/selection, AC2 authorized completion, AC4 direction detection/justified changes and AC6 faithful continuity. AC3/AC5 structural intent/accounting evidence grants no behavioral credit. AC7 requires honest attribution. This retain-off decision addresses AC8's owner-decision component without asserting full Epic acceptance.
 
-## Release decision and limits
+## Historical release decision and limits
 
 The owner adopted the following scope: publish 1.2.0 after current independent reviews, repository checks and the normal merge process; retain off; continue #113 afterward; keep #113 and Epic #106 open. This explicitly replaces the earlier condition that publication await successful completion of the entire Epic. It is a release-scope decision, not cancellation of the missing outcomes or default promotion.
 
@@ -74,7 +74,7 @@ Technical replanning within authorized intent changes the plan, not the intent b
 
 ## Consumption and rollback
 
-Direction-call, content-repair and transport-qualification allowances have separate owners. The default four direction attempts cover initial, endpoint and two repaired endpoints, with no retry headroom. Preparation alone spends no direction slot. A published reservation remains charged across timeout, malformed output, attempted unavailability or missing/interrupted terminal. Reserved-without-terminal attempts are not counted twice. Lowering the limit, disabling or re-enabling the mode refunds nothing; zero or a limit below consumption permits no new reservation. Unknown accounting permits no new dispatch until reconciled from retained evidence.
+Direction-call, content-repair and transport-qualification allowances have separate owners. New unspecified direction policies have no attempt cap. Explicit finite policies retain their sourced ceilings; a new default never resets or expands an existing run. Further calls still require a concrete question or corrective action under the canonical convergence rules. Preparation alone spends no direction slot. A published reservation remains charged across timeout, malformed output, attempted unavailability or missing/interrupted terminal. Reserved-without-terminal attempts are not counted twice. Lowering the limit, disabling or re-enabling the mode refunds nothing; zero or a limit below consumption permits no new reservation. Unknown accounting permits no new dispatch until reconciled from retained evidence.
 
 A completed response is not erased merely because later accounting becomes unknown. Preserve it and its historical terminal; the driver must still resolve the separate allowance judgment and current endpoint eligibility. Do not treat missing output as proof that no call happened.
 

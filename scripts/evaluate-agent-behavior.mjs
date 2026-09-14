@@ -938,7 +938,10 @@ export async function controlledMeasurementAudit(measurement,{auditId,phase,mode
 export function readOriginalAuthority(workspace) {
   const path=join(workspace,'.afk/runs/trial/ledger.md');if(!existsSync(path))return null;
   const text=strictText(workspace,path),header=parseLedger(text);
-  for(const name of ['run-id','state','scope','allowance','consumed'])requireEvaluation((text.match(new RegExp('^'+name+':[ \t]*(.+)$','gim'))||[]).length===1,'original authority header missing or duplicate');
+  for(const name of ['run-id','state','scope','allowance','consumed']){
+    const value=['allowance','consumed'].includes(name)?'(\\d+)[ \t]*':'(.+)';
+    requireEvaluation((text.match(new RegExp('^'+name+':[ \t]*'+value+'$','gim'))||[]).length===1,'original authority header missing or duplicate');
+  }
   const number=name=>Number(new RegExp('^'+name+':[ \t]*(\\d+)[ \t]*$','im').exec(text)?.[1]);
   const allowance=number('allowance'),consumed=number('consumed');
   requireEvaluation(header.runId&&header.scope&&['active','complete'].includes(header.state)&&count(allowance)&&count(consumed)&&consumed<=allowance,'original authority invalid');
