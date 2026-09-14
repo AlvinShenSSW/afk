@@ -33,7 +33,6 @@ and predecessor accounting; unknown usage stays unknown, with any finite
 conservative hold recorded separately under an explicit reservation policy.
 Larger ceilings alone do not cure missing accounting. Task scope, deadlines,
 per-invocation limits, retry permissions and review requirements remain separate.
-See the [budget design](../../../docs/designs/specs/proportional-review-budgets.md).
 
 Use the existing run ledger, keyed by issue, for allowance/source, consumed
 cycles, accepted finding IDs and dispositions, repair revision, validation and
