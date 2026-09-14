@@ -167,7 +167,7 @@ operator to authorize; minor and out-of-scope notes remain non-blocking.
 Only corrections inseparable from the minimal P1 fix may accompany it, with
 recorded causal necessity. Sharing a file does not authorize extra work.
 
-The default allowance is two review-driven fix/re-review cycles per issue;
+The default allowance is six review-driven fix/re-review cycles per issue;
 initial implementation and initial reviews are separate. An explicit kickoff
 instruction or `## review` → `max-fix-cycles` configuration may change it.
 Phases, roles and resumes share the recorded allowance. Initial review is

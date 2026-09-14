@@ -6,7 +6,7 @@ const afk = readFileSync(new URL('../skills/afk/references/review-convergence.md
 const config = readFileSync(new URL('../templates/afk-config.example.md', import.meta.url), 'utf8').replace(/\s+/g, ' ');
 
 test('the issue allowance persists across phases and resumes', () => {
-  assert.match(afk, /Default to \*\*two review-driven fix\/re-review cycles per issue\*\*/);
+  assert.match(afk, /Default to \*\*six review-driven fix\/re-review cycles per issue\*\*/);
   assert.match(afk, /Initial implementation and initial reviews do not consume cycles/);
   assert.match(afk, /before the first review-driven content edit/);
   assert.match(afk, /provider changes, sequence restarts, scheduled ticks, and resumes/);
@@ -17,7 +17,7 @@ test('the issue allowance persists across phases and resumes', () => {
 
 test('exhaustion completes current validation but never starts another repair', () => {
   assert.match(afk, /Complete the current cycle's checks/);
-  assert.match(afk, /Do not start a third automatic cycle/);
+  assert.match(afk, /Do not start a seventh automatic cycle/);
   assert.match(afk, /not ready.*OUTSTANDING/s);
   assert.match(afk, /Never auto-merge or downgrade a verified blocker/);
   assert.match(afk, /no automatic approval request loop/);

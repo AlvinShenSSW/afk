@@ -8,7 +8,7 @@ stage's own output and exit conditions. For role selection read
 
 ## Review-cycle allowance
 
-Default to **two review-driven fix/re-review cycles per issue**. A cycle is a
+Default to **six review-driven fix/re-review cycles per issue**. A cycle is a
 batch of review-driven content changes followed by closure and regression review.
 Initial implementation and initial reviews do not consume cycles. Resolve the
 allowance at kickoff: explicit operator instruction, else `## review` →
@@ -41,7 +41,7 @@ Codex native diff review accepts no custom focus prompt: its driver applies this
 triage boundary and records that reviewer-focus limitation.
 
 Complete the current cycle's checks even when it consumes the final allowance;
-it may finish clean without an extra empty review. Do not start a third automatic cycle
+it may finish clean without an extra empty review. Do not start a seventh automatic cycle
 under the default. If further repair is needed, leave the PR not ready with
 `OUTSTANDING`, unresolved findings, attempts and a suggested next action; continue
 independent queued work. Never auto-merge or downgrade a verified blocker to fit

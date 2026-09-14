@@ -22,7 +22,7 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
                          # once and goes stale, so it must not outrank a live signal.
 
 ## review
-# max-fix-cycles:        # nonnegative integer; blank defaults to two per issue
+# max-fix-cycles:        # nonnegative integer; blank defaults to six per issue
                          # kickoff override only; consumed cycles survive resumes
                          # exhaustion leaves unresolved repairs outstanding
 
