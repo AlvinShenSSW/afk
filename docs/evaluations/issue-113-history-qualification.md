@@ -1,7 +1,11 @@
-# Current full-history audit qualification
+# Full-history audit qualification history
 
-The current Flash profile passed a source-bound negative and positive pair so
-required-mode dispatch can use the corrected current evidence presentation.
+The aggregate-capacity correction invalidates that earlier profile for new
+dispatch. Fresh qualification is pending; the observations below remain
+historical evidence and do not qualify the changed runtime.
+
+The profile preceding the aggregate-capacity correction passed a source-bound
+negative and positive pair with the corrected current evidence presentation.
 Both requests retained exact original source bytes and prior audit contexts.
 
 | Observation | Request bytes | Prior audits | Outcome |

@@ -84,7 +84,7 @@ unavailable, and no automatic provider fallback or additional PR role is added.
 The profile uses a fresh two-message stateless request with no tools or external
 session history; relevant prior audit contexts remain inside the packet,
 exact DeepSeek Flash alias and thinking disabled. Its full serialized request cap
-is 256KiB, output cap 8192 tokens, response cap 128KiB and HTTP timeout 120 seconds;
+is 1MiB, aggregate packet cap 256KiB, output cap 8192 tokens, response cap 128KiB and HTTP timeout 120 seconds;
 the driver supplies a 150-second process watchdog. Oversized full intent/evidence
 refuses with `profile_input_limit`. Do not truncate, compress, omit sources or
 combine partial packets while claiming full coverage. A different mode, prompt,

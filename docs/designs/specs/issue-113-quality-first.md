@@ -75,3 +75,16 @@ The recipe owns its exact selected phases and evidence oracle; it does not chang
 the historical experiment catalog or turn measurement approval into original
 subject completion. Source qualification and original before/after observations
 remain prerequisites, including for run-local recipes.
+
+## Complete-history capacity correction
+
+A full controlled core preflight reached both D9 endpoint preparations with all
+prior context intact; both exceeded the old aggregate 100,000-byte packet cap.
+Individual evidence remained below 100,000 bytes. Keep ordinary state records
+and evidence at their existing limits. A shared 256 KiB audit-packet limit applies
+only to packet validation, storage, reload and typed reservation proofs; serialized
+requests allow 1 MiB for the complete packet and numbered current projection.
+Proof-cache identity includes validation kind, so a large packet cannot widen
+source or terminal-result reads. Keep independent byte, cancellation and isolation
+checks; reject oversized complete evidence before dispatch rather than truncating.
+The changed profile requires fresh full-history positive and negative qualification.
