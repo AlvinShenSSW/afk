@@ -125,9 +125,9 @@ Keep model findings immutable and separate from driver dispositions. Use
 [review convergence](review-convergence.md) to admit corrections and reserve the
 existing shared repair allowance before edits. Findings do not authorize scope
 expansion, destructive rollback or extra model calls. Intent changes require the
-existing sourced baseline successor. Default four attempts cover initial,
-endpoint and two repaired endpoints without retry headroom; every reservation
-remains charged.
+existing sourced baseline successor. An unset attempt cap does not remove
+convergence checks or authorize repetitive calls without a new question or
+corrective action; every reservation remains charged.
 
 For prior findings, supply the original audit ID and retained packet/result
 references in the preparation history. The helper verifies the recorded attempt,

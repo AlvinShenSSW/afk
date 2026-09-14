@@ -86,6 +86,21 @@ findings to it. Repository evidence may correct it; reviewer preference cannot
 expand it. Record other proposals as `OUT-OF-SCOPE`, without implementation or
 automatic follow-up issue creation.
 
+## Quality and proportionality
+
+Complete every accepted requirement with appropriate context, capable models,
+relevant failure-path and regression checks, and the configured independent
+reviews. Do not invent token, call, cost or whole-task time ceilings merely to
+save money. Explicit operator limits still apply; an unset limit is not zero.
+Retain isolation, credential, transport and cancellation controls for their actual
+technical purpose, with enough capacity for complete evidence.
+
+Every abstraction, dependency or additional workflow needs a concrete accepted
+requirement or demonstrated defect. Prefer existing mechanisms and the smallest
+complete causal correction; simpler code may still require thorough verification.
+Use the existing root-cause checkpoint for repeated non-progress instead of
+creating new supervisory infrastructure.
+
 ## Autonomy
 
 Decide with best-practice defaults and record each decision; do not block on

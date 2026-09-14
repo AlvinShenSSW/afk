@@ -30,6 +30,17 @@ preferences and run evidence stay in their ignored `.afk/` directory.
 - **Fail toward less exposure.** On unreliable input, a check fails closed; any
   fail-open path is named and justified.
 
+## Completion quality and scope
+
+Complete the accepted behavior with relevant boundary, failure-path and regression
+checks and the configured independent reviews. Necessary context and model
+capability are part of quality; cost savings do not justify omitting them.
+Every added mechanism must address an accepted requirement or demonstrated defect;
+prefer existing mechanisms and the smallest complete causal correction. Hypothetical
+flexibility is not a reason to add a framework or expand scope. Test depth follows
+actual risk, not a test-count target. Use the canonical review-convergence rules
+for repeated non-progress, without creating a separate supervision workflow.
+
 ## What this plugin can and cannot enforce
 
 AFK is Markdown followed by a host agent, not an orchestration runtime.
