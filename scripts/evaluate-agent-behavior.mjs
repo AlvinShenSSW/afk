@@ -20,7 +20,7 @@ import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
 import { campaignUsage, strictEvaluationJson as strictJson, validateObserver, observerProfileReferences, loadObserverProfile, campaignObserverProfile,
   openObservedCollector, prepareObservedSession, observedPhysicalUsage, readObservedInvocation } from '../lib/evaluation/observed-execution.mjs';
 import { controlSourcePlan, observeNativeControl, observeControlBehavior } from '../lib/evaluation/native-control.mjs';
-import { decodeNativeRequest, decodeNativeResponse } from '../lib/evaluation/native-wire.mjs';
+import { decodeNativeRequest, decodeNativeResponse, nativeResponseItems, checkNativeRelease } from '../lib/evaluation/native-wire.mjs';
 import { nativeHostIdentity, provisionNativeCatalog, verifyNativeCatalog } from '../lib/evaluation/native-host.mjs';
 export { hostArguments, runBounded } from '../lib/evaluation/host.mjs';
 
@@ -1253,10 +1253,12 @@ export function nativeControlObservation({directory,manifest,trial,fixture,suppo
   const exchanges=[],effects=[],sourceEvidence=[reference,{path:`artifacts/${id}/stdout.raw`,digest:digestBytes(stdout)}];let catalog;
   for(const row of observed.exchanges){
     requireEvaluation(row.forwarded&&row.released,'native control exchange not delivered');
-    const request=decodeNativeRequest(read(row.request),{maxBytes:manifest.handoff.observer.maxBytes}),response=decodeNativeResponse(read(row.response),{maxBytes:manifest.handoff.observer.maxBytes,contentType:'text/event-stream',requestedModel:trial.model});
-    catalog=strictJson(read(row.catalog));sourceEvidence.push(row.request,row.response,row.catalog);
+    const terminal=strictJson(read(row.terminal));requireEvaluation(terminal.version===2,'native control transport metadata missing');
+    const request=decodeNativeRequest(read(row.request),{maxBytes:manifest.handoff.observer.maxBytes}),response=decodeNativeResponse(read(row.response),{maxBytes:manifest.handoff.observer.maxBytes,responseMetadata:terminal.responseMetadata,requestedModel:trial.model});
+    requireEvaluation(checkNativeRelease(response,request).allowed,'native control release unavailable');
+    catalog=strictJson(read(row.catalog));sourceEvidence.push(row.request,row.response,row.catalog,row.terminal);
     exchanges.push({invocationId:id,sessionId:result.sessionId,ordinal:row.ordinal,request,response});
-    for(const call of response.response.output.filter(item=>['custom_tool_call','function_call'].includes(item.type)))effects.push({invocationId:id,sessionId:result.sessionId,callId:null,evidence:`${row.response.path}#${call.call_id}`,reason:'Native nested dependent-effect parentage is unavailable.'});
+    for(const call of nativeResponseItems(response).filter(item=>['custom_tool_call','function_call'].includes(item.type)))effects.push({invocationId:id,sessionId:result.sessionId,callId:null,evidence:`${row.response.path}#${call.call_id}`,reason:'Native nested dependent-effect parentage is unavailable.'});
   }
   const bodies={},builtinRoot=join(directory,'artifacts',observed.session.ownerId,'native-state/skills/.system');
   for(const row of [...catalog.entries,...catalog.unadvertisedBodies]){const root=row.kind==='selected'?support:builtinRoot;const value=readFixtureFile(root,row.path);requireEvaluation(digestBytes(value)===row.sourceDigest,'native control catalog body changed');bodies[row.path]=value;}

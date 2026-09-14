@@ -857,3 +857,28 @@ audit, control or qualification slot and does not claim a trusted external monit
 Tests cover unchanged legacy arguments/cleanup, exact observed provider flags,
 clean environments, protected probe/root binding, wrong runtime/source/registry,
 first/resume identity mismatch and retained synthetic-versus-live provenance.
+
+## Native response compatibility
+
+Native response metadata uses finite JSON because provider fields can contain
+fractions; integer-only authority and receipt formats remain unchanged. Terminal
+records retain the actual media type and encoding because body framing cannot
+establish missing transport metadata. Historical missing headers remain unknown.
+
+An empty terminal output array may use the complete ordered item-done census.
+Release still requires contiguous unique indexes, matching added/done identities,
+exact executable deltas and the existing tool policy. Nonempty partial terminal
+output is never supplemented. An omitted namespace resolves only through a
+unique matching name and type in the actual request declarations. The recorder,
+physical readback, control projection and runner share these interpretations.
+
+Owned native witnesses include fractional metadata, omitted namespaces and empty
+terminal outputs because synthetic conventional envelopes missed these actual
+host forms. First and exact-resume boundary probes remain mandatory: source
+identity does not prove confinement at every workspace location. A location
+whose shell can access protected files cannot qualify an execution surface.
+
+Validation covers fractional terminal publication/readback, missing or altered
+media metadata, duplicate/gapped streamed items, mismatched deltas, ambiguous or
+forbidden declarations, and control correlation with unknown nested parentage.
+These checks establish bounded artifact behavior, not complete pilot acceptance.
