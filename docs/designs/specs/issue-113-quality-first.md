@@ -55,9 +55,12 @@ no verification value for long lines, is dropped.
 Two further campaign observations became validation rules rather than repairs
 of any response: a CORRECT-COURSE outcome must carry at least one finding, and
 the credential scanner treats a digitless slash-separated word run as prose,
-since base64 secrets of that length carry digits. Every other scanner rule is
-unchanged; author-written digests are shown to the auditor in reversible
-sixteen-digit groups instead of being dropped.
+since base64 secrets of that length carry digits, and a 64-hex run labelled on
+its own line as a digest, checksum or hash is a documented identifier: authors
+pin baseline and policy digests in plans, and a plan that cannot be captured or
+audited is a silent hold. Unlabelled hex runs stay refused. Author-written
+digests in retained history are shown to the auditor in reversible sixteen-digit
+groups instead of being dropped.
 
 ## Evaluation authorization compatibility
 

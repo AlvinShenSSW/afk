@@ -9,13 +9,13 @@ current profile only; a changed prompt, setting or runtime file invalidates it.
 | Observation | Request bytes | Prior audits | Outcome |
 | --- | ---: | ---: | --- |
 | Missing integer guard and A6 regression | 184156 | 2 | CORRECT-COURSE, F-A6 |
-| Guard and A6 regression corrected | 227594 | 3 | COMPLETE, no findings |
+| Guard and A6 regression corrected | 227737 | 3 | COMPLETE, no findings |
 
 The two initial historical audits were controlled fixtures with zero provider
 calls. The negative and positive checks each made one actual request; the
 provider reported model `deepseek-flash` with finish `stop` for
-both. Usage was 52786 input and 2166 output tokens for the
-negative request and 65516 input and 1964 output tokens
+both. Usage was 52849 input and 2502 output tokens for the
+negative request and 65654 input and 3154 output tokens
 for the positive request; cached input is a subset of input. Original confined
 checks independently observed A6 fail before the correction and all six
 acceptance checks pass afterward. Every current and historical exact citation,
@@ -41,7 +41,8 @@ lines, with the correct item and line, so single-line anchors now accept a
 verbatim excerpt of at least 24 characters; and one positive response returned
 CORRECT-COURSE with every row supported and no finding, so CORRECT-COURSE now
 requires a finding. The credential scanner also stopped treating digitless or
-path-like slash-separated prose as base64. The pair above is the re-run on the
+path-like slash-separated prose as base64, and a hex digest labelled as such
+on its line as a secret. The pair above is the re-run on the
 final profile. No response was edited; no failed attempt was retried unchanged. Each correction changed the profile, so only the final
 pair above qualifies the current profile.
 
