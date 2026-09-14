@@ -63,7 +63,7 @@ for (const kind of ['outcome', 'findings', 'coverage', 'malformed']) {
       readDirectionState(f.metadata).attempts[0].terminal.path);
     const terminalRecord = JSON.parse(readFileSync(terminalPath, 'utf8'));
     const payload = completeResult(f.input.packet); const retained = structuredClone(payload);
-    if (kind === 'outcome') retained.outcome = 'CORRECT-COURSE';
+    if (kind === 'outcome') retained.outcome = 'NEEDS-DECISION';
     if (kind === 'findings') { retained.outcome = 'CORRECT-COURSE'; retained.findings = [{ id: 'F1', requirementIds: ['O1'],
       evidence: [payload.coverage[0].source], explanation: 'A correction is needed.', recommendedAction: 'Recheck source coverage.' }]; }
     if (kind === 'coverage') retained.coverage[0].explanation = 'Another valid explanation.';

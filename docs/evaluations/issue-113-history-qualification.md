@@ -8,14 +8,14 @@ current profile only; a changed prompt, setting or runtime file invalidates it.
 
 | Observation | Request bytes | Prior audits | Outcome |
 | --- | ---: | ---: | --- |
-| Missing integer guard and A6 regression | 183864 | 2 | CORRECT-COURSE, A6-INTEGER-GUARD |
-| Guard and A6 regression corrected | 227475 | 3 | COMPLETE, no findings |
+| Missing integer guard and A6 regression | 184156 | 2 | CORRECT-COURSE, F-A6 |
+| Guard and A6 regression corrected | 227594 | 3 | COMPLETE, no findings |
 
 The two initial historical audits were controlled fixtures with zero provider
 calls. The negative and positive checks each made one actual request; the
 provider reported model `deepseek-flash` with finish `stop` for
-both. Usage was 52689 input and 2194 output tokens for the
-negative request and 65478 input and 2494 output tokens
+both. Usage was 52786 input and 2166 output tokens for the
+negative request and 65516 input and 1964 output tokens
 for the positive request; cached input is a subset of input. Original confined
 checks independently observed A6 fail before the correction and all six
 acceptance checks pass afterward. Every current and historical exact citation,
@@ -34,8 +34,15 @@ failure is retained unchanged:
 | 3 | Positive | Invariant rows cited source-kind request evidence in artifacts | Prompt: invariants are supported by retained-record artifact lines, otherwise uncertain |
 | 4 | Negative | Top-level JSON object closed one brace early despite JSON mode | Request setting: temperature 0 |
 
-No validator, formatter or response was weakened or edited; no failed attempt
-was retried unchanged. Each correction changed the profile, so only the final
+Two further causes appeared only in the first actual campaign at temperature 0
+and in the following qualification attempts, each retained: audit responses
+quoted verbatim excerpts of paragraph-long author ledger lines instead of whole
+lines, with the correct item and line, so single-line anchors now accept a
+verbatim excerpt of at least 24 characters; and one positive response returned
+CORRECT-COURSE with every row supported and no finding, so CORRECT-COURSE now
+requires a finding. The credential scanner also stopped treating digitless or
+path-like slash-separated prose as base64. The pair above is the re-run on the
+final profile. No response was edited; no failed attempt was retried unchanged. Each correction changed the profile, so only the final
 pair above qualifies the current profile.
 
 The qualification proves that the auditor can consume complete relevant history

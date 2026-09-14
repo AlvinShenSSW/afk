@@ -44,6 +44,21 @@ preservation and history invariants; the request samples at temperature 0.
 Driver-rendered history evidence is written as readable multi-line text rather
 than escaped single-line JSON so every line remains citable.
 
+The first actual campaign at temperature 0 then showed one remaining mode: every
+mismatch cited the correct item and line but quoted a verbatim sentence from a
+paragraph-long author ledger line instead of the whole line. A single-line anchor
+therefore accepts either the whole line or one verbatim contiguous excerpt of at
+least 24 characters from that line; multiline spans stay whole. The citation
+remains exact text at an exact line; only the whole-line requirement, which added
+no verification value for long lines, is dropped.
+
+Two further campaign observations became validation rules rather than repairs
+of any response: a CORRECT-COURSE outcome must carry at least one finding, and
+the credential scanner treats a digitless slash-separated word run as prose,
+since base64 secrets of that length carry digits. Every other scanner rule is
+unchanged; author-written digests are shown to the auditor in reversible
+sixteen-digit groups instead of being dropped.
+
 ## Evaluation authorization compatibility
 
 The existing observed evaluator cannot represent an uncapped new authorization:
