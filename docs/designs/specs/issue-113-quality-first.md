@@ -33,6 +33,17 @@ text; this changes the user-message formatter and requires exact legacy
 format validation in historical reads only. Current dispatch stays strict.
 Old qualification never attests a changed current profile.
 
+Full-history qualification on the numbered projection then demonstrated four
+distinct sampling slips at the provider default temperature: a multiline anchor
+that started one line early, a long line copied as a prefix, an invariant row
+anchored to source-kind evidence, and a malformed top-level JSON object. Each
+correction is a profile change, never a validator change: the system prompt
+prefers the smallest sufficient single-line anchor, requires complete line
+copies, and names retained-record artifact lines as the support for authority,
+preservation and history invariants; the request samples at temperature 0.
+Driver-rendered history evidence is written as readable multi-line text rather
+than escaped single-line JSON so every line remains citable.
+
 ## Evaluation authorization compatibility
 
 The existing observed evaluator cannot represent an uncapped new authorization:
