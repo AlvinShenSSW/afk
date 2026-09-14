@@ -798,6 +798,14 @@ medium effort, approval-never and tool network denial. The evaluator's clean chi
 environment carries the local token, fresh Codex state path, required executable
 PATH/TMPDIR and telemetry/update-check disabling only. The collector separately
 loads the chosen bearer into memory. No upstream secret enters child configuration.
+The host temporary root is a validated private leaf disjoint from the protected
+probe and native catalog read roots in both live and synthetic launches. Denying
+their common parent as the temporary root rendered a conflicting developer
+instruction, causing a real actor to refuse the otherwise permitted probe.
+Preserve all existing access restrictions; directory-placement regressions and
+fresh native policy/effect evidence verify the correction without asking actors
+to disregard a denial. Exact resume retains its original probe/state owner while
+using the new invocation's separate temporary leaf.
 A fixed, identical evaluation instruction tells both revisions which direct tools
 are available; it does not name the expected selected skill or a correct outcome.
 
