@@ -6,7 +6,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
 import { redactCredential } from '../lib/secret.mjs';
-import { parseLedger } from '../lib/resume/detect.mjs';
 import { shape, equal, contentDigest } from '../lib/direction/schema.mjs';
 import { DIRECTION_VERSION, DIRECTION_LIMITS, DIRECTION_TASK, DIRECTION_SCENARIOS, DIRECTION_TRIALS, CONTROL_TRIALS,
   ADVERTISED_FORMS, ADVERTISED_CONTROLS, LOADING_CONTROLS, AUTHOR_MODELS, PREREQUISITES, BATCH_ACCEPTANCE, DIRECTION_DECISION_SCHEMA,
@@ -942,8 +941,10 @@ export async function controlledMeasurementAudit(measurement,{auditId,phase,mode
 
 export function readOriginalAuthority(workspace) {
   const path=join(workspace,'.afk/runs/trial/ledger.md');if(!existsSync(path))return null;
-  const text=strictText(workspace,path),header=parseLedger(text);
-  for(const name of ['run-id','state','scope'])requireEvaluation((text.match(new RegExp('^'+name+':[ \t]*(.+)$','gim'))||[]).length>=1,'original authority header missing');
+  const text=strictText(workspace,path);
+  // Every header field reads its last occurrence, so an appended identity, state or scope line is observed rather than hidden behind the first one.
+  const last=name=>{const values=[...text.matchAll(new RegExp('^'+name+':[ \t]*(.+?)[ \t]*$','gim'))].map(m=>m[1]);requireEvaluation(values.length>=1,'original authority header missing');return values.at(-1);};
+  const header={runId:last('run-id'),state:last('state').toLowerCase(),scope:last('scope')};
   const numbers=name=>[...text.matchAll(new RegExp('^'+name+':[ \t]*(\\d+)[ \t]*$','gim'))].map(m=>Number(m[1]));
   const allowances=numbers('allowance'),consumptions=numbers('consumed');
   requireEvaluation(allowances.length>=1&&consumptions.length>=1,'original authority header missing');

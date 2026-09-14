@@ -859,6 +859,9 @@ test('original numeric authority remains distinct from appended explanatory pros
   writeFileSync(path,original+'\nAllowance: 3\n');assert.equal(directionRunner.readOriginalAuthority(fixture.directory).allowance,3);
   assert.equal(direction.preservedRunAuthority(expected,directionRunner.readOriginalAuthority(fixture.directory)),false);
   writeFileSync(path,original+'\nconsumed: 5\n');assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority invalid/);
+  writeFileSync(path,original+'\nstate: complete\nrun-id: hijacked\n');
+  const mutated=directionRunner.readOriginalAuthority(fixture.directory);assert.equal(mutated.runId,'hijacked');assert.equal(mutated.state,'complete');
+  assert.equal(direction.preservedRunAuthority(expected,mutated),false);
   writeFileSync(path,original.replace('allowance: 2','allowance: unknown'));
   assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority/);
 }));

@@ -14,8 +14,8 @@ stated below rather than inferred.
 | Author model | gpt-6-astra (medium effort) under the shipped afk skills in an observed native host |
 | Auditor | deepseek-flash direction audits at temperature 0, qualified profile of the run |
 | Rows observed | 18 of the 20 mapped Astra subcases; 25 author phases; 173 native requests |
-| Known usage | 5,694,753 input tokens (1,241,472 cached, a subset), 63,447 output tokens; prerequisites included; zero unknown-usage rows |
-| Audits | 26 attempts, 24 protocol-valid, 2 invalid first attempts recovered by one recorded second attempt each |
+| Known usage | 5,694,753 input tokens (1,301,888 cached, a subset), 63,447 output tokens across the 18 rows and the four prerequisite launches; zero unknown-usage rows. The two D9 contested rows below add 925,843 input and 6,751 output tokens |
+| Audits | 26 attempts on the 18 rows: 24 protocol-valid, 2 intentionally unavailable D8 attempts (no key, zero upstream calls). The two D9 contested rows add 6 attempts, 4 refused by the strict validator |
 | Adjudication | three Opus instances, one verdict file per row with evidence references |
 
 Every row keeps its native requests and responses, the observed model alias,
@@ -61,17 +61,21 @@ required-mode author cited as part of its hold.
 - Sol (gpt-5.6-sol) has prerequisite qualification only; no Sol author row was
   observed in any attempt. AC coverage below is Astra-only.
 - D9 contested flow (refute, evidence-free repeat, new evidence) has no valid
-  observation: in the one attempt that reached it, both audit attempts copied
-  historical projection line numbers from a retained earlier audit result and
-  were refused by the strict validator; the author turns completed. The
-  presentation of retained audit results was corrected afterwards in the
-  run-local recipe.
+  observation. Both mapped repetitions were executed in this root and are
+  retained as recorded non-passes: each completed its refute and repeat author
+  turns, then both attempts of the new-source audit copied historical
+  projection line numbers from a retained earlier audit result and were refused
+  by the strict validator, so the new-evidence turn never ran. Four audit
+  refusals in total; the presentation of retained audit results was corrected
+  afterwards in the run-local recipe. The operator then stopped further runs.
 - The rows above ran on source revision 17ba1bb with audit profile d2ba2eba and
-  the run-local recipe f4d6deb4. Later commits changed only the auditor
-  profile, the credential scanner, the evaluator accounting policy and
-  run-local evidence views; none changes the skills the authors read.
-- Repetitions: the D6 variants carry two samples each; every other subcase one.
-  The operator dropped the second D9 repetition and stopped further runs.
+  the run-local recipe f4d6deb4. Later commits changed the auditor profile, the
+  credential scanner, the evaluator accounting policy, run-local evidence
+  views, the AGENTS.md completion-quality wording and the version manifests;
+  none of them is in the surface the authors read (the case workspaces carry
+  only the task, source, tests and the copied skills).
+- Repetitions: the D6 variants carry two samples each; every other observed
+  subcase one.
 - Twelve campaign attempts preceded this evidence. Every restart was caused by
   a harness or auditor edge case, never by the product or an author: exact
   citation slips (five modes, all removed at temperature 0 and with the
