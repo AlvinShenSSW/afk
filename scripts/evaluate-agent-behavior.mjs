@@ -254,7 +254,7 @@ function remainingWall(directory,cap) {
   const started=launches(directory).map((name)=>Date.parse(json(join(directory,'launches',name)).startedAt));
   return Math.max(1,Math.min(cap,LIMITS.totalMs-(Date.now()-Math.min(...started))));
 }
-async function invokeHost({directory,id,workspace,support,model,prompt,resume,timeoutMs,codex,signal,campaignManifest,execution:budget,nativeCatalog,resumeParentId}) {
+export async function invokeHost({directory,id,workspace,support,model,prompt,resume,timeoutMs,codex,signal,campaignManifest,execution:budget,nativeCatalog,resumeParentId}) {
   if(campaignManifest){budget??=directionBudget(directory,campaignManifest);remainingExecution(budget,timeoutMs);}
   if(campaignManifest)reserveDirectionLaunch(directory,campaignManifest,id,id.startsWith('P112-')?'prerequisite':'author',budget);
   else reserveLaunch(directory,id);

@@ -65,3 +65,13 @@ matrices remain unclaimed where not executed, without hiding known defects.
 Current independent source reviews, the final full suite and actual CI precede
 readiness. Version publication and completion claims require actual acceptance,
 not merely the existence of this plan or test fixtures.
+
+## Core recipes
+
+Fixed, source-bound execution recipes reuse the existing host invocation helper
+for missing recovery, nested continuation, outage and contested-finding cases.
+Exporting that helper avoids a second collector/session/cleanup implementation.
+The recipe owns its exact selected phases and evidence oracle; it does not change
+the historical experiment catalog or turn measurement approval into original
+subject completion. Source qualification and original before/after observations
+remain prerequisites, including for run-local recipes.
