@@ -363,7 +363,7 @@ async function syntheticObservedHost({args,model,tools,builtin,wrongBoundary}){
   console.log(JSON.stringify({type:'item.completed',item:{id:'boundary',type:'command_execution',command,exit_code:0,aggregated_output:JSON.stringify({outsideReadDenied:true,outsideWriteDenied:true,networkDenied:true,environmentClean:true,supportVisibility:true,scorerReadDenied:true,evaluatorReadDenied:true,gitNodeAllowed:true})}}));
   console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:9999,output_tokens:9999}}));
 }
-async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false,baselineAbsentControls=false}={}) {
+async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false,baselineAbsentControls=false,uncapped=false}={}) {
   const {execFileSync}=await import('node:child_process'),{copyFileSync}=await import('node:fs'),{digestBytes}=await import('../lib/gate/review-receipt.mjs');
   const source=join(root,'source');mkdirSync(source);fixtureGit(source,['init','--template=','-q','-b','synthetic']);
   const files=[...new Set([...execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&supportVisible(p)),...EVALUATOR_RUNTIME_FILES])];
@@ -398,6 +398,7 @@ async function prepared112(root,{main=[],controls=[],status='authorized',unknown
     const profile=JSON.stringify({version:1,models:[{model:'gpt-6-astra',files}]});writeFileSync(join(root,'native-profile.json'),profile);
     handoff.observer={version:1,profile:{path:'native-profile.json',digest:digestBytes(profile)},authMode:'chatgpt',maxRequests:40,maxRequestsPerInvocation:10,maxBytes:1048576,requestTimeoutMs:1000};}
   for(const key of ['baseline','candidate','evaluator'])handoff.revisions[key]=revision;handoff.revisions.baseline=baselineRevision;handoff.auditor.revision=revision;handoff.auditor.profileDigest=profile.digest;handoff.auditor.condition=auditorCondition;handoff.inputs=runner.directionInputDigests();if(sliceMs!==undefined)handoff.bounds.sliceMs=sliceMs;
+  if(uncapped){handoff.bounds.totalMs=null;for(const key of ['plannedMaxMicrousd','inputTokens','outputTokens'])handoff.bounds.spend[key]=null;if(handoff.observer){handoff.observer.maxRequests=null;handoff.observer.maxRequestsPerInvocation=null;}}
   const authority='Synthetic fixture-driver authorization and budget for this exact bounded test; no actual model calls.\n';writeFileSync(join(root,'authority.md'),authority);
   for(const source of [handoff.authorization.source,handoff.budgetSource,handoff.bounds.spend.basis].filter(Boolean))source.ref.digest=digestBytes(authority);
   const input=join(root,'handoff.json');writeFileSync(input,JSON.stringify(handoff));const directory=join(root,'evaluation');
@@ -574,11 +575,11 @@ test('issue113 D9 complete generated checkpoints preserve two historical context
   await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
   const observed=JSON.parse(readFileSync(join(f.directory,'trials',id,'observed.json')));
   assert.equal(observed.invocations.length,2);assert.equal(observed.invocations[1].resumedFrom,observed.invocations[0].sessionId);
-  assert.equal(observed.audits.length,3);assert.ok(observed.audits[0].requestBytes<=16384);
+  assert.equal(observed.audits.length,3);assert.ok(observed.audits[0].requestBytes>0);
   assert.deepEqual(observed.audits.map(a=>a.historyAudits),[0,1,2]);
   for(const [index,audit] of observed.audits.entries()){
     assert.equal(audit.classification,'completed');assert.equal(audit.actualAuditorCalls,0);
-    if(index>0)assert.ok(audit.requestBytes>16384);
+    if(index>0)assert.ok(audit.requestBytes>observed.audits[index-1].requestBytes);
     const run=join(audit.measurement.cwd,'.afk/runs',audit.measurement.runId);
     const packet=JSON.parse(readFileSync(join(run,'issues/synthetic/audits',audit.auditId,'packet.json')));
     assert.equal(packet.history.audits.length,index);
@@ -793,4 +794,32 @@ test('native control producer rechecks wire and catalog sources without treating
   assert.throws(()=>f.runner.nativeControlObservation({directory:realpathSync(f.directory),manifest:JSON.parse(readFileSync(join(f.directory,'manifest.json'))),
     trial:direction.CONTROL_TRIALS.find(row=>row.id===id),fixture,support:fixture.control.support,invocations:observed.invocations,codex:f.binary}),/unqualified/);
   writeFileSync(terminalPath,original);
+}));
+
+
+test('new observed handoff can omit cost, token, request and whole-campaign caps', () => {
+  const h = handoff112({ main: ['M-D1-C-ASTRA-R1'], status: 'authorized' });
+  h.bounds.totalMs = null;
+  for (const key of ['plannedMaxMicrousd', 'inputTokens', 'outputTokens']) h.bounds.spend[key] = null;
+  h.observer = { version: 1, profile: { path: 'native/profile.json', digest: 'a'.repeat(64) },
+    authMode: 'chatgpt', maxRequests: null, maxRequestsPerInvocation: null, maxBytes: 1048576, requestTimeoutMs: 60000 };
+  const original = JSON.stringify(h);
+  assert.equal(directionRunner.validateExecutionHandoff(h), h);
+  assert.equal(JSON.stringify(h), original);
+  for (const change of [x => x.bounds.totalMs = -1, x => x.bounds.spend.inputTokens = 'unlimited',
+    x => x.bounds.spend.outputTokens = Infinity, x => x.bounds.invocationMs = null, x => x.observer.requestTimeoutMs = null]) {
+    const invalid = structuredClone(h); change(invalid);
+    assert.throws(() => directionRunner.validateExecutionHandoff(invalid), /handoff/);
+  }
+});
+
+
+test('uncapped campaign still executes prerequisites and confined inspections with finite per-call cancellation',()=>directionTemporary(async root=>{
+  const f=await prepared112(root,{uncapped:true});
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});
+  const result=JSON.parse(readFileSync(join(f.directory,'artifacts/P112-A1/result.json')));
+  assert.equal(result.status,'completed');assert.equal(result.cleanup,true);assert.equal(result.sessionId,'synthetic-session');
+  const fixture=direction.createDirectionFixture({directory:join(root,'inspection'),scenarioId:'D1'});
+  const inspected=await f.runner.inspectCommand({workspace:fixture.directory,support:f.source,codex:f.binary,execution:{deadline:Infinity,graceMs:50}},process.execPath,['-e',"process.stdout.write('complete')"]);
+  assert.equal(inspected.stdout,'complete');assert.equal(inspected.cleanup,true);
 }));

@@ -33,6 +33,18 @@ text; this changes the user-message formatter and requires exact legacy
 format validation in historical reads only. Current dispatch stays strict.
 Old qualification never attests a changed current profile.
 
+## Evaluation authorization compatibility
+
+The existing observed evaluator cannot represent an uncapped new authorization:
+its handoff requires token totals and a whole-campaign deadline. Permit null for
+those optional caps, including global and per-parent request ceilings, while
+retaining finite per-invocation/transport timeouts, exact selected launch counts,
+source witnesses, payload limits, ordinal storage bounds and unknown-use refusal.
+Old numeric handoffs retain their original checks and immutable identity. No
+price engine or new quota framework is needed. Tests must dispatch beyond former
+limits under null, preserve zero/finite refusal, reject malformed bounds, and keep
+replay, source, usage and cleanup checks.
+
 ## Verification and delivery
 
 Tests cover new uncapped policy, more than four reservations, unknown accounting,

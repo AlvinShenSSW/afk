@@ -258,6 +258,7 @@ async function invokeHost({directory,id,workspace,support,model,prompt,resume,ti
   if(campaignManifest){budget??=directionBudget(directory,campaignManifest);remainingExecution(budget,timeoutMs);}
   if(campaignManifest)reserveDirectionLaunch(directory,campaignManifest,id,id.startsWith('P112-')?'prerequisite':'author',budget);
   else reserveLaunch(directory,id);
+  if(campaignManifest)budget={...budget,deadline:Math.min(budget.deadline,Date.now()+timeoutMs)};
   const root=join(directory,'artifacts',id);
   let execution=null, decision=null, observed=null;
   let result={status:'incomplete',code:null,signal:null,cleanup:false,durationMs:0,sessionId:null,eventsComplete:false,
@@ -308,7 +309,7 @@ export async function inspectCommand({workspace,support,codex='codex',signal,inp
   // The denied host temp alias must not become the permitted command temp root.
   const {TMPDIR: _commandTemp,...launcherEnv}=toolEnv;
   const result=await runBounded(codex,['sandbox','--permission-profile','afk-eval',...permissionArgs(support),...shellEnvironmentArgs(toolEnv),'-C',workspace,command,...args],
-    {cwd:workspace,env:launcherEnv,input,timeoutMs:execution?remainingExecution(execution,10000):10000,maxBytes,signal,strictBytes:strictBytes||!!execution,...(execution?{deadline:execution.deadline,graceMs:execution.graceMs}:{})});
+    {cwd:workspace,env:launcherEnv,input,timeoutMs:execution?remainingExecution(execution,10000):10000,maxBytes,signal,strictBytes:strictBytes||!!execution,...(execution?{deadline:Math.min(execution.deadline,Date.now()+10000),graceMs:execution.graceMs}:{})});
   if(result.status!=='completed' || !result.cleanup) {
     const error=new Error('sandboxed observation did not complete'); error.observation=result; throw error;
   }
@@ -556,11 +557,12 @@ export function validateExecutionHandoff(handoff) {
     shape(handoff.auditor,['revision','profileDigest','qualification','condition']);requireEvaluation(immutable(handoff.auditor.revision)&&evalDigest(handoff.auditor.profileDigest)&&['live','controlled'].includes(handoff.auditor.condition),'handoff auditor');
     if(handoff.auditor.qualification!==null)evaluationRef(handoff.auditor.qualification);
     const b=handoff.bounds;shape(b,['prerequisiteMs','invocationMs','resumeMs','auditMs','sliceTrials','sliceMs','totalMs','outputBytes','graceMs','maxAuthorInvocations','maxPrerequisiteInvocations','maxAuditAttempts','spend']);
-    for(const key of ['prerequisiteMs','invocationMs','resumeMs','auditMs','sliceTrials','sliceMs','totalMs','outputBytes','graceMs'])requireEvaluation(count(b[key])&&b[key]>0,'handoff positive bound');
+    for(const key of ['prerequisiteMs','invocationMs','resumeMs','auditMs','sliceTrials','sliceMs','outputBytes','graceMs'])requireEvaluation(count(b[key])&&b[key]>0,'handoff positive bound');
+    requireEvaluation(b.totalMs===null||count(b.totalMs)&&b.totalMs>0,'handoff positive bound');
     requireEvaluation(b.outputBytes<=LIMITS.outputBytes&&b.graceMs<=LIMITS.graceMs&&b.sliceTrials<=LIMITS.sliceTrials,'handoff upper bound');
     requireEvaluation(b.maxAuthorInvocations===author&&author<=DIRECTION_LIMITS.maxAuthorInvocations&&b.maxPrerequisiteInvocations===slots.length&&b.maxAuditAttempts===audits&&audits<=DIRECTION_LIMITS.maxAuditAttempts,'handoff schedule counts');
     shape(b.spend,['currency','plannedMaxMicrousd','inputTokens','outputTokens','basis','unknownUsage']);
-    requireEvaluation(b.spend.currency==='USD'&&['plannedMaxMicrousd','inputTokens','outputTokens'].every(k=>count(b.spend[k]))&&b.spend.unknownUsage==='stop-before-next-launch','handoff spend');
+    requireEvaluation(b.spend.currency==='USD'&&['plannedMaxMicrousd','inputTokens','outputTokens'].every(k=>b.spend[k]===null||count(b.spend[k]))&&b.spend.unknownUsage==='stop-before-next-launch','handoff spend');
     evaluationSource(b.spend.basis);evaluationSource(handoff.budgetSource);return handoff;
   }catch(error){throw new Error(`issue112 handoff invalid: ${error.message}`);}
 }
@@ -700,22 +702,22 @@ function directionStarted(directory) {
 }
 function directionBudget(directory,manifest,sliceDeadline=Infinity) {
   const starts=directionStarted(directory).map(r=>Date.parse(r.startedAt));
-  return {deadline:Math.min(sliceDeadline,(starts.length?Math.min(...starts):Date.now())+manifest.handoff.bounds.totalMs),graceMs:manifest.handoff.bounds.graceMs};
+  return {deadline:Math.min(sliceDeadline,manifest.handoff.bounds.totalMs===null?Infinity:(starts.length?Math.min(...starts):Date.now())+manifest.handoff.bounds.totalMs),graceMs:manifest.handoff.bounds.graceMs};
 }
 function remainingExecution(execution,cap) {
-  const available=Math.min(cap,execution.deadline-Date.now())-2*execution.graceMs;
-  requireEvaluation(Number.isFinite(available)&&available>0,'execution deadline exhausted');return available;
+  const available=Math.min(cap??Infinity,execution.deadline-Date.now())-2*execution.graceMs;
+  requireEvaluation(!Number.isNaN(available)&&available>0,'execution deadline exhausted');return available;
 }
 function directionRemainingWall(directory,manifest,cap) {
   const records=directionStarted(directory),first=records.length?Math.min(...records.map(r=>Date.parse(r.startedAt))):Date.now();
-  const left=manifest.handoff.bounds.totalMs-(Date.now()-first);requireEvaluation(left>0,'global wall allowance exhausted');return Math.min(cap,left);
+  const left=manifest.handoff.bounds.totalMs===null?Infinity:manifest.handoff.bounds.totalMs-(Date.now()-first);requireEvaluation(left>0,'global wall allowance exhausted');return Math.min(cap??Infinity,left);
 }
 function directionAuthority(directory,manifest) {
   requireEvaluation(manifest.handoff.authorization.status==='authorized','planned handoff cannot execute');
   requireEvaluation(!existsSync(join(directory,'cleanup-failed.json')),'cleanup unresolved');
   if(manifest.handoff.observer)observedPhysicalUsage({directory,observer:manifest.handoff.observer,executionHandoffDigest:manifest.executionHandoffDigest});
   const {input,output}=campaignUsage(directory);
-  const spend=manifest.handoff.bounds.spend;requireEvaluation(spend.plannedMaxMicrousd>0&&input<spend.inputTokens&&output<spend.outputTokens,'sourced spend or token planning ceiling exhausted');
+  const spend=manifest.handoff.bounds.spend;requireEvaluation((spend.plannedMaxMicrousd===null||spend.plannedMaxMicrousd>0)&&(spend.inputTokens===null||input<spend.inputTokens)&&(spend.outputTokens===null||output<spend.outputTokens),'sourced spend or token planning ceiling exhausted');
   directionRemainingWall(directory,manifest,manifest.handoff.bounds.totalMs);
 }
 function reserveDirectionLaunch(directory,manifest,id,kind,execution=directionBudget(directory,manifest)) {
