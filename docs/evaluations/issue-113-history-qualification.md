@@ -8,14 +8,14 @@ current profile only; a changed prompt, setting or runtime file invalidates it.
 
 | Observation | Request bytes | Prior audits | Outcome |
 | --- | ---: | ---: | --- |
-| Missing integer guard and A6 regression | 184156 | 2 | CORRECT-COURSE, F-A6 |
-| Guard and A6 regression corrected | 227553 | 3 | COMPLETE, no findings |
+| Missing integer guard and A6 regression | 184152 | 2 | CORRECT-COURSE, F-A6 |
+| Guard and A6 regression corrected | 227702 | 3 | COMPLETE, no findings |
 
 The two initial historical audits were controlled fixtures with zero provider
 calls. The negative and positive checks each made one actual request; the
 provider reported model `deepseek-flash` with finish `stop` for
-both. Usage was 52819 input and 2097 output tokens for the
-negative request and 65578 input and 1932 output tokens
+both. Usage was 52785 input and 2182 output tokens for the
+negative request and 65603 input and 2707 output tokens
 for the positive request; cached input is a subset of input. Original confined
 checks independently observed A6 fail before the correction and all six
 acceptance checks pass afterward. Every current and historical exact citation,
