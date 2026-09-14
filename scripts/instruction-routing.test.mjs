@@ -5,20 +5,7 @@ import { test } from 'node:test';
 import { supportVisible } from './evaluate-agent-behavior.mjs';
 import { repository, readInstruction as read, section, localLinks, anchors, checkInstructionLink, assertRoute } from './instruction-test-helpers.mjs';
 
-const triggers = {
-  afk: ['/afk', 'AFK mode', 'go AFK on …'],
-  'afk-init': ['/afk-init', 'set up afk', 'initialise afk'],
-  'afk-spec-planner': ['/afk-spec-planner', 'plan issue N', 'spec this out'],
-  'afk-implementation-pilot': ['/afk-implementation-pilot', 'implement the plan'],
-  'afk-internal-review': ['/afk-internal-review', 'internal review PR N', 'review before merge'],
-  'afk-agent-relay': ['/afk-agent-relay', 'compress context', 'relay brief', 'scope this'],
-  'afk-codex-review': ['/afk-codex-review', 'run codex review', 'codex gate'],
-  'afk-claude-review': ['/afk-claude-review', 'run claude review', 'claude gate'],
-  'afk-kimi-review': ['/afk-kimi-review', 'run kimi review', 'kimi gate'],
-  'afk-glm-review': ['/afk-glm-review', 'run glm review', 'glm gate', 'GLM external gate'],
-  'afk-deepseek-review': ['/afk-deepseek-review', 'run deepseek review', 'DeepSeek external gate'],
-  'afk-mimo-review': ['/afk-mimo-review', 'run mimo review', 'MiMo external gate'],
-};
+import { ADVERTISED_FORMS as triggers } from '../lib/evaluation/scenarios.mjs';
 const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity', 'output', 'direction-state'];
 const gateNames = Object.keys(triggers).filter((name) => /-(codex|claude|kimi|glm|deepseek|mimo)-review$/.test(name));
 const reference = (name) => `skills/afk/references/${name}.md`;
