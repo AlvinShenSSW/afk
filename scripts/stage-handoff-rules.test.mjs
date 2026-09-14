@@ -39,6 +39,7 @@ test('handoff view reads source records instead of creating independent state', 
   assert.match(text, /unknown.*not zero/i);
   assert.match(text, /standalone.*no run/i);
   assert.match(text, /#109/);
+  assertRoute(text, 'direction-state.md');
 });
 
 test('authority and actual target reload before dependent resumed work', () => {

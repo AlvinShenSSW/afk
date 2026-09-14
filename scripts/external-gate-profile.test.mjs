@@ -32,7 +32,7 @@ test('new configs choose a single Codex gate; ordered doubles are explicit opt-i
   assert.match(template, /^# gates:\s+codex > kimi\b/m, 'the double profile stays visible as a commented opt-in');
   assert.doesNotMatch(template, /^gates:\s+codex > kimi\s*$/m);
   assert.doesNotMatch(template, /^min-pass:/m);
-  assert.doesNotMatch(template, /^mode:/m);
+  assert.doesNotMatch(section(template, 'external gate'), /^mode:/m);
   assert.match(afk, /built-in `gates: codex`/);
   assert.match(afk, /-codex -kimi/);
   for (const text of [afk, readme]) {

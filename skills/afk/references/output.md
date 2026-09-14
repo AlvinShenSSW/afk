@@ -23,9 +23,10 @@ records; a child returns its result and evidence locations to that driver.
 | Evidence and next action | Complete evidence locators, limitations and the next authorized step or named unavailable prerequisite. |
 
 Reload sources rather than editing a saved view as state. Do not invent missing
-baseline digests or audit accounting for legacy runs. Structured baseline and
-attempt records belong to #109; when available, derive this view from those
-authoritative fields without retaining independently writable copies.
+baseline digests or audit accounting for legacy runs. Before reading structured
+direction fields, read [direction state (#109)](direction-state.md); derive this
+view from its canonical records without independently writable copies. Narrative
+repair-cycle accounting remains under its existing owner.
 
 ## Command and review evidence
 
