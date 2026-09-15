@@ -50,7 +50,10 @@ Do not reinterpret existing repair or transport-qualification accounting here.
 
 ## Bounds and evidence
 
-The optional `direction` config defaults to mode `off` and four audit attempts.
+The optional `direction` config defaults to mode `off` with no attempt cap.
+Blank `max-audit-attempts` resolves to null; an explicit nonnegative integer
+retains its finite meaning. Historical built-in-four policies keep their original
+cap until an authorized amendment; loading new code never changes them.
 Values and sources are frozen on initialization. Subsequent changes, including
 lowering, disabling or re-enabling, require an explicit sourced operator amendment.
 No amendment removes consumption; invalid values publish nothing, and zero or a
@@ -59,8 +62,10 @@ limit below consumption permits no further reservation.
 Preparation alone consumes nothing. Reserve before an availability attempt or
 dispatch: publication irrevocably charges the slot, including timeout, malformed
 result, attempted unavailability or an interrupted/missing terminal. A retry
-needs a new attempt ID and remaining capacity. Four covers initial + endpoint +
-two repair endpoint calls, with no retry headroom. Reserved-without-terminal
+needs a new attempt ID and available capacity under any explicit cap. A known
+uncapped policy has null remaining capacity and can reserve; unknown accounting
+also has null remaining capacity but cannot reserve. Read knowledge and policy,
+not null alone. Reserved-without-terminal
 attempts are already included in charged calls, not added twice. Content repairs
 still use the separate [shared repair allowance](review-convergence.md).
 

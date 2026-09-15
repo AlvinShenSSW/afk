@@ -1,5 +1,13 @@
+import { EVALUATOR_RUNTIME_FILES } from '../lib/evaluation/runtime.mjs';
+import { nativeWitnessSourcePaths } from '../lib/evaluation/native-witness.mjs';
+import { digestBytes } from '../lib/gate/review-receipt.mjs';
+import { decodeNativeRequest, nativeDeclarationDigest } from '../lib/evaluation/native-wire.mjs';
+import { witnessResponse } from '../lib/evaluation/native-witness.mjs';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import https from 'node:https';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -291,7 +299,7 @@ function directionTemporary(fn) {
   const root=mkdtempSync('/tmp/afk-direction-evaluator-');
   return Promise.resolve().then(()=>fn(root)).finally(()=>rmSync(root,{recursive:true,force:true}));
 }
-function handoff112({models=['ASTRA'],main=[],controls=[],status='planned',host}={}) {
+function handoff112({models=['ASTRA'],main=[],controls=[],status='planned',host,retainUnknown=false}={}) {
   const hash='a'.repeat(64),source={ref:{path:'authority.md',digest:hash},startLine:1,endLine:1};
   const allModels=models.map(key=>({key,model:key==='ASTRA'?'gpt-6-astra':'gpt-5.6-sol',effort:'medium',host:host??{executableDigest:hash,launchTemplateDigest:hash,configurationDigest:hash,version:'synthetic'}}));
   const rows=main.map(id=>({id,phases:id.includes('-D6-')?['author-1','author-resume']:id.includes('-D7-')?(id.endsWith('R1')?['author-1']:['author-1','driver-return']):id.includes('-D8-')?['audit-1','author-1']:id.includes('-D9-')?['audit-1','author-1','audit-2','author-resume','audit-3']:['audit-1','author-1','audit-2']}));
@@ -301,7 +309,8 @@ function handoff112({models=['ASTRA'],main=[],controls=[],status='planned',host}
     observability:{wholeToolInventory:'required',instructionInventory:'required',execBoundary:'required',exactResumeBoundary:'required',terminalAndCleanup:'required',requestedAndObservedModel:'required',nativeCatalog:'required-for-controls',completeReferenceDelivery:'required-for-read-claims',unknownActions:'retain-unknown',unknownUsage:'retain-unknown'},
     auditor:{revision:'d'.repeat(40),profileDigest:hash,qualification:null,condition:'controlled'},bounds:{prerequisiteMs:2000,invocationMs:2000,resumeMs:2000,auditMs:2000,sliceTrials:4,sliceMs:20000,totalMs:60000,outputBytes:8388608,graceMs:100,
       maxAuthorInvocations:rows.reduce((n,r)=>n+r.phases.filter(p=>!p.startsWith('audit')).length,0)+controlRows.length,maxPrerequisiteInvocations:models.length*2,maxAuditAttempts:rows.reduce((n,r)=>n+r.phases.filter(p=>p.startsWith('audit')).length,0),
-      spend:{currency:'USD',plannedMaxMicrousd:1000000,inputTokens:10000,outputTokens:10000,basis:source,unknownUsage:'stop-before-next-launch'}},budgetSource:source};
+      spend:{currency:'USD',plannedMaxMicrousd:retainUnknown?null:1000000,inputTokens:retainUnknown?null:10000,outputTokens:retainUnknown?null:10000,basis:source,
+        unknownUsage:retainUnknown?'retain-and-continue':'stop-before-next-launch'}},budgetSource:source};
 }
 
 test('issue112 handoff binds exact rows, phases, all four slots and independent positive execution limits',()=>{
@@ -310,6 +319,35 @@ test('issue112 handoff binds exact rows, phases, all four slots and independent 
     const bad=structuredClone(h);mutate(bad);assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff/);
   }
 });
+test('issue113 retained unknown usage is accepted only when every spend ceiling is absent',()=>{
+  const retained=handoff112({retainUnknown:true});assert.equal(directionRunner.validateExecutionHandoff(retained),retained);
+  for(const key of ['plannedMaxMicrousd','inputTokens','outputTokens']){
+    const bad=structuredClone(retained);bad.bounds.spend[key]=1000;assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff spend/);
+  }
+  for(const policy of ['retain-and-continue','retain-unknown']){
+    const bad=handoff112();bad.bounds.spend.unknownUsage=policy;assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff spend/);
+  }
+});
+test('issue113 optional observed handoff adds finite request authority without replacing the four prerequisite slots',()=>{
+  const h=handoff112({models:['ASTRA','SOL']});h.observer={version:1,profile:{path:'native/profile.json',digest:'a'.repeat(64)},authMode:'chatgpt',maxRequests:40,maxRequestsPerInvocation:10,maxBytes:1048576,requestTimeoutMs:60000};
+  assert.equal(directionRunner.validateExecutionHandoff(h),h);assert.deepEqual(h.prerequisites,['P112-A1','P112-A2','P112-S1','P112-S2']);
+  for(const mutate of [x=>x.observer.maxRequests=0,x=>x.observer.maxRequestsPerInvocation=41,x=>x.observer.profile.path='../source',x=>x.observer.origin='https://example.invalid',x=>x.prerequisites.push('P112-A3')]){
+    const bad=structuredClone(h);mutate(bad);assert.throws(()=>directionRunner.validateExecutionHandoff(bad),/handoff/);
+  }
+});
+for(const refusal of ['combined-bound','missing-source','conflicting-digest'])test(`issue113 observer source ${refusal} refuses preparation before a native slot`,()=>temporary(root=>{
+  const h=handoff112(),authority='Synthetic bounded source authority.\n';writeFileSync(join(root,'authority.md'),authority);
+  h.budgetSource.ref.digest=digestBytes(authority);h.bounds.spend.basis.ref.digest=digestBytes(authority);
+  const proof=refusal==='combined-bound'?'a'.repeat(1048576):'{}';writeFileSync(join(root,'proof.txt'),proof);
+  const files=Object.fromEntries(nativeWitnessSourcePaths().map(path=>[path,{path:'proof.txt',digest:digestBytes(proof)}]));
+  if(refusal==='missing-source')files['response-4.sse'].path='missing.txt';
+  if(refusal==='conflicting-digest')files['response-4.sse'].digest='c'.repeat(64);
+  const profile=JSON.stringify({version:1,models:[{model:'gpt-6-astra',files}]});writeFileSync(join(root,'profile.json'),profile);
+  h.observer={version:1,profile:{path:'profile.json',digest:digestBytes(profile)},authMode:'chatgpt',maxRequests:40,maxRequestsPerInvocation:10,maxBytes:1048576,requestTimeoutMs:60000};
+  const path=join(root,'handoff.json');writeFileSync(path,JSON.stringify(h));
+  assert.throws(()=>directionRunner.createDirectionEvaluation({repository:repo,directory:join(root,'evaluation'),candidate:h.revisions.candidate,baseline:h.revisions.baseline,executionHandoff:path}),refusal==='conflicting-digest'?/conflicting source digest/:/confined|bound/);
+  assert.throws(()=>readFileSync(join(root,'evaluation/manifest.json')),{code:'ENOENT'});
+}));
 
 test('issue112 events preserve command output, opaque actions, unknown model and cached input subset',()=>{
   const raw=[{type:'thread.started',thread_id:'s'},{type:'item.completed',item:{id:'c',type:'command_execution',command:'cat file',aggregated_output:'exact\n',exit_code:0,status:'completed'}},
@@ -319,14 +357,39 @@ test('issue112 events preserve command output, opaque actions, unknown model and
   assert.equal(directionRunner.parseDirectionHostEvents(raw+'\nnull').eventsComplete,false);
 });
 
-async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false}={}) {
+async function syntheticObservedHost({args,model,tools,builtin,wrongBoundary}){
+  const {readFileSync,writeFileSync,readdirSync,mkdirSync}=await import('node:fs'),{dirname,join}=await import('node:path'),http=await import('node:http');
+  const state=process.env.CODEX_HOME,workspace=process.cwd(),artifact=dirname(args[args.indexOf('--output-schema')+1]),session=JSON.parse(readFileSync(join(artifact,'native-session.json')));
+  mkdirSync(join(state,'skills/.system/review-agent'),{recursive:true});writeFileSync(join(state,'skills/.system/review-agent/SKILL.md'),builtin);
+  const names=readdirSync(join(workspace,'.agents/skills')).sort();
+  const catalog=`<skills_instructions>\n### Skill roots\n- \`r0\` = \`${join(workspace,'.agents/skills')}\`\n- \`r1\` = \`${join(state,'skills/.system')}\`\n### Available skills\n${names.map(name=>`- ${name}: Synthetic selected skill. (file: r0/${name}/SKILL.md)`).join('\n')}\n</skills_instructions>`;
+  const provider=args.find(arg=>arg.startsWith('model_providers.afk-observed=')),base=JSON.parse(provider.match(/base_url=("(?:[^"\\]|\\.)*")/)[1]);
+  const status=await new Promise((resolve,reject)=>{const request=http.request(base+'/responses',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+process.env.AFK_OBSERVED_LOCAL_TOKEN}},response=>{response.resume();response.on('end',()=>resolve(response.statusCode));});request.on('error',reject);request.end(JSON.stringify({model,tools,input:[{role:'developer',content:catalog},{role:'user',content:'Synthetic source-isolated runner fixture; no actual host qualification.'}]}));});
+  if(status!==200)throw new Error('synthetic local collector refused');
+  const probe=join(dirname(artifact),session.ownerId,'protected/boundary.mjs'),quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
+  const command=wrongBoundary?'echo synthetic-probe':`/bin/zsh -c ${JSON.stringify('node '+quote(probe))}`;
+  writeFileSync(args[args.indexOf('--output-last-message')+1],JSON.stringify({ready:false,stageComplete:true,consumedCycles:0,findings:[],summary:'Synthetic observation only',checks:[]}));
+  console.log(JSON.stringify({type:'thread.started',thread_id:'synthetic-session-'+model}));
+  console.log(JSON.stringify({type:'item.completed',item:{id:'boundary',type:'command_execution',command,exit_code:0,aggregated_output:JSON.stringify({outsideReadDenied:true,outsideWriteDenied:true,networkDenied:true,environmentClean:true,supportVisibility:true,scorerReadDenied:true,evaluatorReadDenied:true,gitNodeAllowed:true})}}));
+  console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:9999,output_tokens:9999}}));
+}
+async function prepared112(root,{main=[],controls=[],status='authorized',unknownUsage=false,retainUnknown=false,controlledHost=true,qualificationCondition='pending',sliceMs,auditorCondition='controlled',inspectionFailure=null,observeResume=false,catalogFixture=false,observedHost=false,wrongBoundary=false,baselineAbsentControls=false,uncapped=false}={}) {
   const {execFileSync}=await import('node:child_process'),{copyFileSync}=await import('node:fs'),{digestBytes}=await import('../lib/gate/review-receipt.mjs');
   const source=join(root,'source');mkdirSync(source);fixtureGit(source,['init','--template=','-q','-b','synthetic']);
-  const files=execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&(supportVisible(p)||['scripts/evaluate-agent-behavior.mjs','lib/evaluation/scenarios.mjs'].includes(p)));
+  const files=[...new Set([...execFileSync('git',['ls-files','-z'],{cwd:repo,encoding:'utf8'}).split('\0').filter(p=>p&&supportVisible(p)),...EVALUATOR_RUNTIME_FILES])];
   for(const p of files){mkdirSync(join(source,p,'..'),{recursive:true});copyFileSync(join(repo,p),join(source,p));}
   const modulePath=join(source,'scripts/evaluate-agent-behavior.mjs');
   if(controlledHost){const original="const HOST_OBSERVATION_READER = () => ({status:'unavailable',reason:'unsupported-current-host-inventory'});",replacement="const HOST_OBSERVATION_READER = (directory,slot) => {const path='artifacts/'+slot.id+'/controlled-inventory.json';return {status:'observed',reference:{path,digest:digestBytes(readFixtureFile(directory,join(directory,path)))}};};";
     const text=readFileSync(modulePath,'utf8');assert.equal(text.split(original).length,2);writeFileSync(modulePath,text.replace(original,replacement));}
+  if(catalogFixture){let text=readFileSync(modulePath,'utf8');const marker="if(trial.scenarioId==='D6')await seedExhaustedDirection";assert.equal(text.split(marker).length,2);text=text.replace('import { verifyNativeCatalog }','import { provisionNativeCatalog, verifyNativeCatalog }').replace(marker,"fixture.nativeCatalog=provisionNativeCatalog({workspace:fixture.directory,support});"+marker);writeFileSync(modulePath,text);}
+  const nativeTools=[{type:'namespace',name:'functions',tools:[{type:'custom',name:'exec',format:{type:'text'}}]}],nativeBuiltin='Synthetic hidden builtin.\n';
+  if(observedHost){
+    const declarationDigest=nativeDeclarationDigest(decodeNativeRequest(Buffer.from(JSON.stringify({model:'gpt-6-astra',tools:nativeTools,input:[]})),{maxBytes:1048576}));
+    const path=join(source,'lib/evaluation/observed-execution.mjs'),text=readFileSync(path,'utf8'),a=text.indexOf('export function loadObserverProfile('),b=text.indexOf('export function campaignObserverProfile(',a);
+    assert.ok(a>0&&b>a);writeFileSync(path,text.slice(0,a)+`export function loadObserverProfile({observer}){return {version:1,digest:observer.profile.digest,identity:{version:'synthetic-test-host',digest:'${'d'.repeat(64)}'},models:[{model:'gpt-6-astra',declarationDigest:'${declarationDigest}',builtinSources:{'review-agent/SKILL.md':'${digestBytes(nativeBuiltin)}'}}]};}\n`+text.slice(b));
+    const hostPath=join(source,'lib/evaluation/native-host.mjs'),host=readFileSync(hostPath,'utf8'),start=host.indexOf('export function nativeHostIdentity('),end=host.indexOf('function requireCatalog(',start);
+    assert.ok(start>0&&end>start);writeFileSync(hostPath,host.slice(0,start)+`export function nativeHostIdentity(){return {version:'synthetic-test-host',digest:'${'d'.repeat(64)}'};}\n`+host.slice(end));
+  }
   const audit=await import(new URL('file://'+join(source,'lib/direction/audit.mjs'))),profile=audit.profileFingerprint();
   const d='a'.repeat(64),qualified={version:1,status:'qualified',profileDigest:profile.digest,proof:{profile:profile.profile,request:{digest:d,profileDigest:profile.digest,systemDigest:profile.profile.promptDigest,messageRoles:['system','user'],toolsPresent:false},response:{artifactDigest:d,wireDigest:d,envelope:{model:audit.CANDIDATE.model,finishReason:'stop',toolCallsPresent:false}},result:{digest:d,packetDigest:d,phase:'endpoint',outcome:'COMPLETE',coverageEvidenceDigest:d},review:{reportPath:'docs/evaluations/synthetic-owned-test.md',reportDigest:d,executionRevision:'a'.repeat(40),evidenceSetDigest:d}}};
   const {canonicalBytes}=await import('../lib/gate/review-receipt.mjs');writeFileSync(join(source,'lib/direction/qualification.json'),canonicalBytes(qualificationCondition==='qualified'?qualified:{version:1,status:'pending',profileDigest:profile.digest,proof:null}));
@@ -335,12 +398,21 @@ async function prepared112(root,{main=[],controls=[],status='authorized',unknown
   const resumeInspection=observeResume?`if(args.includes('resume')&&input.includes(' and its complete evidence')){const {dirname,resolve}=await import('node:path'),path=input.split('Inspect ')[1].split(' and its complete evidence')[0],record={prompt:input,path};try{record.index=readFileSync(path,'utf8');record.sources=Object.fromEntries([...record.index.matchAll(/\\[.*?\\]\\(([^)]+)\\)/g)].map(match=>[match[1],readFileSync(resolve(dirname(path),match[1])).toString('base64')]));}catch(error){record.readError=error.code||error.message;}writeFileSync(${JSON.stringify(join(root,'resume-inspection.json'))},JSON.stringify(record));}`:'';
   const script=join(root,'host.mjs'),binary=join(root,'host.sh');writeFileSync(script,`import {readFileSync,writeFileSync} from 'node:fs';import{spawnSync}from'node:child_process';const args=process.argv.slice(2),input=readFileSync(0,'utf8');if(args[0]==='sandbox'){const n=args.indexOf('-C');${inspectionInjection}const r=spawnSync(args[n+2],args.slice(n+3),{cwd:args[n+1],input,encoding:'utf8'});process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1)}${resumeInspection}const model=args[args.indexOf('--model')+1];writeFileSync(args[args.indexOf('--output-last-message')+1],JSON.stringify({ready:false,stageComplete:true,consumedCycles:0,findings:[],summary:'Synthetic observation only',checks:[]}));console.log(JSON.stringify({type:'thread.started',thread_id:'synthetic-session',model}));console.log(JSON.stringify({type:'item.completed',item:{id:'boundary',type:'command_execution',command:'node .afk/fixture-boundary-probe.mjs',exit_code:0,aggregated_output:JSON.stringify({outsideReadDenied:true,outsideWriteDenied:true,networkDenied:true,environmentClean:true,supportVisibility:true,scorerReadDenied:true,evaluatorReadDenied:true,gitNodeAllowed:true})}}));console.log(JSON.stringify({type:'turn.completed',usage:${unknownUsage?'{}':'{input_tokens:10,output_tokens:2}'}}));`);
   writeFileSync(binary,`#!/bin/sh\nexec '${process.execPath}' '${script}' "$@"\n`);chmodSync(binary,0o700);
-  const handoff=handoff112({main,controls,status,host:{...directionRunner.directionHostFingerprints(binary),version:'synthetic-test-host'}});
-  for(const key of ['baseline','candidate','evaluator'])handoff.revisions[key]=revision;handoff.auditor.revision=revision;handoff.auditor.profileDigest=profile.digest;handoff.auditor.condition=auditorCondition;handoff.inputs=runner.directionInputDigests();if(sliceMs!==undefined)handoff.bounds.sliceMs=sliceMs;
+  if(observedHost){const text=readFileSync(script,'utf8'),marker="const model=args[args.indexOf('--model')+1];";assert.equal(text.split(marker).length,2);
+    writeFileSync(script,text.replace(marker,marker+`await (${syntheticObservedHost.toString()})({args,model,tools:${JSON.stringify(nativeTools)},builtin:${JSON.stringify(nativeBuiltin)},wrongBoundary:${wrongBoundary}});process.exit(0);`));}
+  let baselineRevision=revision;
+  if(baselineAbsentControls){fixtureGit(source,['rm','-q','skills/afk/references/environment.md','scripts/direction-state.mjs']);writeFileSync(join(source,'skills/afk/SKILL.md'),'---\nname: afk\ndescription: Synthetic inline baseline.\n---\nInline baseline instructions.\n');baselineRevision=commit(source,'Synthetic unsupported baseline');fixtureGit(source,['checkout',revision,'--','.']);}
+  const handoff=handoff112({main,controls,status,retainUnknown,host:{...runner.directionHostFingerprints(binary,{observer:observedHost}),version:'synthetic-test-host'}});
+  if(observedHost){const proof='{}';writeFileSync(join(root,'native-proof.txt'),proof);
+    const files=Object.fromEntries(nativeWitnessSourcePaths().map(path=>[path,{path:'native-proof.txt',digest:digestBytes(proof)}]));
+    const profile=JSON.stringify({version:1,models:[{model:'gpt-6-astra',files}]});writeFileSync(join(root,'native-profile.json'),profile);
+    handoff.observer={version:1,profile:{path:'native-profile.json',digest:digestBytes(profile)},authMode:'chatgpt',maxRequests:40,maxRequestsPerInvocation:10,maxBytes:1048576,requestTimeoutMs:1000};}
+  for(const key of ['baseline','candidate','evaluator'])handoff.revisions[key]=revision;handoff.revisions.baseline=baselineRevision;handoff.auditor.revision=revision;handoff.auditor.profileDigest=profile.digest;handoff.auditor.condition=auditorCondition;handoff.inputs=runner.directionInputDigests();if(sliceMs!==undefined)handoff.bounds.sliceMs=sliceMs;
+  if(uncapped){handoff.bounds.totalMs=null;for(const key of ['plannedMaxMicrousd','inputTokens','outputTokens'])handoff.bounds.spend[key]=null;if(handoff.observer){handoff.observer.maxRequests=null;handoff.observer.maxRequestsPerInvocation=null;}}
   const authority='Synthetic fixture-driver authorization and budget for this exact bounded test; no actual model calls.\n';writeFileSync(join(root,'authority.md'),authority);
   for(const source of [handoff.authorization.source,handoff.budgetSource,handoff.bounds.spend.basis].filter(Boolean))source.ref.digest=digestBytes(authority);
   const input=join(root,'handoff.json');writeFileSync(input,JSON.stringify(handoff));const directory=join(root,'evaluation');
-  runner.createEvaluation({repository:source,directory,candidate:revision,baseline:revision,campaign:'issue112',executionHandoff:input});
+  runner.createEvaluation({repository:source,directory,candidate:revision,baseline:baselineRevision,campaign:'issue112',executionHandoff:input});
   return {directory,binary,handoff,revision,source,input,runner};
 }
 function qualify112Fixture(directory,handoff,ids) {
@@ -353,6 +425,32 @@ function qualify112Fixture(directory,handoff,ids) {
   writeFileSync(join(directory,'qualification.json'),JSON.stringify({version:2,provenance:'Synthetic unit-test judgment; not actual host evidence',models:[{modelKey:'ASTRA',host:handoff.models[0].host,observations}]}));
 }
 const require112Crypto=await import('node:crypto');
+
+function observedUpstreamFixture(t,{streamedCall=false,missingMedia=false}={}){
+  const prior=process.env.AFK_OBSERVED_UPSTREAM_BEARER;process.env.AFK_OBSERVED_UPSTREAM_BEARER='synthetic-owned-upstream';
+  t.after(()=>{if(prior===undefined)delete process.env.AFK_OBSERVED_UPSTREAM_BEARER;else process.env.AFK_OBSERVED_UPSTREAM_BEARER=prior;});
+  const calls=[];t.mock.method(https,'request',(url,options,callback)=>{
+    const request=new EventEmitter();request.destroy=()=>{};request.end=bytes=>{const body=JSON.parse(bytes);calls.push({model:body.model,url:String(url)});queueMicrotask(()=>{const response=new PassThrough();response.statusCode=200;response.headers=missingMedia?{}:{'content-type':'text/event-stream'};callback(response);response.end(witnessResponse({ordinal:streamedCall?1:2,model:body.model,script:'text(ALL_TOOLS)'}));});};return request;
+  });return calls;
+}
+test('issue113 source-isolated native first/resume and D6 use physical usage instead of CLI totals',t=>directionTemporary(async root=>{
+  const calls=observedUpstreamFixture(t),f=await prepared112(root,{observedHost:true,main:['M-D6-C-ASTRA-R1']});
+  for(const id of ['P112-A1','P112-A2'])await f.runner.runPrerequisite({directory:f.directory,id,codex:f.binary,execute:true});
+  const qualification=JSON.parse(readFileSync(join(f.directory,'qualification.json')));assert.equal(qualification.models[0].observations.length,2);
+  for(const id of ['P112-A1','P112-A2']){const result=JSON.parse(readFileSync(join(f.directory,'artifacts',id,'result.json')));assert.equal(result.nativeStatus,'observed');assert.equal(result.usage.input_tokens,1);assert.equal(result.internalProviderCalls,1);}
+  await f.runner.runTrialSlice({directory:f.directory,ids:['M-D6-C-ASTRA-R1'],codex:f.binary,execute:true});
+  const initial=JSON.parse(readFileSync(join(f.directory,'artifacts/M-D6-C-ASTRA-R1-author-1/result.json'))),resumed=JSON.parse(readFileSync(join(f.directory,'artifacts/M-D6-C-ASTRA-R1-author-resume/result.json')));
+  assert.equal(initial.nativeStatus,'observed');assert.equal(resumed.nativeStatus,'observed');assert.equal(resumed.sessionId,initial.sessionId);assert.equal(resumed.nativeSessionOwner,initial.nativeSessionOwner);
+  assert.equal(calls.length,4);assert.equal(readdirSync(join(f.directory,'physical')).length,4);assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,4);
+}));
+for(const changed of ['wrong-probe','changed-events'])test(`issue113 source-isolated ${changed} cannot grant native qualification or consume a second slot`,t=>directionTemporary(async root=>{
+  const calls=observedUpstreamFixture(t),f=await prepared112(root,{observedHost:true,wrongBoundary:changed==='wrong-probe'});
+  if(changed==='wrong-probe')await assert.rejects(f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true}),/boundary/);
+  else {await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});writeFileSync(join(f.directory,'artifacts/P112-A1/stdout.jsonl'),'{}\n');}
+  await assert.rejects(f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true}),/qualification|event/);
+  assert.equal(calls.length,1);assert.equal(readdirSync(join(f.directory,'physical')).length,1);
+  assert.equal(readdirSync(join(f.directory,'launches')).filter(name=>name.endsWith('.started.json')).length,1);
+}));
 
 test('issue112 prepared campaign and prerequisite pairs preserve unspent slots and duplicate accounting',()=>directionTemporary(async root=>{
   const f=await prepared112(root);assert.equal(f.runner.aggregateEvaluation(f.directory).rows.length,252);assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,0);
@@ -372,6 +470,17 @@ test('issue112 unknown usage consumes first slot and refuses another launch',()=
   const f=await prepared112(root,{unknownUsage:true});await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});
   await assert.rejects(f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true}),/unknown usage/);
   assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,1);assert.equal(f.runner.aggregateEvaluation(f.directory).prerequisites.find(p=>p.id==='P112-A2').consumed,false);
+}));
+
+test('issue113 retained unknown usage consumes the first slot without refusing the next launch',()=>directionTemporary(async root=>{
+  const f=await prepared112(root,{unknownUsage:true,retainUnknown:true});
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});
+  qualify112Fixture(f.directory,f.handoff,['P112-A1']);
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true});
+  const report=f.runner.aggregateEvaluation(f.directory);
+  assert.equal(report.hostLaunches,2);assert.equal(report.unknownLaunches,2);
+  assert.equal(report.prerequisites.find(p=>p.id==='P112-A1').consumed,true);
+  assert.equal(report.prerequisites.find(p=>p.id==='P112-A2').consumed,true);
 }));
 
 test('issue112 whole-tool and read controls never infer visibility from a command/path mention',()=>directionTemporary(async root=>{
@@ -438,7 +547,7 @@ test('F112-1 issue112 D6 exact resume locates complete retained source and allow
   assert.equal(f.runner.aggregateEvaluation(f.directory).auditAttempts,0);assert.equal(rows[0].deterministic,'fail');assert.ok(rows[0].issues.includes('repair-budget-conflict'));
 }));
 
-test('issue112 D9 exact generated history preserves IDs and reports unchanged request refusal before charge',()=>directionTemporary(async root=>{
+test('issue113 D9 exact generated history preserves IDs and prepares retained source bytes',()=>directionTemporary(async root=>{
   const original=createFixture({directory:join(root,'subject'),scenarioId:'S1'}),capture=directionRunner.captureMeasurementSources({workspace:original.directory,head:original.current});
   const m=directionRunner.materializeMeasurement({directory:join(root,'measurement'),trialId:'M-D9-C-ASTRA-R1',captureId:'audit-1',capture,task:directionRunner.directionTaskFor('D9'),provenance:'Inert original observation; no execution here.\n'});m.support=repo;
   directionRunner.initializeDirectionMeasurement(m);const first=await directionRunner.controlledMeasurementAudit(m,{auditId:'audit-1',phase:'initial',model:'gpt-6-astra',finding:true});
@@ -448,7 +557,9 @@ test('issue112 D9 exact generated history preserves IDs and reports unchanged re
   assert.equal(history.findings[0].finding.id,'MOCK-A6');assert.equal(history.findings.some(x=>x.finding.id==='DRIFT-A6'),false);
   const renamed=structuredClone(history);renamed.findings[0].finding.id='DRIFT-A6';
   assert.throws(()=>directionRunner.prepareMeasurementAudit(m,{auditId:'rename',phase:'endpoint',model:'gpt-6-astra',history:renamed}),/history_finding_mismatch/);
-  let second;try{second=directionRunner.prepareMeasurementAudit(m,{auditId:'audit-2',phase:'endpoint',model:'gpt-6-astra',history});assert.ok(second.requestBytes<=16384);}catch(error){assert.match(error.message,/profile_input_limit/);}
+  const second=directionRunner.prepareMeasurementAudit(m,{auditId:'audit-2',phase:'endpoint',model:'gpt-6-astra',history});
+  assert.ok(second.requestBytes>16384);assert.deepEqual(second.packet.history.findings,history.findings);
+  assert.equal(second.packet.history.audits.length,1);assert.deepEqual(second.packet.history.audits[0].evidence,first.packet.evidence);
   assert.equal(first.charged,1);
   assert.equal(readFileSync(join(run,packetPath),'utf8'),canonicalBytes(first.packet));
 }));
@@ -478,15 +589,29 @@ test('issue112 command interface rejects missing handoff and legacy handoff with
   }
 });
 
-test('issue112 D9 complete generated checkpoint sizing preserves refusals and two-author ceiling',()=>directionTemporary(async root=>{
+test('issue113 D9 complete generated checkpoints preserve two historical contexts and two-author ceiling',()=>directionTemporary(async root=>{
   const id='M-D9-C-ASTRA-R1',f=await prepared112(root,{main:[id]});
   await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1']);
   await f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1','P112-A2']);
   await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
   const observed=JSON.parse(readFileSync(join(f.directory,'trials',id,'observed.json')));
   assert.equal(observed.invocations.length,2);assert.equal(observed.invocations[1].resumedFrom,observed.invocations[0].sessionId);
-  assert.equal(observed.audits.length,3);assert.ok(observed.audits[0].requestBytes<=16384);
-  for(const audit of observed.audits.slice(1)){assert.equal(audit.status,'unavailable');assert.match(audit.reason,/profile_input_limit/);assert.equal(audit.attempted,false);assert.equal(audit.historyAudits,1);}
+  assert.equal(observed.audits.length,3);assert.ok(observed.audits[0].requestBytes>0);
+  assert.deepEqual(observed.audits.map(a=>a.historyAudits),[0,1,2]);
+  for(const [index,audit] of observed.audits.entries()){
+    assert.equal(audit.classification,'completed');assert.equal(audit.actualAuditorCalls,0);
+    if(index>0)assert.ok(audit.requestBytes>observed.audits[index-1].requestBytes);
+    const run=join(audit.measurement.cwd,'.afk/runs',audit.measurement.runId);
+    const packet=JSON.parse(readFileSync(join(run,'issues/synthetic/audits',audit.auditId,'packet.json')));
+    assert.equal(packet.history.audits.length,index);
+    for(const prior of observed.audits.slice(0,index)){
+      const priorPacket=JSON.parse(readFileSync(join(run,'issues/synthetic/audits',prior.auditId,'packet.json')));
+      const retained=packet.history.audits.find(row=>row.auditId===prior.auditId);
+      assert.deepEqual(retained.evidence,priorPacket.evidence);assert.deepEqual(retained.baseline,priorPacket.baseline);
+      assert.deepEqual(retained.target,priorPacket.target);
+      assert.deepEqual(packet.history.findings.filter(row=>row.auditId===prior.auditId).map(row=>row.finding),prior.result.findings);
+    }
+  }
   console.log('D112-1 exact generated checkpoints '+JSON.stringify(observed.audits.map(a=>({auditId:a.auditId,requestBytes:a.requestBytes??null,historyAudits:a.historyAudits??null,status:a.status??a.classification,reason:a.reason?.includes('profile_input_limit')?'profile_input_limit':null,actualAuditorCalls:a.actualAuditorCalls}))));
   assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,4);
 }));
@@ -591,6 +716,7 @@ test('I112-4 BOM source bytes survive capture and inert materialization',()=>tem
 
 test('I112-4 L1 prompt delivers complete BOM-bearing reference bytes',()=>temporary(root=>{
   const support=join(root,'support'),path='skills/afk/references/environment.md',bytes=Buffer.from('\ufeffComplete reference.\n');mkdirSync(join(support,'skills/afk/references'),{recursive:true});writeFileSync(join(support,path),bytes);
+  writeFileSync(join(support,'skills/afk/SKILL.md'),'Read [environment](references/environment.md).\n');
   const trial=direction.CONTROL_TRIALS.find(t=>t.caseId==='L1'),control=directionRunner.prepareControlFixture({trial,fixture:{},support:realpathSync(support),directory:root});
   const delivered=control.promptSuffix.split(`(${path}):\n`)[1].slice(0,-1);assert.deepEqual(Buffer.from(delivered),bytes);
   assert.equal(control.contextDelivery[0].digest,require112Crypto.createHash('sha256').update(bytes).digest('hex'));assert.equal(control.contextDelivery[0].complete,true);
@@ -611,4 +737,131 @@ for(const failure of ['actor','final','post-audit','seed'])test(`S112-5 retained
   }
   const entry=assertRetainedInspection(trialRoot,path,'invalid-utf8');assert.deepEqual(Buffer.from(entry.stdoutBase64,'base64'),Buffer.from([0xff]));assert.equal(Buffer.from(entry.stderrBase64,'base64').toString(),'retained-'+failure);assert.equal(entry.stdout,null);assert.equal(entry.code,0);
   assert.equal(f.runner.aggregateEvaluation(f.directory).hostLaunches,failure==='seed'?2:3);
+}));
+
+for(const path of ['lib/evaluation/host.mjs','lib/gate/protocol.mjs'])test(`observed evaluator rejects changed executed dependency ${path}`,()=>directionTemporary(async root=>{
+  const f=await prepared112(root),file=join(f.source,path);writeFileSync(file,readFileSync(file,'utf8')+'\n');
+  assert.throws(()=>f.runner.aggregateEvaluation(f.directory),/manifest inputs changed/);
+  const handoff={...f.handoff,inputs:f.runner.directionInputDigests()};writeFileSync(f.input,JSON.stringify(handoff));
+  assert.throws(()=>f.runner.createEvaluation({repository:f.source,directory:join(root,'other'),candidate:f.revision,baseline:f.revision,campaign:'issue112',executionHandoff:f.input}),/runner differs from evaluator revision/);
+}));
+
+for(const scenario of ['D6','D9'])test(`native catalog survives original ${scenario} capture and resume consumers`,()=>directionTemporary(async root=>{
+  const id=`M-${scenario}-C-ASTRA-R1`,f=await prepared112(root,{main:[id],catalogFixture:true});
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1']);
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A2',codex:f.binary,execute:true});qualify112Fixture(f.directory,f.handoff,['P112-A1','P112-A2']);
+  await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
+  const trial=join(f.directory,'trials',id),fixture=JSON.parse(readFileSync(join(trial,'fixture.json'))),observed=JSON.parse(readFileSync(join(trial,'observed.json')));
+  assert.ok(fixture.nativeCatalog.digest);assert.equal(observed.observationError,null);
+  const captures=readdirSync(join(trial,'captures')).filter(name=>{try{return readFileSync(join(trial,'captures',name,'source.json')).length>0;}catch{return false;}});
+  assert.ok(captures.length>=5);for(const name of captures)assert.equal(JSON.parse(readFileSync(join(trial,'captures',name,'source.json'))).catalogDigest,fixture.nativeCatalog.digest);
+  assert.equal(observed.invocations.length,2);assert.equal(observed.invocations[1].resumedFrom,observed.invocations[0].sessionId);
+}));
+test('native controls refuse absent selected capabilities before fixture mutation and retain L3 original bytes',()=>temporary(root=>{
+  const support=join(root,'support');mkdirSync(join(support,'skills/afk'),{recursive:true});writeFileSync(join(support,'skills/afk/SKILL.md'),'Inline baseline.\n');
+  for(const caseId of ['L1','L2','L3','L5']){
+    const trial=direction.CONTROL_TRIALS.find(t=>t.caseId===caseId),control=directionRunner.prepareControlFixture({trial,fixture:{directory:join(root,'not-allocated')},support:realpathSync(support),directory:root});
+    assert.equal(control.status,'unsupported');assert.equal(existsSync(join(root,'not-allocated')),false);
+  }
+  const path='skills/afk/references/environment.md';mkdirSync(join(support,'skills/afk/references'));writeFileSync(join(support,path),'Original selected environment.\n');
+  writeFileSync(join(support,'skills/afk/SKILL.md'),'Read [environment](references/environment.md).\n');
+  const trial=direction.CONTROL_TRIALS.find(t=>t.caseId==='L3'),control=directionRunner.prepareControlFixture({trial,fixture:{},support:realpathSync(support),directory:root});
+  assert.equal(control.status,'supported');assert.equal(existsSync(join(control.support,path)),false);
+  assert.equal(control.sourcePlan.missingReference.digest,require112Crypto.createHash('sha256').update('Original selected environment.\n').digest('hex'));
+}));
+test('L4 captures complete standalone plan and L6 stages an actual local design preview',()=>temporary(root=>{
+  const fixture=direction.createDirectionFixture({directory:join(root,'workspace'),scenarioId:'D7'}),trial=direction.CONTROL_TRIALS.find(t=>t.caseId==='L6');
+  const control=directionRunner.prepareControlFixture({trial,fixture,support:repo,directory:root});
+  assert.equal(control.status,'supported');assert.match(control.promptSuffix,/--design docs\/plan.md --print-prompt/);
+  const capture=directionRunner.captureMeasurementSources({workspace:fixture.directory,head:fixture.current,includePlan:true});
+  assert.equal(capture.files['docs/plan.md'],readFileSync(join(fixture.directory,'docs/plan.md'),'utf8'));assert.match(capture.files['docs/plan.md'],/A6/);
+}));
+test('native control aggregation binds behavior adjudication without erasing unknown loading or concrete failures',()=>directionTemporary(async root=>{
+  const id='C-L4-C-ASTRA',f=await prepared112(root,{controls:[id]}),base=join(f.directory,'trials',id);mkdirSync(base,{recursive:true});
+  const observation={requiredReads:[],reads:[],catalog:{kind:'native',complete:true},selectionEvidence:true,selectedSkill:'afk-spec-planner',nativeOrder:{kind:'native',status:'unobserved'},behaviorEvidence:false,behaviorPass:false,semanticEligible:true};
+  const source=join(base,'control-observation.json');writeFileSync(source,JSON.stringify(observation));
+  const path=join(base,'observed.json');writeFileSync(path,JSON.stringify({invocations:[],audits:[],controlObservation:{path:'control-observation.json',digest:digestBytes(readFileSync(source))}}));
+  writeFileSync(join(base,'result.json'),JSON.stringify(direction.scoreControl({trial:direction.CONTROL_TRIALS.find(row=>row.id===id),observation})));
+  writeFileSync(join(base,'adjudication.json'),JSON.stringify({verdict:'pass',evidence:'Independent synthetic judgment bound to retained original source.',observedDigest:digestBytes(readFileSync(path))}));
+  let row=f.runner.aggregateDirectionEvaluation(f.directory).rows.find(row=>row.id===id);assert.equal(row.behavior,'pass');assert.equal(row.loading,'unobserved');assert.equal(row.deterministic,'unobserved');
+  writeFileSync(source,JSON.stringify({...observation,behaviorEvidence:true,behaviorPass:false}));
+  row=f.runner.aggregateDirectionEvaluation(f.directory).rows.find(row=>row.id===id);assert.notEqual(row.behavior,'pass');assert.equal(row.semantic,'unverified');
+  writeFileSync(path,JSON.stringify({invocations:[],audits:[],controlObservation:{path:'control-observation.json',digest:digestBytes(readFileSync(source))}}));
+  writeFileSync(join(base,'adjudication.json'),JSON.stringify({verdict:'pass',evidence:'Synthetic unchanged positive assertion cannot cure a concrete failure.',observedDigest:digestBytes(readFileSync(path))}));
+  row=f.runner.aggregateDirectionEvaluation(f.directory).rows.find(row=>row.id===id);assert.equal(row.behavior,'fail');assert.equal(row.deterministic,'fail');
+}));
+test('unsupported baseline controls keep their rows without a prerequisite, author or measurement allocation',()=>directionTemporary(async root=>{
+  const controls=['C-L1-B-ASTRA','C-L5-B-ASTRA'],f=await prepared112(root,{controls,baselineAbsentControls:true});
+  const rows=await f.runner.runTrialSlice({directory:f.directory,ids:controls,codex:f.binary,execute:true});
+  assert.equal(rows.length,2);assert.ok(rows.every(row=>row.deterministic==='unsupported'));
+  for(const id of controls){assert.equal(existsSync(join(f.directory,'trials',id,'workspace')),false);assert.equal(existsSync(join(f.directory,'trials',id,'measurement')),false);}
+  const aggregate=f.runner.aggregateDirectionEvaluation(f.directory);assert.equal(aggregate.hostLaunches,0);assert.equal(aggregate.rows.length,252);
+  assert.ok(controls.every(id=>aggregate.rows.find(row=>row.id===id).deterministic==='unsupported'));
+}));
+test('native control producer rechecks wire and catalog sources without treating CLI path hints as selection',async t=>directionTemporary(async root=>{
+  observedUpstreamFixture(t,{streamedCall:true,missingMedia:true});const id='C-F01-C-ASTRA',f=await prepared112(root,{controls:[id],observedHost:true});
+  for(const prerequisite of ['P112-A1','P112-A2'])await f.runner.runPrerequisite({directory:f.directory,id:prerequisite,codex:f.binary,execute:true});
+  const [result]=await f.runner.runTrialSlice({directory:f.directory,ids:[id],codex:f.binary,execute:true});
+  assert.equal(result.selection,'unqualified');assert.equal(result.loading,'unobserved');assert.equal(result.behavior,'unobserved');
+  const observation=JSON.parse(readFileSync(join(f.directory,'trials',id,'control-observation.json')));
+  assert.equal(observation.nativeSourceQualified,true);assert.ok(observation.sourceEvidence.length>=5);assert.ok(observation.reasons.some(reason=>/No complete native skill/.test(reason)));
+  assert.match(observation.nativeOrder.reason,/parentage/);assert.equal(observation.nativeOrder.status,'unobserved');
+  const terminalRef=observation.sourceEvidence.find(ref=>ref.path.endsWith('-terminal.json'));assert.ok(terminalRef);
+  const terminalPath=join(f.directory,terminalRef.path),original=readFileSync(terminalPath),terminal=JSON.parse(original);
+  assert.equal(terminal.observation.response.output.length,0);assert.equal(terminal.responseMetadata.contentType,null);
+  assert.equal(terminal.observation.interpretation,'body-validated-sse');terminal.responseMetadata.contentType='application/json';
+  writeFileSync(terminalPath,JSON.stringify(terminal));
+  const fixture=JSON.parse(readFileSync(join(f.directory,'trials',id,'fixture.json'))),observed=JSON.parse(readFileSync(join(f.directory,'trials',id,'observed.json')));
+  assert.throws(()=>f.runner.nativeControlObservation({directory:realpathSync(f.directory),manifest:JSON.parse(readFileSync(join(f.directory,'manifest.json'))),
+    trial:direction.CONTROL_TRIALS.find(row=>row.id===id),fixture,support:fixture.control.support,invocations:observed.invocations,codex:f.binary}),/unqualified/);
+  writeFileSync(terminalPath,original);
+}));
+
+
+test('new observed handoff can omit cost, token, request and whole-campaign caps', () => {
+  const h = handoff112({ main: ['M-D1-C-ASTRA-R1'], status: 'authorized' });
+  h.bounds.totalMs = null;
+  for (const key of ['plannedMaxMicrousd', 'inputTokens', 'outputTokens']) h.bounds.spend[key] = null;
+  h.observer = { version: 1, profile: { path: 'native/profile.json', digest: 'a'.repeat(64) },
+    authMode: 'chatgpt', maxRequests: null, maxRequestsPerInvocation: null, maxBytes: 1048576, requestTimeoutMs: 60000 };
+  const original = JSON.stringify(h);
+  assert.equal(directionRunner.validateExecutionHandoff(h), h);
+  assert.equal(JSON.stringify(h), original);
+  for (const change of [x => x.bounds.totalMs = -1, x => x.bounds.spend.inputTokens = 'unlimited',
+    x => x.bounds.spend.outputTokens = Infinity, x => x.bounds.invocationMs = null, x => x.observer.requestTimeoutMs = null]) {
+    const invalid = structuredClone(h); change(invalid);
+    assert.throws(() => directionRunner.validateExecutionHandoff(invalid), /handoff/);
+  }
+});
+
+
+test('uncapped campaign still executes prerequisites and confined inspections with finite per-call cancellation',()=>directionTemporary(async root=>{
+  const f=await prepared112(root,{uncapped:true});
+  await f.runner.runPrerequisite({directory:f.directory,id:'P112-A1',codex:f.binary,execute:true});
+  const result=JSON.parse(readFileSync(join(f.directory,'artifacts/P112-A1/result.json')));
+  assert.equal(result.status,'completed');assert.equal(result.cleanup,true);assert.equal(result.sessionId,'synthetic-session');
+  const fixture=direction.createDirectionFixture({directory:join(root,'inspection'),scenarioId:'D1'});
+  const inspected=await f.runner.inspectCommand({workspace:fixture.directory,support:f.source,codex:f.binary,execution:{deadline:Infinity,graceMs:50}},process.execPath,['-e',"process.stdout.write('complete')"]);
+  assert.equal(inspected.stdout,'complete');assert.equal(inspected.cleanup,true);
+}));
+
+test('original numeric authority remains distinct from appended explanatory prose and later ledger accounting',()=>temporary(root=>{
+  const fixture=direction.createDirectionFixture({directory:join(root,'subject'),scenarioId:'D1'});
+  const path=join(fixture.directory,'.afk/runs/trial/ledger.md'),original=readFileSync(path,'utf8'),expected=directionRunner.readOriginalAuthority(fixture.directory);
+  assert.deepEqual({allowance:expected.allowance,consumed:expected.consumed,lines:expected.lines},{allowance:2,consumed:0,lines:{allowance:1,consumed:1}});
+  writeFileSync(path,original+'\n## Verification\nAllowance: two, from the retained request; consumed remains zero.\n');
+  assert.deepEqual(directionRunner.readOriginalAuthority(fixture.directory),expected);
+  // An actual author appended a cycle record with its own consumed line; the last numeric line is the current accounting.
+  writeFileSync(path,original+'\n## Cycle 1\nconsumed: 1\n');
+  const updated=directionRunner.readOriginalAuthority(fixture.directory);
+  assert.deepEqual({allowance:updated.allowance,consumed:updated.consumed,original:updated.original,lines:updated.lines},{allowance:2,consumed:1,original:{allowance:2,consumed:0},lines:{allowance:1,consumed:2}});
+  assert.equal(direction.preservedRunAuthority(expected,updated),true);
+  writeFileSync(path,original+'\nAllowance: 3\n');assert.equal(directionRunner.readOriginalAuthority(fixture.directory).allowance,3);
+  assert.equal(direction.preservedRunAuthority(expected,directionRunner.readOriginalAuthority(fixture.directory)),false);
+  writeFileSync(path,original+'\nconsumed: 5\n');assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority invalid/);
+  writeFileSync(path,original+'\nstate: complete\nrun-id: hijacked\n');
+  const mutated=directionRunner.readOriginalAuthority(fixture.directory);assert.equal(mutated.runId,'hijacked');assert.equal(mutated.state,'complete');
+  assert.equal(direction.preservedRunAuthority(expected,mutated),false);
+  writeFileSync(path,original.replace('allowance: 2','allowance: unknown'));
+  assert.throws(()=>directionRunner.readOriginalAuthority(fixture.directory),/authority/);
 }));

@@ -81,9 +81,10 @@ pending, stale or unavailable qualification leaves required work OUTSTANDING.
 The actual auditor must differ from all artifact authors. Unknown authors are
 unavailable, and no automatic provider fallback or additional PR role is added.
 
-The profile uses a fresh two-message stateless request with no tools or history,
+The profile uses a fresh two-message stateless request with no tools or external
+session history; relevant prior audit contexts remain inside the packet,
 exact DeepSeek Flash alias and thinking disabled. Its full serialized request cap
-is 16KiB, output cap 8192 tokens, response cap 128KiB and HTTP timeout 120 seconds;
+is 1MiB, aggregate packet cap 256KiB, output cap 8192 tokens, response cap 128KiB and HTTP timeout 120 seconds;
 the driver supplies a 150-second process watchdog. Oversized full intent/evidence
 refuses with `profile_input_limit`. Do not truncate, compress, omit sources or
 combine partial packets while claiming full coverage. A different mode, prompt,
@@ -125,9 +126,9 @@ Keep model findings immutable and separate from driver dispositions. Use
 [review convergence](review-convergence.md) to admit corrections and reserve the
 existing shared repair allowance before edits. Findings do not authorize scope
 expansion, destructive rollback or extra model calls. Intent changes require the
-existing sourced baseline successor. Default four attempts cover initial,
-endpoint and two repaired endpoints without retry headroom; every reservation
-remains charged.
+existing sourced baseline successor. An unset attempt cap does not remove
+convergence checks or authorize repetitive calls without a new question or
+corrective action; every reservation remains charged.
 
 For prior findings, supply the original audit ID and retained packet/result
 references in the preparation history. The helper verifies the recorded attempt,

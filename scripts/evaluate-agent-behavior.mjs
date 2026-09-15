@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
 import { redactCredential } from '../lib/secret.mjs';
-import { parseLedger } from '../lib/resume/detect.mjs';
 import { shape, equal, contentDigest } from '../lib/direction/schema.mjs';
 import { DIRECTION_VERSION, DIRECTION_LIMITS, DIRECTION_TASK, DIRECTION_SCENARIOS, DIRECTION_TRIALS, CONTROL_TRIALS,
   ADVERTISED_FORMS, ADVERTISED_CONTROLS, LOADING_CONTROLS, AUTHOR_MODELS, PREREQUISITES, BATCH_ACCEPTANCE, DIRECTION_DECISION_SCHEMA,
@@ -14,15 +13,19 @@ import { DIRECTION_VERSION, DIRECTION_LIMITS, DIRECTION_TASK, DIRECTION_SCENARIO
 import { ACCEPTANCE, DECISION_SCHEMA, FIXTURE_VERSION, LIMITS, SCENARIOS, TASK, TRIALS,
   advanceStaleFixture, assertFixtureDirectory, readFixtureFile, createFixture, fixtureEnv, fixtureGit, scoreTrial, snapshotFixture } from '../lib/evaluation/scenarios.mjs';
 
+import { EVALUATION_PATH, FEATURES, hostArguments, permissionArgs, runBounded, shellEnvironmentArgs, toolEnvironment } from '../lib/evaluation/host.mjs';
+import { BOUNDARY_FIELDS, nativeBoundaryEvidence } from '../lib/evaluation/native-witness.mjs';
+import { evaluatorRuntime } from '../lib/evaluation/runtime.mjs';
+import { campaignUsage, countableLaunchUsage, strictEvaluationJson as strictJson, validateObserver, observerProfileReferences, loadObserverProfile, campaignObserverProfile,
+  openObservedCollector, prepareObservedSession, observedPhysicalUsage, readObservedInvocation } from '../lib/evaluation/observed-execution.mjs';
+import { controlSourcePlan, observeNativeControl, observeControlBehavior } from '../lib/evaluation/native-control.mjs';
+import { decodeNativeRequest, decodeNativeResponse, nativeResponseItems, checkNativeRelease, NATIVE_RESPONSE_ROUTES } from '../lib/evaluation/native-wire.mjs';
+import { nativeHostIdentity, provisionNativeCatalog, verifyNativeCatalog } from '../lib/evaluation/native-host.mjs';
+export { hostArguments, runBounded } from '../lib/evaluation/host.mjs';
+
 const BASELINE = 'f56361f40e7fcdcae602d08739bc3e928d4d57d7';
-// Xcode's Git avoids the system shim's denied global discovery cache.
-const GIT_DIRECTORIES = process.platform === 'darwin'
-  ? ['/Applications/Xcode.app/Contents/Developer/usr/bin','/Library/Developer/CommandLineTools/usr/bin'].filter((path)=>existsSync(join(path,'git'))) : [];
-const EVALUATION_PATH = [...GIT_DIRECTORIES,'/usr/bin','/bin','/usr/sbin','/sbin',dirname(process.execPath)].join(':');
 const REPORT = 'docs/evaluations/issue-98-pilot.md';
 const DIRECTION_REPORT = 'docs/evaluations/issue-113-pilot.md';
-const FEATURES = ['multi_agent','apps','plugins','hooks','computer_use','browser_use','image_generation',
-  'remote_plugin','skill_mcp_dependency_install','workspace_dependencies','goals','unbounded_connection_retries'];
 const immutable = (revision) => /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision || '');
 function put(path, value, { exclusive = false } = {}) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
@@ -81,47 +84,6 @@ export function verifyReportCarryforward({ repository, implementation, reportHea
 
 function decodeOriginalUtf8(bytes) { return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes); }
 
-export function runBounded(command, args, { cwd, env = process.env, input = '', timeoutMs = LIMITS.invocationMs,
-  maxBytes = LIMITS.outputBytes, graceMs = LIMITS.graceMs, signal, strictBytes = false, deadline } = {}) {
-  if(deadline!==undefined){requireEvaluation(Number.isFinite(deadline)&&deadline-Date.now()>2*graceMs&&timeoutMs>0,'execution deadline exhausted');timeoutMs=Math.min(timeoutMs,deadline-Date.now()-2*graceMs);}
-  if (process.platform === 'win32') throw new Error('this bounded pilot requires POSIX process groups');
-  return new Promise((done) => {
-    const start = Date.now(); let status = 'completed', code = null, childSignal = null, count = 0, finishing = false;
-    let stdout = Buffer.alloc(0), stderr = Buffer.alloc(0);
-    const child = spawn(command, args, { cwd, env, detached: true, stdio: ['pipe','pipe','pipe'] });
-    const alive = () => { try { process.kill(-child.pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } };
-    const kill = (kind) => { if (!child.pid) return; try { process.kill(-child.pid, kind); } catch (error) { if (error.code !== 'ESRCH') status = 'cleanup-error'; } };
-    const finish = async () => {
-      if (finishing) return; finishing = true; clearTimeout(timer);
-      signal?.removeEventListener('abort', interrupt);
-      if (child.pid && alive()) {
-        kill('SIGTERM');
-        const until = Date.now() + graceMs;
-        while (alive() && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
-        if (alive()) kill('SIGKILL');
-        const reaped = Date.now() + graceMs;
-        while (alive() && Date.now() < reaped) await new Promise((r) => setTimeout(r, 10));
-      }
-      child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy();
-      let out=stdout.toString('utf8'),err=stderr.toString('utf8'),raw={};
-      if(strictBytes){let utf8Valid=true;try{out=decodeOriginalUtf8(stdout);err=decodeOriginalUtf8(stderr);}catch{utf8Valid=false;out=null;err=null;if(status==='completed')status='invalid-utf8';}
-        raw={stdoutBase64:stdout.toString('base64'),stderrBase64:stderr.toString('base64'),utf8Valid};}
-      done({ status, code, signal: childSignal, cleanup: !child.pid || !alive(),stdout:out,stderr:err,...raw,bytes:count,durationMs:Date.now()-start });
-    };
-    const collect = (which, data) => {
-      const kept = data.subarray(0, Math.max(0, maxBytes - count)); count += data.length;
-      if (which === 'stdout') stdout = Buffer.concat([stdout, kept]); else stderr = Buffer.concat([stderr, kept]);
-      if (count > maxBytes && !finishing) { status = 'output-limit'; void finish(); }
-    };
-    const interrupt = () => { if (!finishing) { status = 'interrupted'; void finish(); } };
-    const timer = setTimeout(() => { status = 'timeout'; void finish(); }, timeoutMs);
-    child.stdout.on('data', (data) => collect('stdout', data)); child.stderr.on('data', (data) => collect('stderr', data));
-    child.on('error', (error) => { status = error.code === 'ENOENT' ? 'unavailable' : 'spawn-error'; void finish(); });
-    child.on('exit', (value, sig) => { code = value; childSignal = sig; void finish(); });
-    child.stdin.on('error', () => {}); child.stdin.end(input);
-    signal?.addEventListener('abort', interrupt, { once: true }); if (signal?.aborted) interrupt();
-  });
-}
 export function parseHostEvents(raw) {
   let sessionId = null, complete = false, malformed = false, failed = false;
   const usage = {}, productEdits = [], commands = [];
@@ -142,27 +104,6 @@ export function parseHostEvents(raw) {
   }
   return { sessionId, eventsComplete: complete && !malformed && !failed, failed, usage, productEdits: [...new Set(productEdits)], commands };
 }
-function permissionArgs(support) {
-  const filesystem = { ':root':'deny', ':minimal':'read', ':tmpdir':'deny', ':slash_tmp':'deny',
-    ':workspace_roots': { '.git':'write' }, '/System/Library/OpenSSL/openssl.cnf':'read', [support]:'read' };
-  const toml = (value) => typeof value === 'object' ? `{${Object.entries(value).map(([k,v]) => `${JSON.stringify(k)}=${toml(v)}`).join(',')}}` : JSON.stringify(value);
-  return ['-c','permissions.afk-eval.extends=":workspace"','-c',`permissions.afk-eval.filesystem=${toml(filesystem)}`,
-    '-c','permissions.afk-eval.network.enabled=false'];
-}
-function shellEnvironmentArgs(toolEnv) {
-  return ['-c',`shell_environment_policy={inherit="none",ignore_default_excludes=false,set={${Object.entries(toolEnv).map(([k,v]) => `${JSON.stringify(k)}=${JSON.stringify(v)}`).join(',')}},filters={${Object.keys(toolEnv).map((key)=>`${JSON.stringify(key)}="include"`).join(',')}}}`,'-c','allow_login_shell=false'];
-}
-export function hostArguments({ support, schema, lastMessage, model, resume, toolEnv = {} }) {
-  if (!['gpt-6-astra','gpt-5.6-sol'].includes(model)) throw new Error('model is outside the frozen pilot');
-  if (resume != null && (typeof resume !== 'string' || !resume || resume.startsWith('-'))) throw new Error('recorded session ID is required');
-  return ['exec', ...(resume ? ['resume'] : []), '--ignore-user-config','--ignore-rules','--json',
-    '--model',model,'--output-schema',schema,'--output-last-message',lastMessage,
-    '-c','model_reasoning_effort="medium"','-c','approval_policy="never"','-c','default_permissions="afk-eval"',
-    ...permissionArgs(support), ...FEATURES.flatMap((feature) => ['-c',`features.${feature}=false`]),
-    ...shellEnvironmentArgs(toolEnv),
-    ...(resume ? [resume] : []), '-'];
-}
-
 function localEnv(directory, binary) {
   const env = fixtureEnv({ PATH: EVALUATION_PATH, TMPDIR: join(directory,'.afk/tmp'), AFK_UPDATE_CHECK:'off' });
   return { ...env, CLAUDE_GATE_BIN: binary, CLAUDE_REVIEW_TIMEOUT_MS:'10000' };
@@ -270,7 +211,7 @@ export function createEvaluation({repository,directory,candidate,baseline=BASELI
   for(const [label,revision] of Object.entries({B:baseline,C:candidate})) supports[label]=exportSupport({repository,revision,directory:join(directory,'support',label)});
   const manifest={version:FIXTURE_VERSION,implementation:candidate,baseline,repository,behaviorFiles,limits:LIMITS,trials:TRIALS,
     support:supports,fixtureDigest:digestBytes(JSON.stringify({TASK,ACCEPTANCE,SCENARIOS,PROMPT})),
-    runnerDigest:digestBytes(readFileSync(fileURLToPath(import.meta.url))),
+    runnerDigest:evaluatorRuntime().digest,
     scenariosDigest:digestBytes(readFileSync(fileURLToPath(new URL('../lib/evaluation/scenarios.mjs',import.meta.url)))),
     createdAt:new Date().toISOString(),hostLaunches:0,paidCallsPerformedByPreparation:0};
   put(join(directory,'manifest.json'),manifest,{exclusive:true});
@@ -281,16 +222,10 @@ function loadEvaluation(directory) {
   if(manifest.campaign==='issue112')return loadDirectionEvaluation(directory);
   if(manifest.version!==FIXTURE_VERSION || canonicalBytes(manifest.limits)!==canonicalBytes(LIMITS)
     || canonicalBytes(manifest.trials)!==canonicalBytes(TRIALS)) throw new Error('evaluation manifest differs from frozen pilot');
-  if(manifest.runnerDigest!==digestBytes(readFileSync(fileURLToPath(import.meta.url)))
+  if(manifest.runnerDigest!==evaluatorRuntime().digest
     || manifest.scenariosDigest!==digestBytes(readFileSync(fileURLToPath(new URL('../lib/evaluation/scenarios.mjs',import.meta.url))))) throw new Error('tested runner bytes changed; select a new implementation snapshot');
   for(const [path,entry] of Object.entries(manifest.behaviorFiles)) if(entry.mode!=='120000' && digestBytes(readFileSync(join(manifest.repository,path)))!==entry.digest) throw new Error('behavior-relevant working bytes changed');
   return manifest;
-}
-function toolEnvironment(workspace) {
-  assertFixtureDirectory(workspace);
-  const absent=readFixtureFile(workspace,join(workspace,'.afk/absent-prerequisite'),{missing:true}).length>0;
-  return fixtureEnv({PATH:EVALUATION_PATH,TMPDIR:join(workspace,'.afk/tmp'),AFK_UPDATE_CHECK:'off',
-    CLAUDE_GATE_BIN:join(workspace,'.afk',absent?'absent-claude':'fixture-cli.sh')});
 }
 function verifySupport(directory,manifest,label) {
   const root=join(directory,'support',label), expected=manifest.support[label].files;
@@ -318,12 +253,13 @@ function remainingWall(directory,cap) {
   const started=launches(directory).map((name)=>Date.parse(json(join(directory,'launches',name)).startedAt));
   return Math.max(1,Math.min(cap,LIMITS.totalMs-(Date.now()-Math.min(...started))));
 }
-async function invokeHost({directory,id,workspace,support,model,prompt,resume,timeoutMs,codex,signal,campaignManifest,execution:budget}) {
+export async function invokeHost({directory,id,workspace,support,model,prompt,resume,timeoutMs,codex,signal,campaignManifest,execution:budget,nativeCatalog,resumeParentId}) {
   if(campaignManifest){budget??=directionBudget(directory,campaignManifest);remainingExecution(budget,timeoutMs);}
   if(campaignManifest)reserveDirectionLaunch(directory,campaignManifest,id,id.startsWith('P112-')?'prerequisite':'author',budget);
   else reserveLaunch(directory,id);
+  if(campaignManifest)budget={...budget,deadline:Math.min(budget.deadline,Date.now()+timeoutMs)};
   const root=join(directory,'artifacts',id);
-  let execution=null, decision=null;
+  let execution=null, decision=null, observed=null;
   let result={status:'incomplete',code:null,signal:null,cleanup:false,durationMs:0,sessionId:null,eventsComplete:false,
     usage:{},productEdits:[],commands:[],resumedFrom:resume??null,requestedModel:model,observedModel:null,
     modelVerification:'unknown',internalProviderCalls:null,externalReviewerWaitMs:0,
@@ -334,9 +270,10 @@ async function invokeHost({directory,id,workspace,support,model,prompt,resume,ti
     mkdirSync(root,{recursive:true,mode:0o700});
     const schema=join(root,'schema.json'), lastMessage=join(root,'last-message.json');
     put(schema,campaignManifest?DIRECTION_DECISION_SCHEMA:DECISION_SCHEMA); put(join(root,'prompt.txt'),prompt);
-    const args=hostArguments({support,schema,lastMessage,model,resume,toolEnv:toolEnvironment(workspace)});
+    if(campaignManifest?.handoff.observer)observed=await openObservedCollector({directory,id,workspace,support,model,catalog:nativeCatalog,manifest:campaignManifest,codex,deadline:budget.deadline,resume,priorId:resumeParentId});
+    const args=hostArguments({support,schema,lastMessage,model,resume,toolEnv:toolEnvironment(workspace),...(observed?{observer:observed.observer}:{})});
     put(join(root,'launch.json'),{id,args,workspace,model,effort:'medium',resumedFrom:resume??null});
-    execution=await runBounded(codex,args,{cwd:workspace,input:prompt,timeoutMs:campaignManifest?remainingExecution(budget,timeoutMs):remainingWall(directory,timeoutMs),signal,...(campaignManifest?{maxBytes:campaignManifest.handoff.bounds.outputBytes,graceMs:budget.graceMs,deadline:budget.deadline,strictBytes:true}:{})});
+    execution=await runBounded(codex,args,{cwd:workspace,input:prompt,timeoutMs:campaignManifest?remainingExecution(budget,timeoutMs):remainingWall(directory,timeoutMs),signal,...(observed?{env:observed.environment}:{}),...(campaignManifest?{maxBytes:campaignManifest.handoff.bounds.outputBytes,graceMs:budget.graceMs,deadline:budget.deadline,strictBytes:true}:{})});
     const {stdout: _stdout,stderr: _stderr,...processResult}=execution;
     result={...result,...processResult};
     if(campaignManifest){put(join(root,'stdout.raw'),Buffer.from(execution.stdoutBase64,'base64'));put(join(root,'stderr.raw'),Buffer.from(execution.stderrBase64,'base64'));}
@@ -348,6 +285,17 @@ async function invokeHost({directory,id,workspace,support,model,prompt,resume,ti
   } catch(error) {
     result={...result,status:'incomplete',eventsComplete:false,error:'invocation-observation-error'};
   } finally {
+    if(observed){
+      try{
+        const native=await observed.finish(),path=`artifacts/${id}/native-observation.json`;
+        result={...result,usage:native.usage??{},observedModel:native.observedModel,modelVerification:native.observedModel?'observed':'unknown',
+          internalProviderCalls:native.forwardedRequests,nativeReservations:native.physicalReservations,nativeObservation:{path,digest:digestBytes(readFixtureFile(directory,join(directory,path)))},
+          nativeStatus:native.status,nativeParentId:id,nativeSessionOwner:native.session.ownerId,cliEventsComplete:result.eventsComplete};
+        result.eventsComplete&&=native.status==='observed';if(native.status!=='observed'&&result.status==='completed')result.status='incomplete';
+        const last=native.exchanges.filter(row=>row.forwarded&&row.catalog).at(-1);
+        if(last)result.catalog=strictJson(readFixtureFile(directory,join(directory,last.catalog.path)));
+      }catch{result={...result,status:'incomplete',eventsComplete:false,usage:{},error:'native-observation-publication-error'};}
+    }
     put(join(root,'result.json'),{...result,decision});
     put(join(directory,'launches',`${id}.finished.json`),{id,status:result.status,cleanup:result.cleanup,durationMs:result.durationMs},{exclusive:true});
   }
@@ -360,7 +308,7 @@ export async function inspectCommand({workspace,support,codex='codex',signal,inp
   // The denied host temp alias must not become the permitted command temp root.
   const {TMPDIR: _commandTemp,...launcherEnv}=toolEnv;
   const result=await runBounded(codex,['sandbox','--permission-profile','afk-eval',...permissionArgs(support),...shellEnvironmentArgs(toolEnv),'-C',workspace,command,...args],
-    {cwd:workspace,env:launcherEnv,input,timeoutMs:execution?remainingExecution(execution,10000):10000,maxBytes,signal,strictBytes:strictBytes||!!execution,...(execution?{deadline:execution.deadline,graceMs:execution.graceMs}:{})});
+    {cwd:workspace,env:launcherEnv,input,timeoutMs:execution?remainingExecution(execution,10000):10000,maxBytes,signal,strictBytes:strictBytes||!!execution,...(execution?{deadline:Math.min(execution.deadline,Date.now()+10000),graceMs:execution.graceMs}:{})});
   if(result.status!=='completed' || !result.cleanup) {
     const error=new Error('sandboxed observation did not complete'); error.observation=result; throw error;
   }
@@ -573,17 +521,6 @@ async function main(argv) {
 
 
 function requireEvaluation(ok, reason) { if(!ok)throw new Error(`issue112 ${reason}`); }
-function strictJson(bytes) {
-  const text=typeof bytes==='string'?bytes:new TextDecoder('utf-8',{fatal:true}).decode(bytes);
-  const value=JSON.parse(text),tokens=text.match(/"(?:[^"\\]|\\.)*"|[{}\[\]:,]|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null/g)||[],stack=[];
-  for(let n=0;n<tokens.length;n++) {
-    if(tokens[n]==='{')stack.push(new Set());else if(tokens[n]==='[')stack.push(null);
-    else if(tokens[n]==='}'||tokens[n]===']')stack.pop();
-    else if(tokens[n+1]===':'&&stack.at(-1)){const key=JSON.parse(tokens[n]);requireEvaluation(!stack.at(-1).has(key),'duplicate JSON key');stack.at(-1).add(key);}
-    requireEvaluation(stack.length<=128,'JSON depth bound');
-  }
-  return value;
-}
 const evalId = value => typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value);
 const evalDigest = value => typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const count = value => Number.isSafeInteger(value)&&value>=0;
@@ -592,7 +529,8 @@ function evaluationRef(ref) { shape(ref,['path','digest']);requireEvaluation(saf
 function evaluationSource(source) {shape(source,['ref','startLine','endLine']);evaluationRef(source.ref);requireEvaluation(count(source.startLine)&&source.startLine>0&&count(source.endLine)&&source.endLine>=source.startLine,'handoff source lines');}
 export function validateExecutionHandoff(handoff) {
   try {
-    shape(handoff,['version','campaign','executionId','authorization','revisions','inputs','models','selected','prerequisites','observability','auditor','bounds','budgetSource']);
+    shape(handoff,['version','campaign','executionId','authorization','revisions','inputs','models','selected','prerequisites','observability','auditor','bounds','budgetSource',...(Object.hasOwn(handoff,'observer')?['observer']:[])]);
+    if(Object.hasOwn(handoff,'observer'))validateObserver(handoff.observer);
     requireEvaluation(handoff.version===1&&handoff.campaign==='issue112'&&evalId(handoff.executionId),'handoff identity');
     shape(handoff.authorization,['status','source']);requireEvaluation(['planned','authorized'].includes(handoff.authorization.status),'handoff authorization');
     if(handoff.authorization.source!==null)evaluationSource(handoff.authorization.source);
@@ -618,11 +556,16 @@ export function validateExecutionHandoff(handoff) {
     shape(handoff.auditor,['revision','profileDigest','qualification','condition']);requireEvaluation(immutable(handoff.auditor.revision)&&evalDigest(handoff.auditor.profileDigest)&&['live','controlled'].includes(handoff.auditor.condition),'handoff auditor');
     if(handoff.auditor.qualification!==null)evaluationRef(handoff.auditor.qualification);
     const b=handoff.bounds;shape(b,['prerequisiteMs','invocationMs','resumeMs','auditMs','sliceTrials','sliceMs','totalMs','outputBytes','graceMs','maxAuthorInvocations','maxPrerequisiteInvocations','maxAuditAttempts','spend']);
-    for(const key of ['prerequisiteMs','invocationMs','resumeMs','auditMs','sliceTrials','sliceMs','totalMs','outputBytes','graceMs'])requireEvaluation(count(b[key])&&b[key]>0,'handoff positive bound');
+    for(const key of ['prerequisiteMs','invocationMs','resumeMs','auditMs','sliceTrials','sliceMs','outputBytes','graceMs'])requireEvaluation(count(b[key])&&b[key]>0,'handoff positive bound');
+    requireEvaluation(b.totalMs===null||count(b.totalMs)&&b.totalMs>0,'handoff positive bound');
     requireEvaluation(b.outputBytes<=LIMITS.outputBytes&&b.graceMs<=LIMITS.graceMs&&b.sliceTrials<=LIMITS.sliceTrials,'handoff upper bound');
     requireEvaluation(b.maxAuthorInvocations===author&&author<=DIRECTION_LIMITS.maxAuthorInvocations&&b.maxPrerequisiteInvocations===slots.length&&b.maxAuditAttempts===audits&&audits<=DIRECTION_LIMITS.maxAuditAttempts,'handoff schedule counts');
     shape(b.spend,['currency','plannedMaxMicrousd','inputTokens','outputTokens','basis','unknownUsage']);
-    requireEvaluation(b.spend.currency==='USD'&&['plannedMaxMicrousd','inputTokens','outputTokens'].every(k=>count(b.spend[k]))&&b.spend.unknownUsage==='stop-before-next-launch','handoff spend');
+    const ceilings=['plannedMaxMicrousd','inputTokens','outputTokens'];
+    // Retaining unknown usage is accepted only where no ceiling exists to protect, so one aborted upstream
+    // stream cannot end a campaign that has no spend ceiling; any ceiling restores the stop.
+    requireEvaluation(b.spend.currency==='USD'&&ceilings.every(k=>b.spend[k]===null||count(b.spend[k]))
+      &&(b.spend.unknownUsage==='stop-before-next-launch'||b.spend.unknownUsage==='retain-and-continue'&&ceilings.every(k=>b.spend[k]===null)),'handoff spend');
     evaluationSource(b.spend.basis);evaluationSource(handoff.budgetSource);return handoff;
   }catch(error){throw new Error(`issue112 handoff invalid: ${error.message}`);}
 }
@@ -632,8 +575,10 @@ function strictText(root,path,options) {
 }
 function handoffSources(handoff,root,available=DIRECTION_LIMITS.handoffBytes) {
   const refs=[handoff.authorization.source?.ref,handoff.budgetSource.ref,handoff.bounds.spend.basis.ref,handoff.auditor.qualification].filter(Boolean),files={};let bytes=0;
-  for(const ref of refs){if(files[ref.path]!==undefined){requireEvaluation(digestBytes(files[ref.path])===ref.digest,'conflicting source digest');continue;}
-    const text=strictText(root,join(root,ref.path),{maxBytes:available-bytes});requireEvaluation(digestBytes(text)===ref.digest,'handoff source digest');files[ref.path]=text;bytes+=Buffer.byteLength(text);}
+  const add=ref=>{if(files[ref.path]!==undefined){requireEvaluation(digestBytes(files[ref.path])===ref.digest,'conflicting source digest');return files[ref.path];}
+    const text=strictText(root,join(root,ref.path),{maxBytes:available-bytes});requireEvaluation(digestBytes(text)===ref.digest,'handoff source digest');files[ref.path]=text;bytes+=Buffer.byteLength(text);return text;};
+  refs.forEach(add);
+  if(handoff.observer){const profile=strictJson(add(handoff.observer.profile));observerProfileReferences(profile,handoff.models.map(row=>row.model)).forEach(add);}
   for(const source of [handoff.authorization.source,handoff.budgetSource,handoff.bounds.spend.basis].filter(Boolean)){
     const text=files[source.ref.path];requireEvaluation(!redactCredential(text,'').count,'sensitive handoff source');requireEvaluation(source.endLine<=text.replace(/\n$/,'').split('\n').length,'handoff source line range');}
   requireEvaluation(bytes<=DIRECTION_LIMITS.handoffBytes,'handoff evidence bound');return {files,bytes};
@@ -644,18 +589,19 @@ export function directionInputDigests() {
   return {fixtureVersion:DIRECTION_VERSION,fixtureDigest:contentDigest(DIRECTION_SCENARIOS.map(s=>({scenario:s,files:directionFixtureFiles(s.id)}))),
     promptDigest:contentDigest({main:DIRECTION_PROMPT,resume:DIRECTION_RESUME_PROMPT,plan:PLAN_PROMPT,child:CHILD_PROMPT,driver:DRIVER_PROMPT,controls:CONTROL_TRIALS}),
     oracleDigest:digestBytes(readFileSync(fileURLToPath(new URL('../lib/evaluation/scenarios.mjs',import.meta.url)))),
-    exportPolicyDigest:digestBytes(supportVisible.toString()),runnerDigest:digestBytes(readFileSync(fileURLToPath(import.meta.url)))};
+    exportPolicyDigest:digestBytes(supportVisible.toString()),runnerDigest:evaluatorRuntime().digest};
 }
 export function createDirectionEvaluation({repository,directory,candidate,baseline,executionHandoff}) {
   requireEvaluation(typeof executionHandoff==='string'&&immutable(candidate)&&immutable(baseline),'execution handoff and explicit immutable baseline/candidate required');
   const inputRoot=realpathSync(dirname(resolve(executionHandoff))),inputPath=join(inputRoot,basename(executionHandoff)),raw=readFixtureFile(inputRoot,inputPath,{maxBytes:DIRECTION_LIMITS.handoffBytes});
   requireEvaluation(raw.length<=DIRECTION_LIMITS.handoffBytes,'handoff byte bound');const handoff=validateExecutionHandoff(strictJson(raw)),sources=handoffSources(handoff,inputRoot,DIRECTION_LIMITS.handoffBytes-raw.length);
   requireEvaluation(raw.length+sources.bytes<=DIRECTION_LIMITS.handoffBytes,'combined handoff evidence bound');
+  if(handoff.observer)loadObserverProfile({observer:handoff.observer,models:handoff.models.map(row=>row.model),readRef:ref=>sources.files[ref.path],codex:'codex'});
   requireEvaluation(handoff.revisions.candidate===candidate&&handoff.revisions.baseline===baseline,'handoff revision mismatch');
   requireEvaluation(equal(handoff.inputs,directionInputDigests()),'handoff input fingerprint mismatch');
   for(const sha of new Set([...Object.values(handoff.revisions),handoff.auditor.revision]))tree(repository,sha);
   const evaluatorTree=tree(repository,handoff.revisions.evaluator);
-  for(const path of ['scripts/evaluate-agent-behavior.mjs','lib/evaluation/scenarios.mjs'])requireEvaluation(evaluatorTree[path]&&digestBytes(gitBytes(repository,['cat-file','blob',evaluatorTree[path].object]))===digestBytes(readFileSync(fileURLToPath(new URL(`../${path}`,import.meta.url)))),'runner differs from evaluator revision');
+  for(const [path,digest] of Object.entries(evaluatorRuntime().files))requireEvaluation(evaluatorTree[path]&&['100644','100755'].includes(evaluatorTree[path].mode)&&digestBytes(gitBytes(repository,['cat-file','blob',evaluatorTree[path].object]))===digest,'runner differs from evaluator revision');
   mkdirSync(directory,{mode:0o700});directory=realpathSync(directory);repository=realpathSync(repository);
   put(join(directory,'execution-handoff.json'),handoff,{exclusive:true});
   for(const [path,bytes]of Object.entries(sources.files))put(join(directory,'sources',path),bytes,{exclusive:true});
@@ -679,14 +625,17 @@ function loadDirectionEvaluation(directory) {
   requireEvaluation(productOperation({cwd:directory,support:join(directory,'support/M'),operation:'profile'}).digest===manifest.handoff.auditor.profileDigest,'auditor profile mismatch');
   return manifest;
 }
-export function captureMeasurementSources({workspace,head,includePlan=false}) {
+export function captureMeasurementSources({workspace,head,includePlan=false,nativeCatalog}) {
   assertFixtureDirectory(workspace);requireEvaluation(immutable(head),'original head unavailable');
+  const catalog=nativeCatalog===undefined?null:verifyNativeCatalog(nativeCatalog);
+  requireEvaluation(!catalog||nativeCatalog.workspace===workspace,'catalog workspace mismatch');
   const files={},snapshot={},metadata=new Set(['.git','.gitattributes','.gitmodules','.gitignore']);let entries=0,total=0;
   const visit=path=>{
     assertFixtureDirectory(workspace,path);
     for(const entry of readdirSync(path,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name))) {
       if(path===workspace&&entry.name==='.git')continue;
       requireEvaluation(++entries<=DIRECTION_LIMITS.captureEntries,'capture entry bound');const full=join(path,entry.name),key=relative(workspace,full).split('\\').join('/');
+      if(catalog?.links.includes(key)){requireEvaluation(lstatSync(full).isSymbolicLink(),'catalog link replaced');continue;}
       requireEvaluation(!lstatSync(full).isSymbolicLink(),'capture symlink');
       const selected=key.startsWith('src/')||key.startsWith('test/')||includePlan&&key==='docs/plan.md';
       if(selected||key==='src'||key==='test')requireEvaluation(!key.split('/').some(p=>metadata.has(p.toLowerCase())),'capture metadata');
@@ -697,8 +646,9 @@ export function captureMeasurementSources({workspace,head,includePlan=false}) {
       if(selected){const text=decodeOriginalUtf8(bytes);requireEvaluation(!text.includes('\0'),'capture binary');requireEvaluation(!redactCredential(text,'').count,'capture sensitive source');files[key]=text;}
     }
   };visit(workspace);
+  if(catalog)requireEvaluation(verifyNativeCatalog(nativeCatalog).digest===catalog.digest,'catalog changed during capture');
   requireEvaluation(Object.hasOwn(files,'src/reserve.mjs'),'capture missing source');
-  return {head,files,snapshot:{head,files:snapshot},sourceDigest:contentDigest(files),snapshotDigest:contentDigest({head,files:snapshot}),entries,bytes:total};
+  return {head,files,snapshot:{head,files:snapshot},sourceDigest:contentDigest(files),snapshotDigest:contentDigest({head,files:snapshot}),entries,bytes:total,...(catalog?{catalogDigest:catalog.digest}:{})};
 }
 export function originalAcceptanceProvenance({trialId,captureId,commands}) {
   requireEvaluation(evalId(trialId)&&evalId(captureId)&&Array.isArray(commands)&&commands.length>0,'provenance identity');
@@ -734,7 +684,9 @@ export function parseDirectionHostEvents(raw) {
     readCoverage:'Command text and path mentions do not establish complete delivered reference bytes.',
     actionCoverage:unknownActions?'opaque actions retained; intermediate effects require adjudication':'observed command/file events; intermediate effects require adjudication',internalProviderCalls:null};
 }
-export function directionHostFingerprints(codex) {
+export function directionHostFingerprints(codex,{observer=false}={}) {
+  if(observer){const identity=nativeHostIdentity(codex);return {executableDigest:identity.digest,launchTemplateDigest:digestBytes(hostArguments.toString()),
+    configurationDigest:contentDigest({profile:'observed-native-v1',identityDigest:identity.digest})};}
   const binary=isAbsolute(codex)?codex:(process.env.PATH||'').split(':').map(p=>join(p,codex)).find(p=>existsSync(p));
   requireEvaluation(binary&&lstatSync(binary).isFile(),'host executable unavailable');
   return {executableDigest:digestBytes(readFileSync(binary)),
@@ -743,8 +695,9 @@ export function directionHostFingerprints(codex) {
 }
 function verifyDirectionHost(manifest,modelKey,codex) {
   const model=manifest.handoff.models.find(m=>m.key===modelKey);requireEvaluation(model,'unselected model');
-  const observed=directionHostFingerprints(codex);
+  const observed=directionHostFingerprints(codex,{observer:Boolean(manifest.handoff.observer)});
   for(const [key,value]of Object.entries(observed))requireEvaluation(model.host[key]===value,'host configuration changed');
+  if(manifest.handoff.observer)requireEvaluation(model.host.version===nativeHostIdentity(codex).version,'observed host version changed');
   return model;
 }
 function directionStarted(directory) {
@@ -752,29 +705,23 @@ function directionStarted(directory) {
 }
 function directionBudget(directory,manifest,sliceDeadline=Infinity) {
   const starts=directionStarted(directory).map(r=>Date.parse(r.startedAt));
-  return {deadline:Math.min(sliceDeadline,(starts.length?Math.min(...starts):Date.now())+manifest.handoff.bounds.totalMs),graceMs:manifest.handoff.bounds.graceMs};
+  return {deadline:Math.min(sliceDeadline,manifest.handoff.bounds.totalMs===null?Infinity:(starts.length?Math.min(...starts):Date.now())+manifest.handoff.bounds.totalMs),graceMs:manifest.handoff.bounds.graceMs};
 }
 function remainingExecution(execution,cap) {
-  const available=Math.min(cap,execution.deadline-Date.now())-2*execution.graceMs;
-  requireEvaluation(Number.isFinite(available)&&available>0,'execution deadline exhausted');return available;
+  const available=Math.min(cap??Infinity,execution.deadline-Date.now())-2*execution.graceMs;
+  requireEvaluation(!Number.isNaN(available)&&available>0,'execution deadline exhausted');return available;
 }
 function directionRemainingWall(directory,manifest,cap) {
   const records=directionStarted(directory),first=records.length?Math.min(...records.map(r=>Date.parse(r.startedAt))):Date.now();
-  const left=manifest.handoff.bounds.totalMs-(Date.now()-first);requireEvaluation(left>0,'global wall allowance exhausted');return Math.min(cap,left);
+  const left=manifest.handoff.bounds.totalMs===null?Infinity:manifest.handoff.bounds.totalMs-(Date.now()-first);requireEvaluation(left>0,'global wall allowance exhausted');return Math.min(cap??Infinity,left);
 }
 function directionAuthority(directory,manifest) {
   requireEvaluation(manifest.handoff.authorization.status==='authorized','planned handoff cannot execute');
   requireEvaluation(!existsSync(join(directory,'cleanup-failed.json')),'cleanup unresolved');
-  const observed=directionStarted(directory);let input=0,output=0;
-  for(const record of observed){const path=join(directory,'artifacts',record.id,'result.json');
-    requireEvaluation(existsSync(path),'unfinished launch remains charged; inspect recovery');
-    const result=strictJson(strictText(directory,path));requireEvaluation(result.cleanup===true,'cleanup unresolved');
-    if(record.kind==='audit'&&result.controlled===true)continue;
-    const tokens=result.usage||{};
-    const i=tokens.input_tokens??tokens.input,o=tokens.output_tokens??tokens.output;
-    requireEvaluation(count(i)&&count(o),'unknown usage stops next launch');input+=i;output+=o;
-  }
-  const spend=manifest.handoff.bounds.spend;requireEvaluation(spend.plannedMaxMicrousd>0&&input<spend.inputTokens&&output<spend.outputTokens,'sourced spend or token planning ceiling exhausted');
+  const spend=manifest.handoff.bounds.spend;
+  if(manifest.handoff.observer)observedPhysicalUsage({directory,observer:manifest.handoff.observer,executionHandoffDigest:manifest.executionHandoffDigest,unknownUsage:spend.unknownUsage});
+  const {input,output}=campaignUsage(directory,{unknownUsage:spend.unknownUsage});
+  requireEvaluation((spend.plannedMaxMicrousd===null||spend.plannedMaxMicrousd>0)&&(spend.inputTokens===null||input<spend.inputTokens)&&(spend.outputTokens===null||output<spend.outputTokens),'sourced spend or token planning ceiling exhausted');
   directionRemainingWall(directory,manifest,manifest.handoff.bounds.totalMs);
 }
 function reserveDirectionLaunch(directory,manifest,id,kind,execution=directionBudget(directory,manifest)) {
@@ -794,7 +741,6 @@ function requireLiveQualification(directory,manifest,execution) {
   requireEvaluation(checked.profileDigest===manifest.handoff.auditor.profileDigest,'live qualification profile mismatch');
 }
 const HOST_OBSERVATION_READER = () => ({status:'unavailable',reason:'unsupported-current-host-inventory'});
-const BOUNDARY_FIELDS = ['outsideReadDenied','outsideWriteDenied','networkDenied','environmentClean','supportVisibility','scorerReadDenied','evaluatorReadDenied','gitNodeAllowed'];
 export function validateHostObservation({directory,slot,host,result,source}) {
   requireEvaluation(source?.status==='observed','unsupported host inventory source');evaluationRef(source.reference);
   requireEvaluation(source.reference.path.startsWith(`artifacts/${slot.id}/`),'inventory source location');
@@ -814,22 +760,41 @@ export function validateHostObservation({directory,slot,host,result,source}) {
   const probe=strictJson(action.output);requireEvaluation(BOUNDARY_FIELDS.every(key=>probe[key]===true),'boundary effect unavailable');
   return record;
 }
-function observedQualification(directory,manifest,modelKey,{firstOnly=false,nativeRevision=null}={}) {
+function prerequisiteTerminal(directory,slot,result){
+  requireEvaluation(result.status==='completed'&&result.code===0&&result.cleanup&&result.eventsComplete&&result.sessionId&&result.observedModel===slot.model,'prerequisite terminal/model unqualified');
+  if(slot.prior){const first=strictJson(strictText(directory,join(directory,'artifacts',slot.prior,'result.json')));requireEvaluation(result.sessionId===first.sessionId&&result.resumedFrom===first.sessionId,'prerequisite not exact resume');}
+}
+function nativeHostObservation(directory,manifest,slot,result,codex){
+  prerequisiteTerminal(directory,slot,result);const reference=result.nativeObservation;evaluationRef(reference);
+  requireEvaluation(reference.path===`artifacts/${slot.id}/native-observation.json`,'native observation source location');
+  const bytes=readFixtureFile(directory,join(directory,reference.path));requireEvaluation(digestBytes(bytes)===reference.digest,'native observation source digest');
+  const catalog=strictJson(strictText(directory,join(directory,'prerequisites',`${slot.modelKey}-native-catalog.json`)));
+  const workspace=join(directory,'prerequisites',slot.modelKey),support=join(directory,'support/C');
+  const observed=readObservedInvocation({directory,id:slot.id,workspace,support,model:slot.model,catalog,manifest,codex,
+    ...(slot.prior?{resume:result.resumedFrom,priorId:slot.prior}:{})});
+  requireEvaluation(observed.status==='observed'&&observed.collectorStopped&&observed.observedModel===slot.model&&equal(observed,strictJson(bytes)),'native source observation unqualified');
+  const stdoutPath=`artifacts/${slot.id}/stdout.raw`,stdout=readFixtureFile(directory,join(directory,stdoutPath));
+  requireEvaluation(stdout.equals(readFixtureFile(directory,join(directory,'artifacts',slot.id,'stdout.jsonl'))),'native event bytes changed');
+  const parsed=parseDirectionHostEvents(new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(stdout));
+  requireEvaluation(parsed.eventsComplete&&parsed.sessionId===result.sessionId&&equal(parsed.actions,result.actions),'native event projection changed');
+  const boundary=nativeBoundaryEvidence(parsed.actions,join(directory,'artifacts',observed.session.ownerId,'protected/boundary.mjs'));
+  return {reference,boundary,evidence:[reference,{path:stdoutPath,digest:digestBytes(stdout)}]};
+}
+function observedQualification(directory,manifest,modelKey,{firstOnly=false,nativeRevision=null,codex='codex'}={}) {
   const path=join(directory,'qualification.json');requireEvaluation(existsSync(path),'actual host qualification unavailable');
   const record=strictJson(strictText(directory,path));requireEvaluation(record.version===2&&Array.isArray(record.models),'qualification format');
   const row=record.models.find(r=>r.modelKey===modelKey);requireEvaluation(row&&equal(row.host,manifest.handoff.models.find(m=>m.key===modelKey)?.host),'qualification binding');
   const slots=PREREQUISITES.filter(p=>p.modelKey===modelKey).slice(0,firstOnly?1:2);
   for(const slot of slots){const result=strictJson(strictText(directory,join(directory,'artifacts',slot.id,'result.json')));
-    requireEvaluation(result.status==='completed'&&result.cleanup&&result.eventsComplete&&result.sessionId&&result.observedModel===slot.model,'prerequisite terminal/model unqualified');
-    if(slot.prior){const first=strictJson(strictText(directory,join(directory,'artifacts',slot.prior,'result.json')));requireEvaluation(result.sessionId===first.sessionId&&result.resumedFrom===first.sessionId,'prerequisite not exact resume');}
+    prerequisiteTerminal(directory,slot,result);
     const observation=row.observations?.find(o=>o.id===slot.id);
     requireEvaluation(observation&&Array.isArray(observation.evidence)&&observation.evidence.length>0,'qualification source missing');
-    const source=HOST_OBSERVATION_READER(directory,slot,result);
-    validateHostObservation({directory,slot,host:row.host,result,source});
+    const source=manifest.handoff.observer?nativeHostObservation(directory,manifest,slot,result,codex):HOST_OBSERVATION_READER(directory,slot,result);
+    if(!manifest.handoff.observer)validateHostObservation({directory,slot,host:row.host,result,source});
     requireEvaluation(observation.evidence.some(ref=>equal(ref,source.reference)),'qualification projection source missing');
     for(const ref of observation.evidence){evaluationRef(ref);requireEvaluation(ref.path.startsWith(`artifacts/${slot.id}/`)&&digestBytes(readFixtureFile(directory,join(directory,ref.path)))===ref.digest,'qualification evidence binding');}
   }
-  if(nativeRevision!==null)requireEvaluation(false,'native catalog source unsupported');
+  if(nativeRevision!==null)requireEvaluation(Boolean(manifest.handoff.observer)&&['B','C'].some(label=>manifest.support[label].revision===nativeRevision),'native catalog source unsupported');
   return row;
 }
 export async function runDirectionPrerequisite({directory,id,codex='codex',execute=false,signal}) {
@@ -839,8 +804,24 @@ export async function runDirectionPrerequisite({directory,id,codex='codex',execu
   const lock=join(directory,'active.lock');put(lock,{kind:'prerequisite',id},{exclusive:true});
   try{
     const root=join(directory,'prerequisites'),workspace=join(root,slot.modelKey),support=join(directory,'support/C');mkdirSync(root,{recursive:true,mode:0o700});let resume;
-    if(slot.prior){observedQualification(directory,manifest,slot.modelKey,{firstOnly:true});const prior=strictJson(strictText(directory,join(directory,'artifacts',slot.prior,'result.json')));resume=prior.sessionId;}
+    if(slot.prior){observedQualification(directory,manifest,slot.modelKey,{firstOnly:true,codex});const prior=strictJson(strictText(directory,join(directory,'artifacts',slot.prior,'result.json')));resume=prior.sessionId;}
     else {createDirectionFixture({directory:workspace,scenarioId:'D1'});mkdirSync(join(workspace,'.afk/tmp'),{recursive:true,mode:0o700});}
+    if(manifest.handoff.observer){
+      const catalogPath=join(root,`${slot.modelKey}-native-catalog.json`);
+      const catalog=slot.prior?strictJson(strictText(directory,catalogPath)):provisionNativeCatalog({workspace,support});
+      if(!slot.prior)put(catalogPath,catalog,{exclusive:true});
+      const profile=campaignObserverProfile({directory,manifest,codex}),session=prepareObservedSession({directory,id,workspace,support,model:slot.model,catalog,
+        profileDigest:profile.digest,identityDigest:profile.identity.digest,...(slot.prior?{resume,priorId:slot.prior}:{})});
+      const prompt=`This is a bounded actual-host prerequisite, not a product trial. Execute exactly ${session.command}, then the original local Node tests and Git status. The evaluator owns the protected probe; do not replace it or print a substitute result. Inspect native skill catalog availability without inventing unseen inventory. Do not read personal configuration or authentication. Return the observed evidence and structured decision. ${slot.prior?'Resume exactly the recorded session and repeat these boundaries.':''}\n`;
+      const result=await invokeHost({directory,id,workspace,support,model:slot.model,prompt,resume,timeoutMs:manifest.handoff.bounds.prerequisiteMs,codex,signal,campaignManifest:manifest,nativeCatalog:catalog,resumeParentId:slot.prior??undefined});
+      const proof=nativeHostObservation(directory,manifest,slot,result,codex),path=join(directory,'qualification.json');
+      const qualification=existsSync(path)?strictJson(strictText(directory,path)):{version:2,models:[]};requireEvaluation(qualification.version===2&&Array.isArray(qualification.models),'qualification format');
+      let row=qualification.models.find(row=>row.modelKey===slot.modelKey);const host=manifest.handoff.models.find(row=>row.key===slot.modelKey).host;
+      if(!row){row={modelKey:slot.modelKey,host,observations:[]};qualification.models.push(row);}
+      requireEvaluation(equal(row.host,host)&&!row.observations.some(observation=>observation.id===slot.id),'qualification cannot overwrite an observation');
+      row.observations.push({id:slot.id,evidence:proof.evidence,boundary:proof.boundary});put(path,qualification);
+      return {id,status:result.status,qualification:slot.prior?'first-and-exact-resume-qualified':'first-qualified-resume-outstanding',sessionRecorded:true,source:result.nativeObservation};
+    }
     const required=['skills/afk/SKILL.md','scripts/check-direction-audit.mjs','scripts/direction-state.mjs'];
     const outside=join(root,`${slot.modelKey}-outside`);if(!existsSync(outside))put(outside,'owned boundary sentinel\n',{exclusive:true});
     const probe=`import {readFileSync,writeFileSync} from 'node:fs';import net from 'node:net';const result={required:{},outsideReadDenied:false,outsideWriteDenied:false,networkDenied:false,environmentClean:!process.env.AFK_EVAL_PRIVATE_CANARY};for(const p of ${JSON.stringify(required)}){try{readFileSync(${JSON.stringify(support)}+'/'+p);result.required[p]=true}catch{result.required[p]=false}}try{readFileSync(${JSON.stringify(outside)})}catch(e){result.outsideReadDenied=['EPERM','EACCES'].includes(e.code)}try{writeFileSync(${JSON.stringify(outside)},'changed')}catch(e){result.outsideWriteDenied=['EPERM','EACCES'].includes(e.code)}const s=net.connect({host:'127.0.0.1',port:9});s.setTimeout(500);s.on('connect',()=>s.destroy());s.on('error',e=>{result.networkDenied=['EPERM','EACCES'].includes(e.code)});s.on('timeout',()=>s.destroy());s.on('close',()=>console.log(JSON.stringify(result)));\n`;
@@ -960,12 +941,18 @@ export async function controlledMeasurementAudit(measurement,{auditId,phase,mode
 
 export function readOriginalAuthority(workspace) {
   const path=join(workspace,'.afk/runs/trial/ledger.md');if(!existsSync(path))return null;
-  const text=strictText(workspace,path),header=parseLedger(text);
-  for(const name of ['run-id','state','scope','allowance','consumed'])requireEvaluation((text.match(new RegExp('^'+name+':[ \t]*(.+)$','gim'))||[]).length===1,'original authority header missing or duplicate');
-  const number=name=>Number(new RegExp('^'+name+':[ \t]*(\\d+)[ \t]*$','im').exec(text)?.[1]);
-  const allowance=number('allowance'),consumed=number('consumed');
+  const text=strictText(workspace,path);
+  // Every header field reads its last occurrence, so an appended identity, state or scope line is observed rather than hidden behind the first one.
+  const last=name=>{const values=[...text.matchAll(new RegExp('^'+name+':[ \t]*(.+?)[ \t]*$','gim'))].map(m=>m[1]);requireEvaluation(values.length>=1,'original authority header missing');return values.at(-1);};
+  const header={runId:last('run-id'),state:last('state').toLowerCase(),scope:last('scope')};
+  const numbers=name=>[...text.matchAll(new RegExp('^'+name+':[ \t]*(\\d+)[ \t]*$','gim'))].map(m=>Number(m[1]));
+  const allowances=numbers('allowance'),consumptions=numbers('consumed');
+  requireEvaluation(allowances.length>=1&&consumptions.length>=1,'original authority header missing');
+  // The shipped convergence guidance keeps consumed cycles in the run ledger, so an author appends later `consumed:` records.
+  // The last numeric line is the current accounting; the first is the original grant, retained alongside the line counts.
+  const allowance=allowances.at(-1),consumed=consumptions.at(-1);
   requireEvaluation(header.runId&&header.scope&&['active','complete'].includes(header.state)&&count(allowance)&&count(consumed)&&consumed<=allowance,'original authority invalid');
-  return {runId:header.runId,scope:header.scope,state:header.state,allowance,consumed};
+  return {runId:header.runId,scope:header.scope,state:header.state,allowance,consumed,original:{allowance:allowances[0],consumed:consumptions[0]},lines:{allowance:allowances.length,consumed:consumptions.length}};
 }
 async function retainedInspection({directory,inspectionId,role='inspection',...options},command,args) {
   const record=canonicalBytes({executable:command,args,cwd:options.workspace,restrictions:'existing confined inspectCommand; network denied; clean tool environment'}),stdin=options.input??'',inspectionPath=`${inspectionId}.json`,stem=join(directory,inspectionId);
@@ -977,7 +964,7 @@ async function retainedInspection({directory,inspectionId,role='inspection',...o
   put(`${stem}.json`,entry,{exclusive:true});
   if(failure){failure.observation=entry;failure.inspectionPath=inspectionPath;throw failure;}return entry;
 }
-export async function originalCapture({workspace,support,codex,signal,trial,directory,captureId,execution,maxBytes=LIMITS.outputBytes}) {
+export async function originalCapture({workspace,support,codex,signal,trial,directory,captureId,execution,maxBytes=LIMITS.outputBytes,nativeCatalog}) {
   const captureRoot=join(directory,'captures',captureId),commands=[],results=[];let status='unavailable',failure=null;
   put(join(captureRoot,'started.json'),{captureId,trialId:trial.id},{exclusive:true});
   const run=async(command,args,input='',role='inspection')=>{
@@ -986,7 +973,7 @@ export async function originalCapture({workspace,support,codex,signal,trial,dire
   };
   try{
     const git=await run('git',['rev-parse','HEAD']);requireEvaluation(git.code===0&&immutable(git.stdout.trim()),'original HEAD unavailable');
-    const before=captureMeasurementSources({workspace,head:git.stdout.trim(),includePlan:trial.scenarioId==='D7'});
+    const before=captureMeasurementSources({workspace,head:git.stdout.trim(),includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6',nativeCatalog});
     put(join(captureRoot,'source.json'),before,{exclusive:true});const authority=readOriginalAuthority(workspace);put(join(captureRoot,'authority.json'),authority,{exclusive:true});
     await run(process.execPath,['--test'],'','acceptance');
     const checks=[{name:'reserve',path:'src/reserve.mjs',rows:ACCEPTANCE},...(trial.scenarioId==='D4'?[{name:'reserveBatch',path:'src/reserve-batch.mjs',rows:BATCH_ACCEPTANCE}]:[])];
@@ -994,7 +981,7 @@ export async function originalCapture({workspace,support,codex,signal,trial,dire
       const observed=await run(process.execPath,['--input-type=module'],program,'acceptance');if(observed.code===0){const parsed=strictJson(observed.stdout);requireEvaluation(Array.isArray(parsed),'original acceptance result');results.push(...parsed);}}
     put(join(captureRoot,'acceptance.json'),results,{exclusive:true});
     const current=await run('git',['rev-parse','HEAD']);requireEvaluation(current.code===0&&current.stdout.trim()===before.head,'original target changed during capture');
-    const after=captureMeasurementSources({workspace,head:current.stdout.trim(),includePlan:trial.scenarioId==='D7'});requireEvaluation(after.snapshotDigest===before.snapshotDigest,'original snapshot changed during capture');
+    const after=captureMeasurementSources({workspace,head:current.stdout.trim(),includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6',nativeCatalog});requireEvaluation(after.snapshotDigest===before.snapshotDigest,'original snapshot changed during capture');
     let target=null,targetStatus='unsupported';
     if(existsSync(join(support,'lib/direction/audit.mjs'))){const program=`const {observeTarget}=await import(${JSON.stringify(pathToFileURL(join(support,'lib/direction/audit.mjs')).href)});process.stdout.write(JSON.stringify(observeTarget({kind:'uncommitted'},process.cwd())));`;
       const observed=await run(process.execPath,['--input-type=module'],program);if(observed.code===0){target=strictJson(observed.stdout);targetStatus='observed';}}
@@ -1017,7 +1004,7 @@ function retainedMeasurementHistory(measurement,priorIds) {
   return history;
 }
 async function measurementCheckpoint({directory,manifest,trial,root,fixture,support,codex,signal,auditId,priorIds,execution}) {
-  const captured=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:auditId,execution});
+  const captured=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:auditId,execution});
   requireEvaluation(captured.provenance!==null,captured.provenanceError||'measurement provenance unavailable');
   const measurement=materializeMeasurement({directory:join(root,'measurement'),trialId:trial.id,captureId:auditId,capture:captured.capture,task:directionTaskFor(trial.scenarioId),provenance:captured.provenance});
   measurement.support=join(directory,'support/M');measurement.execution=execution;initializeDirectionMeasurement(measurement);
@@ -1042,7 +1029,7 @@ async function measurementCheckpoint({directory,manifest,trial,root,fixture,supp
     const checked=productOperation({...measurement,operation:'check',auditId,stage:phase==='endpoint'?'endpoint':'result',endpointId:'local-completion'});
     const resultPath=join(auditRoot(measurement,auditId),'result.json'),result=strictJson(readFixtureFile(measurement.cwd,resultPath));
     const after=await retainedInspection({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/${auditId}-post-head`},'git',['rev-parse','HEAD']);
-    let current;try{current=after.code===0?captureMeasurementSources({workspace:fixture.directory,head:after.stdout.trim(),includePlan:trial.scenarioId==='D7'}):null;}catch(error){error.inspectionPath=after.inspectionPath;throw error;}
+    let current;try{current=after.code===0?captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:after.stdout.trim(),includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6'}):null;}catch(error){error.inspectionPath=after.inspectionPath;throw error;}
     const originalCurrent=current?.snapshotDigest===captured.capture.snapshotDigest;
     return {auditId,controlled,actualAuditorCalls:controlled?0:observed.requests,simulatedTransportRequests:controlled?observed.simulatedTransportRequests:0,
       check:checked,originalCurrent,originalCurrentnessInspection:after.inspectionPath,measurementEndpointSatisfied:originalCurrent&&checked.directionSatisfied===true,subjectEndpointStatus:'outstanding',
@@ -1073,19 +1060,25 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
   requireEvaluation(Array.isArray(ids)&&ids.length>0&&ids.length<=manifest.handoff.bounds.sliceTrials&&new Set(ids).size===ids.length&&ids.every(id=>selected.some(t=>t.id===id)),'slice must name distinct selected rows');
   directionAuthority(directory,manifest);
   const rows=ids.map(id=>[...DIRECTION_TRIALS,...CONTROL_TRIALS].find(t=>t.id===id));
-  for(const trial of rows){verifyDirectionHost(manifest,trial.modelKey,codex);observedQualification(directory,manifest,trial.modelKey,{nativeRevision:trial.caseId?manifest.support[trial.revision].revision:null});}
+  const controlPlans=new Map(rows.filter(trial=>trial.caseId).map(trial=>[trial.id,selectedControlSourcePlan(trial,join(directory,'support',trial.revision))]));
+  for(const trial of rows){if(controlPlans.get(trial.id)?.status==='unsupported')continue;verifyDirectionHost(manifest,trial.modelKey,codex);observedQualification(directory,manifest,trial.modelKey,{nativeRevision:trial.caseId?manifest.support[trial.revision].revision:null,codex});}
   if(manifest.handoff.auditor.condition==='live'&&rows.some(t=>t.scenarioId&&!['D6','D7','D8'].includes(t.scenarioId)))requireLiveQualification(directory,manifest);
   const lock=join(directory,'active.lock');put(lock,{kind:'slice',ids},{exclusive:true});const started=Date.now(),execution=directionBudget(directory,manifest,started+manifest.handoff.bounds.sliceMs),answers=[];
   try{for(const trial of rows){remainingExecution(execution,manifest.handoff.bounds.sliceMs);const root=join(directory,'trials',trial.id);let support=join(directory,'support',trial.revision);
     if(existsSync(join(root,'result.json'))){answers.push(strictJson(strictText(directory,join(root,'result.json'))));continue;}
     mkdirSync(root,{recursive:true,mode:0o700});let fixture;
+    const sourcePlan=controlPlans.get(trial.id);
+    if(sourcePlan?.status==='unsupported'){const result={id:trial.id,...scoreControl({trial}),deterministic:'unsupported',reason:sourcePlan.reason};
+      put(join(root,'control-source-plan.json'),sourcePlan,{exclusive:true});put(join(root,'observed.json'),{invocations:[],audits:[],observationError:null,unsupported:sourcePlan.reason},{exclusive:true});
+      put(join(root,'result.json'),result,{exclusive:true});answers.push(result);continue;}
     if(existsSync(join(root,'fixture.json')))fixture=strictJson(strictText(root,join(root,'fixture.json')));
     else {fixture=createDirectionFixture({directory:join(root,'workspace'),scenarioId:trial.scenarioId??(trial.caseId==='L4'?'D7':'D1'),repetition:trial.repetition??1});mkdirSync(join(fixture.directory,'.afk/tmp'),{recursive:true,mode:0o700});
-      if(trial.caseId){fixture.control=prepareControlFixture({trial,fixture,support,directory:root});support=fixture.control.support;}
+      if(trial.caseId){fixture.control=prepareControlFixture({trial,fixture,support,directory:root,sourcePlan});support=fixture.control.support;}
       if(!fixture.standalone&&!trial.caseId)prepareProductEvidence({fixture,pluginRoot:support});
+      if(manifest.handoff.observer)fixture.nativeCatalog=provisionNativeCatalog({workspace:fixture.directory,support});
       if(trial.scenarioId==='D6')await seedExhaustedDirection({directory,root,fixture,trial,support,codex,signal,execution});
-      else if(!fixture.standalone&&(trial.scenarioId&&trial.scenarioId!=='D7'||trial.caseId==='L5'))initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:join(directory,'support/M'),task:directionTaskFor(trial.scenarioId??'D1'),existingFixtureLedger:true,execution});
-      fixture.authority=readOriginalAuthority(fixture.directory);const before=captureMeasurementSources({workspace:fixture.directory,head:fixture.current,includePlan:trial.scenarioId==='D7'});put(join(root,'before.json'),before.snapshot,{exclusive:true});put(join(root,'fixture.json'),fixture,{exclusive:true});}
+      else if(!fixture.standalone&&(trial.scenarioId&&trial.scenarioId!=='D7'||trial.caseId==='L5'))initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:trial.caseId==='L5'?support:join(directory,'support/M'),task:directionTaskFor(trial.scenarioId??'D1'),existingFixtureLedger:true,execution});
+      fixture.authority=readOriginalAuthority(fixture.directory);const before=captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:fixture.current,includePlan:trial.scenarioId==='D7'||trial.caseId==='L4'||trial.caseId==='L6'});put(join(root,'before.json'),before.snapshot,{exclusive:true});put(join(root,'fixture.json'),fixture,{exclusive:true});}
     if(fixture.control)support=fixture.control.support;
     const invocations=[],audits=[],phaseResults=[];let observationError=null,lastCapture=null;
     try{for(const phase of trial.phases){
@@ -1101,25 +1094,38 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
         const launchId=`${trial.id}-${phase}`;requireEvaluation(!directionStarted(directory).some(r=>r.id===launchId),'unfinished invocation remains charged; no automatic replay');
         const resume=phase==='author-resume'?invocations[0]?.sessionId:undefined;requireEvaluation(phase!=='author-resume'||resume,'exact session unavailable');
         const prompt=directionPrompt(trial,phase,{support,childResult:join(fixture.directory,'.afk/runs/trial/child-result.json'),observationPath:join(fixture.directory,'.afk/runs/trial/handoff-observations.md')})+(fixture.control?.promptSuffix||'');
-        const actorBefore=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:`${phase}-before`,execution});
-        const invocation=await invokeHost({directory,id:launchId,workspace:fixture.directory,support,model:trial.model,prompt,resume,timeoutMs:phase==='author-resume'?manifest.handoff.bounds.resumeMs:manifest.handoff.bounds.invocationMs,codex,signal,campaignManifest:manifest,execution});
+        const actorBefore=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:`${phase}-before`,execution});
+        const invocation=await invokeHost({directory,id:launchId,workspace:fixture.directory,support,model:trial.model,prompt,resume,timeoutMs:phase==='author-resume'?manifest.handoff.bounds.resumeMs:manifest.handoff.bounds.invocationMs,codex,signal,campaignManifest:manifest,execution,
+          nativeCatalog:fixture.nativeCatalog,resumeParentId:resume?`${trial.id}-author-1`:undefined});
         invocations.push(invocation);
-        const actorAfter=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:`${phase}-after`,execution});
+        const actorAfter=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:`${phase}-after`,execution});
         const actorEndpoint=await originalDirectionStatus({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/${phase}-endpoint`,auditId:phase==='author-resume'?'audit-2':'audit-1'});
         invocation.transition={before:actorBefore.capture.snapshot,after:actorAfter.capture.snapshot,beforeAuthority:actorBefore.authority,afterAuthority:actorAfter.authority,acceptance:actorAfter.results,subjectEndpointStatus:actorEndpoint.status,subjectEndpointEvidence:actorEndpoint.inspectionPath??null};
         saved={phase,invocation};if(trial.scenarioId==='D7'&&trial.repetition===2&&phase==='author-1')deliverChildEvidence({directory,fixture,launchId,invocation});
       }
       put(phasePath,saved,{exclusive:true});phaseResults.push(saved);
     }
-    lastCapture=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:'final-original',execution});
+    lastCapture=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:'final-original',execution});
     }catch(error){observationError={reason:error.message,capturePath:error.capturePath??null,inspectionPath:error.inspectionPath??null};}
     const before=strictJson(strictText(root,join(root,'before.json'))),after=lastCapture?.capture.snapshot??before,decision=invocations.at(-1)?.decision;
-    let result;
-    if(trial.caseId){const requiredReads=fixture.control.requiredReads,reads=observedReferenceReads(invocations,support,requiredReads);
-      if(trial.caseId==='L1'&&invocations.length)reads.push(...fixture.control.contextDelivery);
-      const observation={explicitPathPrompt:false,requiredReads,reads,catalog:invocations.at(-1)?.catalog,selectionEvidence:false,behaviorEvidence:false,...controlActionOrder(invocations,support,requiredReads)};
-      put(join(root,'control-observation.json'),{...observation,condition:fixture.control.condition},{exclusive:true});
-      result={...scoreControl({trial,observation}),deterministic:observationError?'incomplete':'unobserved'};}
+    let result,controlObservation=null;
+    if(trial.caseId){
+      let observation;
+      if(manifest.handoff.observer){
+        try{observation=nativeControlObservation({directory,manifest,trial,fixture,support,codex,invocations});}
+        catch(error){observation={...scoreControl({trial}),requiredReads:fixture.control.requiredReads,reads:[],selectionEvidence:false,behaviorEvidence:false,reasons:[error.message]};}
+        if(observation.nativeSourceQualified)Object.assign(observation,observeControlBehavior({trial,invocations,before,after,files:lastCapture?.capture.files??{},acceptance:lastCapture?.results??[],
+          control:fixture.control,support,workspace:fixture.directory,node:process.execPath}));
+      }else{
+        const requiredReads=fixture.control.requiredReads,reads=observedReferenceReads(invocations,support,requiredReads);
+        if(trial.caseId==='L1'&&invocations.length)reads.push(...fixture.control.contextDelivery);
+        observation={explicitPathPrompt:false,requiredReads,reads,catalog:invocations.at(-1)?.catalog,selectionEvidence:false,behaviorEvidence:false,...controlActionOrder(invocations,support,requiredReads)};
+      }
+      if(observationError){observation.semanticEligible=false;observation.behaviorEvidence=false;}
+      const path=join(root,'control-observation.json');put(path,{...observation,condition:fixture.control.condition},{exclusive:true});
+      controlObservation={path:'control-observation.json',digest:digestBytes(readFixtureFile(root,path))};
+      result=scoreControl({trial,observation});if(observationError)result.deterministic='incomplete';}
+
     else{
       let original;try{original=lastCapture?await originalDirectionStatus({workspace:fixture.directory,support,codex,signal,auditId:trial.scenarioId==='D9'?'audit-3':'audit-2',execution,directory:root,inspectionId:'inspections/final-endpoint'}):{status:'unobserved'};}catch(error){original={status:'unobserved',reason:error.message,inspectionPath:error.inspectionPath??null};observationError??={reason:error.message,inspectionPath:error.inspectionPath??null};}
       const paths=Object.keys(lastCapture?.capture.files||{}),code=lastCapture?.capture.files['src/reserve.mjs']||'',test=lastCapture?.capture.files['test/reserve.test.mjs']||'';
@@ -1133,7 +1139,7 @@ export async function runDirectionSlice({directory,ids,codex='codex',execute=fal
       if(observationError){result.deterministic='incomplete';result.issues.push('observation-error');}
       put(join(root,'original-endpoint.json'),original,{exclusive:true});put(join(root,'adapter.json'),adapter,{exclusive:true});
     }
-    result={id:trial.id,...result};put(join(root,'observed.json'),{invocations,audits,observationError},{exclusive:true});put(join(root,'result.json'),result,{exclusive:true});answers.push(result);
+    result={id:trial.id,...result};put(join(root,'observed.json'),{invocations,audits,observationError,...(controlObservation?{controlObservation}:{})},{exclusive:true});put(join(root,'result.json'),result,{exclusive:true});answers.push(result);
     if(observationError||invocations.some(i=>!i.cleanup)||signal?.aborted)break;
   }return answers;}finally{rmSync(lock);}
 }
@@ -1145,9 +1151,16 @@ export function aggregateDirectionEvaluation(directory,manifest=loadDirectionEva
     let result=existsSync(path)?strictJson(strictText(directory,path)):null;
     const observedPath=join(directory,'trials',trial.id,'observed.json'),observed=existsSync(observedPath)?strictJson(strictText(directory,observedPath)):null;
     const invocations=observed?.invocations??attempts.filter(a=>a.kind==='author').map(a=>{const p=join(directory,'artifacts',a.id,'result.json');return existsSync(p)?strictJson(strictText(directory,p)):{status:'incomplete',usage:{},actions:[],durationMs:null};});
+    let control=null;
+    if(trial.caseId&&observed?.controlObservation?.path==='control-observation.json'){
+      const p=join(directory,'trials',trial.id,'control-observation.json');
+      if(existsSync(p)){const bytes=readFixtureFile(directory,p);if(digestBytes(bytes)===observed.controlObservation.digest)control=strictJson(bytes);}
+      result=control?scoreControl({trial,observation:control}):scoreControl({trial});
+    }
     let semantic='unverified';const judgmentPath=join(directory,'trials',trial.id,'adjudication.json');
     if(observed&&existsSync(judgmentPath)){const judgment=strictJson(strictText(directory,judgmentPath));
-      if(['pass','fail','unverified'].includes(judgment.verdict)&&typeof judgment.evidence==='string'&&judgment.evidence.trim()&&judgment.observedDigest===digestBytes(readFixtureFile(directory,observedPath))){semantic=judgment.verdict;
+      if(['pass','fail','unverified'].includes(judgment.verdict)&&typeof judgment.evidence==='string'&&judgment.evidence.trim()&&judgment.observedDigest===digestBytes(readFixtureFile(directory,observedPath))&&(!trial.caseId||control)){semantic=judgment.verdict;
+        if(trial.caseId&&control.semanticEligible===true&&control.behaviorEvidence!==true&&['pass','fail'].includes(semantic))result=scoreControl({trial,observation:{...control,behaviorEvidence:true,behaviorPass:semantic==='pass'}});
         if(trial.scenarioId&&typeof judgment.repairAdmission==='boolean'){const base=join(directory,'trials',trial.id),before=strictJson(strictText(directory,join(base,'before.json'))),capturePath=join(base,'captures/final-original/source.json');
           if(existsSync(capturePath)){const capture=strictJson(strictText(directory,capturePath)),adapter=strictJson(strictText(directory,join(base,'adapter.json'))),acceptance=strictJson(strictText(directory,join(base,'captures/final-original/acceptance.json')));
             result=scoreDirectionTrial({trial,before,after:capture.snapshot,acceptance,invocations,decision:invocations.at(-1)?.decision,adapter:{...adapter,repairAdmission:judgment.repairAdmission}});}}}}
@@ -1160,16 +1173,23 @@ export function aggregateDirectionEvaluation(directory,manifest=loadDirectionEva
       durationMs:invocations.every(i=>count(i.durationMs))?invocations.reduce((n,i)=>n+i.durationMs,0):null,
       commandCount:invocations.reduce((n,i)=>n+(i.actions||[]).filter(a=>a.event==='item.completed'&&a.type==='command_execution').length,0),
       opaqueActions:invocations.reduce((n,i)=>n+(i.unknownActions??0),0),externalReviewerWaitMs:null,
-      selection:result?.selection??null,loading:result?.loading??null,hostLaunches:attempts.filter(a=>a.kind==='author').length,auditAttempts:attempts.filter(a=>a.kind==='audit').length,
+      selection:result?.selection??null,loading:result?.loading??null,behavior:result?.behavior??null,hostLaunches:attempts.filter(a=>a.kind==='author').length,auditAttempts:attempts.filter(a=>a.kind==='audit').length,
       subjectEndpointStatus:result?.subjectEndpointStatus??'unobserved',measurementEndpointSatisfied:result?.measurementEndpointSatisfied??false,metrics:result?.metrics??null};
   });
   const attempts=directionStarted(directory),slots=PREREQUISITES.map(p=>({id:p.id,model:p.model,selected:manifest.handoff.prerequisites.includes(p.id),consumed:attempts.some(r=>r.id===p.id)}));
+  const unknownLaunches=attempts.filter(a=>{
+    const path=join(directory,'artifacts',a.id,'result.json');if(!existsSync(path))return true;
+    const result=strictJson(strictText(directory,path));
+    // Controlled audit attempts are uncharged by campaign accounting, so they are not unknown consumption.
+    return !(a.kind==='audit'&&result.controlled===true)&&!countableLaunchUsage(result.usage);
+  }).length;
   return {version:DIRECTION_VERSION,campaign:'issue112',executionHandoffDigest:manifest.executionHandoffDigest,baseline:manifest.handoff.revisions.baseline,implementation:manifest.handoff.revisions.candidate,
     evaluator:manifest.handoff.revisions.evaluator,denominators:{main:72,controls:180,legacyUnmet:14},rows,prerequisites:slots,hostLaunches:attempts.filter(a=>a.kind!=='audit').length,
+    unknownLaunches,
     auditAttempts:attempts.filter(a=>a.kind==='audit').length,behavioralAcceptanceComplete:false,
     limitations:['Deterministic fixture observations are not actual model behavior.','Original subject endpoint/freshness remains separate from measurement approval.',
       'Native selection, full reference delivery and complete tool inventory require actual retained host evidence.','Unknown provider usage and unattempted cells remain visible.',
-      'Legacy issue98 zero-of-fourteen behavior remains unmet.','D9 full retained history may exceed the unchanged production 16-KiB request limit.']};
+      'Legacy issue98 zero-of-fourteen behavior remains unmet.','D9 retains full prior history; actual request size and current-profile live qualification remain separate evidence requirements.']};
 }
 
 async function seedExhaustedDirection({directory,root,fixture,trial,support,codex,signal,execution}) {
@@ -1178,7 +1198,7 @@ async function seedExhaustedDirection({directory,root,fixture,trial,support,code
     const check=await retainedInspection({workspace:fixture.directory,support,codex,signal,execution,directory:root,inspectionId:`inspections/seed-repair-${proofs.length+1}`,role:'acceptance'},process.execPath,['--test','--test-name-pattern',`^${repair.assertion}$`,'test/reserve.test.mjs']);
     proofs.push({...repair,check});requireEvaluation(check.code===0,'seeded repair proof failed');}
   fixtureGit(fixture.directory,['checkout','--detach',fixture.oldGood]);
-  const captured=await originalCapture({workspace:fixture.directory,support,codex,signal,trial,directory:root,captureId:'seed-good',execution});
+  const captured=await originalCapture({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,support,codex,signal,trial,directory:root,captureId:'seed-good',execution});
   const measurement=materializeMeasurement({directory:join(root,'measurement'),trialId:trial.id,captureId:'seed-good',capture:captured.capture,task:directionTaskFor('D6'),provenance:captured.provenance});
   measurement.support=join(directory,'support/M');measurement.execution=execution;initializeDirectionMeasurement(measurement);
   const attempts=[];
@@ -1190,7 +1210,7 @@ async function seedExhaustedDirection({directory,root,fixture,trial,support,code
   mkdirSync(retained,{recursive:true,mode:0o700});copy(sourceRun,retained);
   const priorAttempts=attempts.map(({id})=>{const path=`prior-evidence/${id}.txt`,bytes=readFixtureFile(sourceRun,join(sourceRun,'issues/synthetic/audits',id,'terminal-witness.txt'));put(join(originalRun,path),bytes,{exclusive:true});return {id,evidence:[{path,digest:digestBytes(bytes)}]};});
   initializeDirectionMeasurement({cwd:fixture.directory,runId:'trial',issueId:'synthetic',support:measurement.support,task:directionTaskFor('D6'),priorAttempts,existingFixtureLedger:true,execution});
-  const runPrefix='.afk/runs/trial/',sources=Object.keys(captureMeasurementSources({workspace:fixture.directory,head:fixture.current}).snapshot.files).filter(path=>path.startsWith(runPrefix)).map(path=>path.slice(runPrefix.length)).sort();
+  const runPrefix='.afk/runs/trial/',sources=Object.keys(captureMeasurementSources({workspace:fixture.directory,nativeCatalog:fixture.nativeCatalog,head:fixture.current}).snapshot.files).filter(path=>path.startsWith(runPrefix)).map(path=>path.slice(runPrefix.length)).sort();
   put(join(originalRun,'handoff-observations.md'),`D6 fixture-driver-controlled retained source index.\nRead TASK.md and the current original run ledger and direction records as authority. Saved summaries and retained measurement records are historical evidence.\nSeeded findings, repairs and audit attempts are fixture-driver history, not actions by either author invocation. This index grants no new allowance.\nPrior measurement targets differ from the original target; their results supply no original endpoint approval.\nPaths are relative to this index; inspect the complete referenced bytes.\n\n- [TASK.md](../../../TASK.md)\n${sources.map(path=>`- [${path}](${path})`).join('\n')}\n`,{exclusive:true});
   put(join(root,'seeded-history.json'),{provenance:'fixture-driver-controlled-history',proofs,attempts:attempts.map(a=>({id:a.id,charged:a.result.charged,actualAuditorCalls:0})),measurementRun:measurement.runId},{exclusive:true});
   }catch(error){error.inspectionPath??=proofs.at(-1)?.check.inspectionPath??null;if(!existsSync(join(root,'seeded-history.json')))put(join(root,'seeded-history.json'),{status:'unavailable',reason:error.message,inspectionPath:error.inspectionPath,capturePath:error.capturePath??null,proofs},{exclusive:true});throw error;}
@@ -1238,33 +1258,60 @@ export function controlActionOrder(invocations,support,required=[]) {
   }
   return {orderKnown:true,dependentAction:null};
 }
-export function requiredControlReferences(trial,support) {
-  const skill=trial.skill,names=['environment'];
-  if(skill==='afk')names.push('kickoff','external-review','review-convergence','publication');
-  if(['afk-implementation-pilot','afk-internal-review'].includes(skill))names.push('review-convergence','publication','continuity','output');
-  if(['afk-spec-planner','afk-agent-relay'].includes(skill))names.push('output');
-  if(/-(codex|claude|kimi|glm|deepseek|mimo)-review$/.test(skill))names.push('external-review','review-convergence','review-evidence');
-  if(trial.caseId==='L5')names.push('direction-state');if(trial.caseId==='L6')names.push('design-review');if(trial.caseId==='L7')names.push('review-evidence');if(trial.caseId==='L8')names.push('continuity');
-  return [...new Set(names)].map(name=>{const path=`skills/afk/references/${name}.md`;return {path,digest:existsSync(join(support,path))?digestBytes(readFixtureFile(support,join(support,path))):null};});
+export function nativeControlObservation({directory,manifest,trial,fixture,support,codex,invocations}) {
+  requireEvaluation(invocations.length===1,'single native control invocation required');const result=invocations[0],id=`${trial.id}-author-1`,reference=result.nativeObservation;
+  evaluationRef(reference);requireEvaluation(reference.path===`artifacts/${id}/native-observation.json`,'native control source location');
+  const bytes=readFixtureFile(directory,join(directory,reference.path));requireEvaluation(digestBytes(bytes)===reference.digest,'native control source changed');
+  const observed=readObservedInvocation({directory,id,workspace:fixture.directory,support,model:trial.model,catalog:fixture.nativeCatalog,manifest,codex});
+  requireEvaluation(observed.status==='observed'&&equal(observed,strictJson(bytes))&&result.nativeParentId===id&&result.sessionId,'native control source unqualified');
+  const stdout=readFixtureFile(directory,join(directory,'artifacts',id,'stdout.raw'));
+  requireEvaluation(stdout.equals(readFixtureFile(directory,join(directory,'artifacts',id,'stdout.jsonl'))),'native control event bytes changed');
+  const parsed=parseDirectionHostEvents(decodeOriginalUtf8(stdout));
+  requireEvaluation(parsed.eventsComplete&&parsed.sessionId===result.sessionId&&equal(parsed.actions,result.actions),'native control event projection changed');
+  const read=ref=>{evaluationRef(ref);const value=readFixtureFile(directory,join(directory,ref.path),{maxBytes:manifest.handoff.observer.maxBytes});requireEvaluation(digestBytes(value)===ref.digest,'native control exchange changed');return value;};
+  const exchanges=[],effects=[],sourceEvidence=[reference,{path:`artifacts/${id}/stdout.raw`,digest:digestBytes(stdout)}];let catalog;
+  for(const row of observed.exchanges){
+    requireEvaluation(row.forwarded&&row.released,'native control exchange not delivered');
+    const terminal=strictJson(read(row.terminal));requireEvaluation(terminal.version===2,'native control transport metadata missing');
+    const request=decodeNativeRequest(read(row.request),{maxBytes:manifest.handoff.observer.maxBytes}),response=decodeNativeResponse(read(row.response),{maxBytes:manifest.handoff.observer.maxBytes,responseMetadata:terminal.responseMetadata,transport:{upstream:NATIVE_RESPONSE_ROUTES[manifest.handoff.observer.authMode],status:terminal.status},requestedModel:trial.model});
+    requireEvaluation(checkNativeRelease(response,request).allowed,'native control release unavailable');
+    catalog=strictJson(read(row.catalog));sourceEvidence.push(row.request,row.response,row.catalog,row.terminal);
+    exchanges.push({invocationId:id,sessionId:result.sessionId,ordinal:row.ordinal,request,response});
+    for(const call of nativeResponseItems(response).filter(item=>['custom_tool_call','function_call'].includes(item.type)))effects.push({invocationId:id,sessionId:result.sessionId,callId:null,evidence:`${row.response.path}#${call.call_id}`,reason:'Native nested dependent-effect parentage is unavailable.'});
+  }
+  const bodies={},builtinRoot=join(directory,'artifacts',observed.session.ownerId,'native-state/skills/.system');
+  for(const row of [...catalog.entries,...catalog.unadvertisedBodies]){const root=row.kind==='selected'?support:builtinRoot;const value=readFixtureFile(root,row.path);requireEvaluation(digestBytes(value)===row.sourceDigest,'native control catalog body changed');bodies[row.path]=value;}
+  return {...observeNativeControl({trial,plan:fixture.control.sourcePlan,support,catalog,bodies,exchanges,effects,contextDelivery:fixture.control.contextDelivery}),nativeSourceQualified:true,sourceEvidence};
 }
 
-export function prepareControlFixture({trial,fixture,support,directory}) {
+export function selectedControlSourcePlan(trial,support) {
+  return controlSourcePlan({trial,sources:path=>existsSync(join(support,path))?readFixtureFile(support,join(support,path)):undefined});
+}
+export function requiredControlReferences(trial,support) { return selectedControlSourcePlan(trial,support).requiredReads; }
+
+export function prepareControlFixture({trial,fixture,support,directory,sourcePlan=selectedControlSourcePlan(trial,support)}) {
   const condition=trial.condition;let promptSuffix='',contextDelivery=[];
+  if(sourcePlan.status!=='supported')return {status:'unsupported',reason:sourcePlan.reason,condition,support,sourcePlan};
   if(trial.caseId==='L3'){
     const original=support;support=join(directory,'controlled-support');mkdirSync(support,{mode:0o700});
-    const copy=(source,dest)=>{assertFixtureDirectory(original,source);for(const entry of readdirSync(source,{withFileTypes:true})){const from=join(source,entry.name),key=relative(original,from),to=join(dest,entry.name);if(key==='skills/afk/references/environment.md')continue;
+    const copy=(source,dest)=>{assertFixtureDirectory(original,source);for(const entry of readdirSync(source,{withFileTypes:true})){const from=join(source,entry.name),key=relative(original,from),to=join(dest,entry.name);if(key===sourcePlan.missingReference.path)continue;
       if(entry.isDirectory()){mkdirSync(to,{mode:0o700});copy(from,to);}else{requireEvaluation(entry.isFile(),'controlled support nonregular');put(to,readFixtureFile(original,from),{exclusive:true});chmodSync(to,0o444);}}};copy(original,support);
     support=realpathSync(support);
   }
-  const requiredReads=requiredControlReferences(trial,support);
-  if(trial.caseId==='L1'){const path='skills/afk/references/environment.md',bytes=readFixtureFile(support,join(support,path));
+  const requiredReads=sourcePlan.requiredReads;
+  if(trial.caseId==='L1'){const path=requiredReads.find(row=>row.path.endsWith('/environment.md')).path,bytes=readFixtureFile(support,join(support,path));
     promptSuffix=`\nCurrent selected-revision reference bytes delivered in this context (${path}):\n${decodeOriginalUtf8(bytes)}\n`;
     contextDelivery=[{path,digest:digestBytes(bytes),complete:true,success:true,source:'actual-invocation-prompt',invocationIndex:0,actionIndex:-1}];}
   if(trial.caseId==='L2')put(join(fixture.directory,'.afk/runs/trial/saved-summary.md'),'Controlled stale summary claim: environment instructions were read from an older installed revision. No current-revision delivery evidence is retained.\n',{exclusive:true});
+  if(trial.caseId==='L4')promptSuffix='\nThis is a standalone plan-only stage. Save the complete plan at docs/plan.md; preserve product files and do not allocate a run.\n';
   if(trial.caseId==='L5')promptSuffix='\nThe fixture driver explicitly enabled direction state from the retained request and policy sources in the active run. Inspect those current records through the selected production interface.\n';
-  if(trial.caseId==='L6')promptSuffix='\nThis is the external design phase for the supplied synthetic request. Inspect the applicable instructions before the bounded local gate operation; no provider call is authorized.\n';
-  if(trial.caseId==='L7'){fixture.controlledReceipt=prepareProductEvidence({fixture:{...fixture,scenarioId:'S7'},pluginRoot:support});fixture.current=fixtureGit(fixture.directory,['rev-parse','HEAD']);}
-  return {condition,support,requiredReads,promptSuffix,contextDelivery,provenance:trial.caseId==='L3'?'deliberate-missing-reference':'original-selected-support'};
+  if(trial.caseId==='L6'){
+    put(join(fixture.directory,'docs/plan.md'),'# Supplied inventory plan\n\nImplement TASK R1 and preserve A1 through A6. Reject fractional, negative and excessive requests; retain the original stock on rejection. Validate all six acceptance rows with node --test.\n',{exclusive:true});
+    promptSuffix='\nThis is the external design phase for docs/plan.md. The bounded local endpoint is the selected Codex gate with --design docs/plan.md --print-prompt. No provider call or completed external review is authorized.\n';
+  }
+  if(trial.caseId==='L7'){fixture.controlledReceipt=prepareProductEvidence({fixture:{...fixture,scenarioId:'S7'},pluginRoot:support});fixture.current=fixtureGit(fixture.directory,['rev-parse','HEAD']);
+    promptSuffix=`\nThe local endpoint is checking the retained candidate ${fixture.controlledReceipt.candidate} against the original receipt ${fixture.controlledReceipt.priorReceipt} using the selected receipt checker. Preserve those sources and the target; no new review is authorized.\n`;}
+  return {status:'supported',condition,support,sourcePlan,requiredReads,promptSuffix,contextDelivery,receipt:fixture.controlledReceipt??null,provenance:trial.caseId==='L3'?'deliberate-missing-reference':'original-selected-support'};
 }
 
 function finishMeasurementTerminal(measurement,auditId) {

@@ -1,18 +1,25 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, realpathSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync, mkdirSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { test } from 'node:test';
+import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { test, after } from 'node:test';
 import { copyDirectionTestRuntime, spawnGate } from './gate-test-env.mjs';
-import { prepare, probe, budgetRequest, inspectPrepared, inspectQualification } from './qualify-direction-transport.mjs';
-import { completeResult, FIXTURE_ROOT } from './fixtures/direction-transport/setup.mjs';
 import { canonicalBytes, digestBytes } from '../lib/gate/review-receipt.mjs';
 import { contentDigest } from '../lib/direction/schema.mjs';
-import { readDirectionState, appendDirectionRecord } from '../lib/direction/state.mjs';
-import { LIMITS, checkAudit, validateModelResult, terminalRequest, qualificationEvidence, readJson,
-  validateQualification } from '../lib/direction/audit.mjs';
-import { recordExchange, fixedExchange } from '../lib/direction/transport.mjs';
+
+// Synthetic qualification must not depend on the repository's retained live profile.
+const isolated=await copyDirectionTestRuntime({after},{qualification:'pending'});
+const sourceRoot=fileURLToPath(new URL('../',import.meta.url));
+for(const path of ['scripts/qualify-direction-transport.mjs',...['setup.mjs','requirements.md','artifact.mjs','check.txt','expected.json'].map(name=>`scripts/fixtures/direction-transport/${name}`)]){
+  mkdirSync(dirname(join(isolated.directory,path)),{recursive:true});copyFileSync(join(sourceRoot,path),join(isolated.directory,path));
+}
+const load=path=>import(pathToFileURL(join(isolated.directory,path)));
+const {prepare,probe,budgetRequest,inspectPrepared,inspectQualification}=await load('scripts/qualify-direction-transport.mjs');
+const {completeResult,FIXTURE_ROOT}=await load('scripts/fixtures/direction-transport/setup.mjs');
+const {readDirectionState,appendDirectionRecord}=await load('lib/direction/state.mjs');
+const {LIMITS,checkAudit,validateModelResult,terminalRequest,qualificationEvidence,readJson,validateQualification}=isolated.audit;
+const {recordExchange,fixedExchange}=await load('lib/direction/transport.mjs');
 
 function fixture(t, { budgetAmendmentPath, physicalCallId = 'physical-final-call' } = {}) {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), 'afk-direction-final-'))); t.after(() => rmSync(temp, { recursive: true, force: true }));
@@ -56,7 +63,7 @@ for (const kind of ['outcome', 'findings', 'coverage', 'malformed']) {
       readDirectionState(f.metadata).attempts[0].terminal.path);
     const terminalRecord = JSON.parse(readFileSync(terminalPath, 'utf8'));
     const payload = completeResult(f.input.packet); const retained = structuredClone(payload);
-    if (kind === 'outcome') retained.outcome = 'CORRECT-COURSE';
+    if (kind === 'outcome') retained.outcome = 'NEEDS-DECISION';
     if (kind === 'findings') { retained.outcome = 'CORRECT-COURSE'; retained.findings = [{ id: 'F1', requirementIds: ['O1'],
       evidence: [payload.coverage[0].source], explanation: 'A correction is needed.', recommendedAction: 'Recheck source coverage.' }]; }
     if (kind === 'coverage') retained.coverage[0].explanation = 'Another valid explanation.';

@@ -29,7 +29,7 @@ design-gate: off         # opt-in pilot: one gate over the design doc before cod
 
 ## direction
 mode: off
-max-audit-attempts: 4
+# max-audit-attempts:    # optional nonnegative integer; blank has no attempt cap
 # Frozen sources and explicit operator amendments preserve consumed calls.
 # Existing runs stay off until explicitly initialized with recoverable history.
 # Shadow adds observations without direction-only holds; required needs a current
