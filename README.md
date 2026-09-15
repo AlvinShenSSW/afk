@@ -18,22 +18,39 @@ invariants, reports, and run ledgers live in the consuming repository's
 gitignored `.afk/` directory — nothing about your project is ever written back
 into the plugin.
 
-## What's new in 1.2.0
+## What's new since 1.0
 
-Version 1.2.0 adds stage-specific instruction routing, explicit handoff context,
-versioned intent records, bounded direction-audit helpers and evaluation tooling.
-Project `AGENTS.md` routes detailed guidance to the relevant stage.
+Versions 1.0.1 to 1.2.2 changed the pipeline in five ways:
 
-Direction auditing remains **off by default**. Shadow and required modes are
-experimental opt-in capabilities; paired behavior evaluation remains open under
-issue #113 and Epic #106. Structural checks and narrow transport qualification do not
-establish improved long-task alignment or guaranteed task supervision.
-Read the [rollout decision and rollback guide](docs/direction-rollout.md) before
-enabling auditing or amending an existing run.
+- **Cheaper CI.** Draft PRs skip the full validation job; marking a PR ready
+  starts CI. `remote-ci: off` completes implementation, local checks, internal
+  review and the configured external roles locally without CI polling or
+  automatic publication.
+- **Stage-specific instruction routing.** Each stage reads only its own
+  reference; task authority, findings and budgets survive handoffs and resumed
+  sessions. Project `AGENTS.md` routes detailed guidance to the relevant stage.
+- **Six review-driven fix cycles per issue** instead of two, adjustable through
+  `## review` → `max-fix-cycles`. Savings-only default caps on tokens, calls or
+  whole-task time are gone; explicit operator limits still apply.
+- **Proportionality rules.** Project `AGENTS.md` states completion quality as
+  four rules: finish the accepted behavior with the checks it needs, build a
+  mechanism only when it prevents a defect someone actually hits, scale depth
+  with risk rather than counts, reuse the existing root-cause checkpoint.
+- **Direction auditing, opt-in and off by default.** An independent model
+  (DeepSeek Flash) checks the work against the original task intent with exact
+  citations into retained history. Version 1.2.2 hardened the audit profile
+  (verbatim excerpts of long lines, a finding behind every CORRECT-COURSE,
+  temperature 0, history prepared under earlier settings still loads) and
+  stopped the credential scanner from refusing slash-separated prose, file
+  paths and labelled digests as secrets.
 
-Existing review evidence, independent reviewers, repair allowances and repository
-gates continue to apply. The separate native observation implementation in
-PR #123 is not included in this release.
+Direction auditing's behavioral evidence is bounded: eighteen observed Codex
+Astra cases passed independent adjudication, while Sol and the contested
+repeated-finding flow were not observed. Read the
+[core-case report](docs/evaluations/issue-113-core-cases.md) and the
+[rollout and rollback guide](docs/direction-rollout.md) before enabling
+auditing. Existing review evidence, independent reviewers, repair allowances
+and repository gates continue to apply.
 
 ## Why
 
@@ -256,6 +273,16 @@ empirical acceptance; merging the evaluator did not close that gap. The
 [design](docs/designs/specs/issue-98-behavior-evaluations.md) defines the scenarios,
 comparison matrix, limits, and distinction between tested implementation and
 later report-only commits.
+
+The observed-host campaign for issue #113 later produced bounded evidence on the
+shipped skills: eighteen Codex Astra core cases (clean work, scope expansion,
+omitted acceptance, supporting changes, reviewer preference, exhausted and
+changed-baseline resumes, standalone and nested planning, unavailable auditor,
+repeated non-progress) were adjudicated PASS by independent reviewers, with the
+Sol and contested-flow gaps stated in the
+[core-case report](docs/evaluations/issue-113-core-cases.md). The auditor
+profile's own qualification is in the
+[history qualification report](docs/evaluations/issue-113-history-qualification.md).
 
 ## What this can and cannot enforce
 
