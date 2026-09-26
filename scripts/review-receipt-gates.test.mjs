@@ -163,11 +163,12 @@ for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVI
   });
 }
 
-test('deepseek unversioned HTTP receipt verifies identity and records the backend fingerprint', async () => {
+for (const [label, reported, recorded] of [['records the backend fingerprint', 'fp_a49d71b8a1', 'fp_a49d71b8a1'],
+  ['drops a secret-shaped fingerprint instead of failing the review', 'a'.repeat(64), null]]) test(`deepseek unversioned HTTP receipt verifies identity and ${label}`, async () => {
   const server = createServer(async (req, res) => {
     for await (const chunk of req) void chunk;
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ model: 'deepseek-flash', system_fingerprint: 'fp_a49d71b8a1',
+    res.end(JSON.stringify({ model: 'deepseek-flash', system_fingerprint: reported,
       choices: [{ message: { content: 'Fixture review.\nSOUND' }, finish_reason: 'stop' }] }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -185,6 +186,6 @@ test('deepseek unversioned HTTP receipt verifies identity and records the backen
     assert.equal(status, 0, output);
     const { model } = receipt.terminal();
     assert.deepEqual(model, { requested: { model: 'deepseek-flash', effort: null }, observed: ['deepseek-flash'],
-      verification: 'verified', reason: null, fingerprint: 'fp_a49d71b8a1' });
+      verification: 'verified', reason: null, fingerprint: recorded });
   } finally { server.closeAllConnections?.(); server.close(); }
 });
