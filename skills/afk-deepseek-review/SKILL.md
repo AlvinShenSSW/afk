@@ -89,7 +89,11 @@ Set `DEEPSEEK_REVIEW_API_KEY` in the environment or a gitignored `.env`.
 
 Config knobs:
 
-- `DEEPSEEK_REVIEW_MODEL` (default `deepseek-v4-pro`)
+- `DEEPSEEK_REVIEW_MODEL` (default `deepseek-v4-pro`). DeepSeek's current
+  unversioned name `deepseek-flash` is accepted. The bare `deepseek` and names
+  ending in `latest`, `default` or `auto` are refused before the call.
+  DeepSeek has retired `deepseek-v4-flash` and serves it with its current Flash
+  model, so use `deepseek-flash` instead.
 - `DEEPSEEK_REVIEW_BASE_URL` (default `https://api.deepseek.com`)
 - `DEEPSEEK_REVIEW_THINKING` (`off` disables thinking; enabled by default)
 - `DEEPSEEK_REVIEW_MAX_CTX_BYTES` (default `160000`)

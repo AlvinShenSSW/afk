@@ -146,6 +146,15 @@ requested in the prompt rather than constrained by the helper.
 | `deepseek` | `deepseek-v4-pro` | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
 | `mimo` | `mimo-v2.5-pro` | Xiaomi MiMo REST API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
 
+A REST reviewer model must be a pinned ID that contains a version digit,
+because a name without a version can move to another model without notice.
+DeepSeek is the one exception: it names its current model `deepseek-flash`
+with no version, so `DEEPSEEK_REVIEW_MODEL` also accepts an exact unversioned
+DeepSeek name. The bare `deepseek` and any name ending in `latest`, `default`
+or `auto` are still refused before the call. Every REST gate still requires
+the response to report the requested model, and records the provider's
+`system_fingerprint`, when one is returned, in the review receipt.
+
 The Kimi helper supports both CLIs named `kimi`. It derives the installed CLI's
 headless argument group from `--help` and constrains legacy Windows console
 encoding only when the probe says it is needed, so the same gate works across
@@ -283,6 +292,13 @@ Sol and contested-flow gaps stated in the
 [core-case report](docs/evaluations/issue-113-core-cases.md). The auditor
 profile's own qualification is in the
 [history qualification report](docs/evaluations/issue-113-history-qualification.md).
+
+Version 1.2.3 changed three files that this qualification fingerprints
+(`lib/gate/model-identity.mjs`, `lib/gate/review-receipt.mjs`,
+`lib/http/openai-provider.mjs`). Opt-in direction audits therefore report
+`qualification_stale` and send no request until the profile is qualified again
+with `scripts/qualify-direction-transport.mjs`. Nothing changes while direction
+auditing stays off, which is the default.
 
 ## What this can and cannot enforce
 
