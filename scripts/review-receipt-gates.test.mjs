@@ -162,3 +162,29 @@ for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVI
     } finally { server.closeAllConnections?.(); server.close(); }
   });
 }
+
+test('deepseek unversioned HTTP receipt verifies identity and records the backend fingerprint', async () => {
+  const server = createServer(async (req, res) => {
+    for await (const chunk of req) void chunk;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ model: 'deepseek-flash', system_fingerprint: 'fp_a49d71b8a1',
+      choices: [{ message: { content: 'Fixture review.\nSOUND' }, finish_reason: 'stop' }] }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  try {
+    const receipt = attempt('deepseek');
+    receipt.request.profile.roles[0].model = 'deepseek-flash';
+    writeFileSync(receipt.args[1], JSON.stringify(receipt.request));
+    const child = spawn(process.execPath, [gate('deepseek'), '--design', '.afk/design.md', '--implementer', 'codex', ...receipt.args], {
+      cwd, env: gateTestEnv({ DEEPSEEK_REVIEW_API_KEY: 'fixture-key', DEEPSEEK_REVIEW_MODEL: 'deepseek-flash',
+        DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${server.address().port}` }),
+      stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000,
+    });
+    let output = ''; child.stdout.on('data', (chunk) => output += chunk); child.stderr.on('data', (chunk) => output += chunk);
+    const [status] = await once(child, 'close');
+    assert.equal(status, 0, output);
+    const { model } = receipt.terminal();
+    assert.deepEqual(model, { requested: { model: 'deepseek-flash', effort: null }, observed: ['deepseek-flash'],
+      verification: 'verified', reason: null, fingerprint: 'fp_a49d71b8a1' });
+  } finally { server.closeAllConnections?.(); server.close(); }
+});

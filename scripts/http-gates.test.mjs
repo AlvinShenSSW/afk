@@ -298,6 +298,45 @@ test('reviewer model mismatch discards the verdict', async () => {
   });
 });
 
+test('deepseek accepts an exact unversioned model and still refuses a floating alias before any request', async () => {
+  let calls = 0;
+  const requested = [];
+  await withServer(async (request, response) => {
+    calls++;
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    requested.push(JSON.parse(raw).model);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      model: 'deepseek-flash',
+      system_fingerprint: 'fp_fixture',
+      choices: [{ finish_reason: 'stop', message: { content: 'APPROVE' } }],
+      usage: {},
+    }));
+  }, async (port) => {
+    const env = { DEEPSEEK_REVIEW_API_KEY: 'test-only', DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${port}` };
+    const accepted = await runGateAsync('deepseek', { env: { ...env, DEEPSEEK_REVIEW_MODEL: 'deepseek-flash' } });
+    assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
+    assert.match(accepted.stdout, /APPROVE/);
+    assert.deepEqual(requested, ['deepseek-flash']);
+
+    for (const alias of ['deepseek-latest', 'deepseek']) {
+      const refused = await runGateAsync('deepseek', { env: { ...env, DEEPSEEK_REVIEW_MODEL: alias } });
+      assert.notEqual(refused.status, 0);
+      assert.match(refused.stdout, /DEEPSEEK_REVIEW_MODEL must be a pinned model ID/);
+    }
+    assert.equal(calls, 1);
+  });
+});
+
+test('mimo still refuses an unversioned model before any request', () => {
+  const result = runGate('mimo', { env: {
+    MIMO_REVIEW_API_KEY: 'test-only', MIMO_REVIEW_MODEL: 'mimo-flash', MIMO_REVIEW_BASE_URL: 'http://127.0.0.1:9',
+  } });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stdout, /MIMO_REVIEW_MODEL must be a pinned model ID containing a version digit\./);
+});
+
 test('target validation errors redact secret-shaped path and ref text', () => {
   const token = `tp-${'V8q'.repeat(12)}`;
   for (const args of [
