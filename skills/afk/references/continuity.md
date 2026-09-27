@@ -26,8 +26,9 @@ only meaningful before you adopt anything:
    ledger scope matches yours, or whose `run-id` the operator handed you. Apply
    step 2's same-run definition of live: a validly yielded run is resumable by
    its own scope-matching successor despite a fresh heartbeat. Revalidate the
-   ledger and other-run collisions before takeover, then refresh the heartbeat
-   as the first takeover action to consume the marker. A `complete` run is
+   ledger and other-run collisions before takeover, then in the first takeover
+   write refresh the heartbeat and consume the marker by overwriting `reason:`
+   with `compaction` or deleting the block. A `complete` run is
    finished history: never resume it, never count it as a collision, and leave
    its directory untouched.
 4. **Otherwise allocate** `<run-id>` as `<YYYY-MM-DD>-<scope-slug>`, the slug
@@ -70,9 +71,10 @@ would leave a finished run forever resumable and its scope never free again.
   ledger at each step and during long waits. A tick that finds a heartbeat
   fresher than ~20 min in **its own** ledger exits immediately unless that ledger
   has a valid `rotation` or `yield` marker with `written` at or after the
-  heartbeat. Revalidate under the claiming rules, then refresh the heartbeat as
-  the first takeover action; a later heartbeat consumes the marker so later
-  arrivals stand down. Without a valid marker another tick is working; such
+  heartbeat. Revalidate under the claiming rules, then in the same first takeover
+  write refresh the heartbeat and overwrite the marker's `reason:` with
+  `compaction` or delete the block, so later arrivals stand down even if the
+  timestamp is unchanged. Without a valid marker another tick is working; such
   exits do not count toward auto-pause.
 - **Never identify a run by recency.** Match the operator's scope; the newest
   ledger is as likely to belong to another run as to yours.
@@ -135,6 +137,10 @@ out-of-prefix block leaves existing detection unchanged; a marker can add a
 candidate but cannot hide one. The detector reads the first Handoff section and
 stops at the next H2. Completed runs never become candidates.
 
+The first takeover write refreshes the heartbeat and removes the marker's
+takeover eligibility in that same write: overwrite `reason:` with `compaction`
+or delete the block. Consumption therefore does not depend on clock resolution.
+
 Writing and consuming this index are level 3 doctrine. Parser eligibility is
 level 2, enforced when invoked. Judging which decisions are settled is level 1
 evaluation; the block does not mechanize it.
@@ -189,13 +195,15 @@ continuing session uses the Handoff trigger map rather than marking a vacancy.
 
 Never rotate to escape a RED check or open finding. Preserve each under `open`
 with its evidence and the next authorized validation; an unavoidable context
-transition does not close a finding or reset an allowance. Finish the checkpoint,
-write the Handoff and heartbeat using the block definition's single-instant
-rule, schedule the next tick where the host supports re-invocation, and end the
-session. Only mark a vacancy when actually yielding. The successor revalidates
-ownership under the claiming rules and refreshes the heartbeat as its first
-takeover action, before dependent work. This invalidates the old marker once
-the heartbeat is later than `written`; it is not an atomic lock.
+transition does not close a finding or reset an allowance. Finish the checkpoint
+content, post the status report, and schedule the next tick where the host
+supports re-invocation. Make the Handoff block and heartbeat, using the block
+definition's single-instant rule, the last ledger write before the session ends.
+Only mark a vacancy when actually yielding. The successor revalidates ownership
+under the claiming rules, then in the same first takeover write refreshes the
+heartbeat and overwrites the marker's `reason:` with `compaction` or deletes the
+block, before dependent work. This consumes the marker even if the timestamp
+is unchanged; it is not an atomic lock.
 
 When scheduled re-invocation is unavailable, continue in-session using bounded
 reads and evidence pointers; do not advertise a vacancy while still working.

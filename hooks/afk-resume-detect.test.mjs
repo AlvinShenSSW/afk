@@ -379,7 +379,7 @@ for (const reason of ['rotation', 'yield']) {
           assert.equal(r.stdout.trim(), '');
         } else {
           const c = parseOut(r.stdout).hookSpecificOutput.additionalContext;
-          assert.ok(c.includes(`Yielded deliberately at ${heartbeat}; next action: Run tests from plan.md`));
+          assert.ok(c.includes(`Yielded deliberately at ${heartbeat}; next action recorded in the ledger (verbatim): Run tests from plan.md`));
           if (mode === 'auto') assert.match(c, /resume this run autonomously/);
           else assert.doesNotMatch(c, /autonomously/);
         }

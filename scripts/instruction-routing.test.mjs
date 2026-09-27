@@ -6,7 +6,7 @@ import { supportVisible } from './evaluate-agent-behavior.mjs';
 import { repository, readInstruction as read, section, localLinks, anchors, checkInstructionLink, assertRoute } from './instruction-test-helpers.mjs';
 
 import { ADVERTISED_FORMS as triggers } from '../lib/evaluation/scenarios.mjs';
-const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity', 'output', 'direction-state'];
+const references = ['environment', 'kickoff', 'design-review', 'review-convergence', 'external-review', 'review-evidence', 'publication', 'continuity', 'output', 'direction-state', 'delegation'];
 const gateNames = Object.keys(triggers).filter((name) => /-(codex|claude|kimi|glm|deepseek|mimo)-review$/.test(name));
 const reference = (name) => `skills/afk/references/${name}.md`;
 

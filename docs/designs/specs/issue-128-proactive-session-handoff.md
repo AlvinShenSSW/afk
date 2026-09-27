@@ -41,10 +41,11 @@ parser does not interpret the human lists as executable instructions.
 Selection uses exact timestamp ages, not rounded display minutes. With known
 heartbeat age `h` and valid marker age `w`, deliberate yield means a `rotation`
 or `yield` reason and `w <= h`. Equality is essential: the block definition's
-single-instant write rule produces it. A successor refreshes the heartbeat as
-its first takeover action, making the previous marker older than the heartbeat.
-If the heartbeat remains equal, the marker remains eligible: ownership is
-advisory and a successor must revalidate before acting.
+single-instant write rule produces it. In its first takeover write, a successor
+refreshes the heartbeat and removes takeover eligibility by overwriting the
+marker's `reason:` with `compaction` or deleting the block. Consumption does not
+depend on clock resolution; ownership is advisory and a successor must
+revalidate before acting.
 
 `compaction` records a checkpoint whose writer continues; `auto-pause` records
 a no-progress stop. Neither bypasses the stale threshold. Missing, malformed,
