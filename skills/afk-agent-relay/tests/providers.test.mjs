@@ -222,6 +222,12 @@ test('empty completion is an error, not silent success', async () => {
   );
 });
 
+test('deepseek provider defaults to Flash and accepts V4 Pro', () => {
+  const p = resolveProvider(buildRegistry(), 'deepseek');
+  assert.equal(p.defaultModel({}), 'deepseek-flash');
+  assert.equal(p.defaultModel({ DEV_DEEPSEEK_MODEL: 'deepseek-v4-pro' }), 'deepseek-v4-pro');
+});
+
 test('openai provider requires an explicit model (no wrong-guess default)', () => {
   const p = resolveProvider(buildRegistry(), 'openai');
   assert.throws(() => p.defaultModel({}), /no model configured/);

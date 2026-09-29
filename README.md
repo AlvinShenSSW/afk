@@ -101,7 +101,7 @@ in the pipeline is plain git.
 | `afk-claude-review` | Runs a Claude fallback role; declines to review Claude's own work. |
 | `afk-kimi-review` | Runs Kimi as the final role when selected. |
 | `afk-glm-review` | Runs a GLM fallback role with bounded diff context. |
-| `afk-deepseek-review` | Runs an optional DeepSeek V4 Pro snapshot-backed role. |
+| `afk-deepseek-review` | Runs an optional DeepSeek Flash (default) or V4 Pro snapshot-backed role. |
 | `afk-mimo-review` | Runs an optional MiMo V2.5 Pro Token Plan snapshot-backed role. |
 | `afk-agent-relay` | Offloads large reads or scoping work to an external model. |
 
@@ -143,14 +143,15 @@ requested in the prompt rather than constrained by the helper.
 | `claude` | `claude-opus-5` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
 | `kimi` | CLI-selected | Kimi Code CLI or Kimi CLI | the CLI's own auth | 45 min |
 | `glm` | `glm-5.3` | Z.ai REST API (OpenAI protocol by default) | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
-| `deepseek` | `deepseek-v4-pro` | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
+| `deepseek` | `deepseek-flash` (or `deepseek-v4-pro`) | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
 | `mimo` | `mimo-v2.5-pro` | Xiaomi MiMo REST API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
 
 A REST reviewer model must be a pinned ID that contains a version digit,
 because a name without a version can move to another model without notice.
 DeepSeek is the one exception: it names its current model `deepseek-flash`
 with no version, so `DEEPSEEK_REVIEW_MODEL` also accepts an exact unversioned
-DeepSeek name. The bare `deepseek` and any name ending in `latest`, `default`
+DeepSeek name. The DeepSeek role defaults to `deepseek-flash`; set
+`DEEPSEEK_REVIEW_MODEL=deepseek-v4-pro` to use V4 Pro. The bare `deepseek` and any name ending in `latest`, `default`
 or `auto` are still refused before the call. Every REST gate still requires
 the response to report the requested model, and records the provider's
 `system_fingerprint`, when one is returned, in the review receipt.

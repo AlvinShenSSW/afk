@@ -151,7 +151,7 @@ async function httpCall(family, args, env, response, verify) {
 
 for (const [family, model, keyEnv, protocol] of [
   ['glm', 'glm-5.3', 'ZAI_API_KEY', 'openai'], ['glm', 'glm-5.3', 'ZAI_API_KEY', 'anthropic'],
-  ['deepseek', 'deepseek-v4-pro', 'DEEPSEEK_REVIEW_API_KEY', 'openai'], ['mimo', 'mimo-v2.5-pro', 'MIMO_REVIEW_API_KEY', 'openai'],
+  ['deepseek', 'deepseek-flash', 'DEEPSEEK_REVIEW_API_KEY', 'openai'], ['mimo', 'mimo-v2.5-pro', 'MIMO_REVIEW_API_KEY', 'openai'],
 ]) {
   test(`${family} ${protocol} actual HTTP request preserves artifact digest and proof`, async () => {
     const { args, context, packet } = prepare(['--design', '.afk/design.md']);

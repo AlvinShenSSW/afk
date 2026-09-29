@@ -16,7 +16,8 @@ Before supplying context/receipts or reusing receipts, read
 Reuse only the same installed revision already read and still in context;
 otherwise reread it. Apply these routes for standalone invocations too.
 
-An optional independent review by `deepseek-v4-pro`. Run it only when an
+An optional independent review by `deepseek-flash` (default) or
+`deepseek-v4-pro`. Run it only when an
 explicit `.afk/config.md` `gates:` or `priority:` profile selects DeepSeek, or
 when the operator invokes this skill directly. Never use it when DeepSeek wrote
 the change or already occupies another ordered role.
@@ -89,9 +90,9 @@ Set `DEEPSEEK_REVIEW_API_KEY` in the environment or a gitignored `.env`.
 
 Config knobs:
 
-- `DEEPSEEK_REVIEW_MODEL` (default `deepseek-v4-pro`). DeepSeek's current
-  unversioned name `deepseek-flash` is accepted. The bare `deepseek` and names
-  ending in `latest`, `default` or `auto` are refused before the call.
+- `DEEPSEEK_REVIEW_MODEL` (default `deepseek-flash`). Set `deepseek-v4-pro`
+  for V4 Pro. The bare `deepseek` and names ending in `latest`, `default` or
+  `auto` are refused before the call.
   DeepSeek has retired `deepseek-v4-flash` and serves it with its current Flash
   model, so use `deepseek-flash` instead.
 - `DEEPSEEK_REVIEW_BASE_URL` (default `https://api.deepseek.com`)

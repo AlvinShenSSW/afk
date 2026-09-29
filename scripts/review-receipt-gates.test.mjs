@@ -16,7 +16,7 @@ writeFileSync(join(cwd, '.git', 'info', 'exclude'), '.afk/\n');
 writeFileSync(join(cwd, '.afk', 'design.md'), '# Fixture design\nRequired behavior is explicit.\n');
 const gate = (family) => fileURLToPath(new URL(`../skills/afk-${family}-review/${family}-gate.mjs`, import.meta.url));
 const models = { claude: 'claude-opus-5', codex: 'gpt-5.6-sol', kimi: null,
-  glm: 'glm-5.3', deepseek: 'deepseek-v4-pro', mimo: 'mimo-v2.5-pro' };
+  glm: 'glm-5.3', deepseek: 'deepseek-flash', mimo: 'mimo-v2.5-pro' };
 let sequence = 0;
 function attempt(family, overrides = {}) {
   const attemptId = `gate-${++sequence}`;
@@ -174,10 +174,8 @@ for (const [label, reported, recorded] of [['records the backend fingerprint', '
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   try {
     const receipt = attempt('deepseek');
-    receipt.request.profile.roles[0].model = 'deepseek-flash';
-    writeFileSync(receipt.args[1], JSON.stringify(receipt.request));
     const child = spawn(process.execPath, [gate('deepseek'), '--design', '.afk/design.md', '--implementer', 'codex', ...receipt.args], {
-      cwd, env: gateTestEnv({ DEEPSEEK_REVIEW_API_KEY: 'fixture-key', DEEPSEEK_REVIEW_MODEL: 'deepseek-flash',
+      cwd, env: gateTestEnv({ DEEPSEEK_REVIEW_API_KEY: 'fixture-key',
         DEEPSEEK_REVIEW_BASE_URL: `http://127.0.0.1:${server.address().port}` }),
       stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000,
     });
