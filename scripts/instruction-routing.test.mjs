@@ -118,3 +118,17 @@ test('native Codex context restrictions do not exclude supported receipt capture
   assert.match(text, /Native diff review still supports `--review-receipt`/);
   assert.doesNotMatch(text, /cannot accept this input/);
 });
+
+
+test('standalone review satellites limit waterfall sequencing to driver-managed AFK', () => {
+  for (const family of ['claude', 'codex', 'kimi', 'glm', 'deepseek', 'mimo']) {
+    const text = read(`skills/afk-${family}-review/SKILL.md`);
+    assert.match(text, /For standalone review, run only the requested gate and return/);
+    assert.match(text, /driver-managed AFK/);
+    assert.match(text, /references\/external-review\.md/);
+  }
+  const kimi = read('skills/afk-kimi-review/SKILL.md');
+  assert.match(kimi, /In driver-managed AFK, Kimi is the default final role/);
+  const claude = read('skills/afk-claude-review/SKILL.md');
+  assert.match(claude, /In driver-managed AFK,.*\n.*next gate in `priority`/);
+});
