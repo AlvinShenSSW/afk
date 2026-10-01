@@ -14,6 +14,8 @@ rules, required checks and release duties.
 ## Review and merge
 
 Before selecting reviewers, read the [canonical external role profile and
-independence rules](skills/afk/references/external-review.md). The owner/maintainer
-reviews every PR before its squash merge. Follow AGENTS for the merge boundary;
-a passing automated check does not supply owner approval.
+independence rules](skills/afk/references/external-review.md). Independent review
+by a different model satisfies this repository's review requirement; native
+GitHub human approval is not required. Follow AGENTS and the consuming merge
+policy for the squash-merge boundary. A passing CI or contributor-authorization
+check does not establish that independent-model review happened.

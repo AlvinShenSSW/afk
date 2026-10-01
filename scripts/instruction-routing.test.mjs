@@ -73,7 +73,8 @@ test('common finding and implementer definitions occur once, with no satellite c
 
 test('repository authority remains visible and conditional authoring has one route', () => {
   const text = read('AGENTS.md');
-  for (const pattern of [/owner\/maintainer/, /Never commit to/, /English only/, /Secrets/, /Epistemic/, /Artifact/, /Workflow/, /enforced when invoked/, /node --test/, /sync-marketplace/]) assert.match(text, pattern);
+  for (const pattern of [/independent review by a different model/, /Never commit to/, /English only/, /Secrets/, /Epistemic/, /Artifact/, /Workflow/, /enforced when invoked/, /node --test/, /sync-marketplace/]) assert.match(text, pattern);
+  assert.match(text, /Native GitHub human approval is not required/);
   assertRoute(text, 'docs/maintaining-skills.md');
   assertRoute(text, 'skills/afk/references/external-review.md');
   assert.match(text, /operational instructions/i);
