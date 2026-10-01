@@ -180,8 +180,8 @@ requested in the prompt rather than constrained by the helper.
 
 | Role | Default model | Runs via | Credential | Timeout |
 |------|---------------|----------|------------|---------|
-| `codex` | `gpt-5.6-sol` | Codex CLI | the CLI's own auth | 15 min |
-| `claude` | `claude-opus-5` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
+| `codex` | `gpt-6.1-sol` | Codex CLI | the CLI's own auth | 15 min |
+| `claude` | `claude-opus-5-5` | Claude Code CLI (`Read,Grep,Glob` only) | the CLI's own auth | 15 min |
 | `kimi` | CLI-selected | Kimi Code CLI or Kimi CLI | the CLI's own auth | 45 min |
 | `glm` | `glm-5.3` | Z.ai REST API (OpenAI protocol by default) | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
 | `deepseek` | `deepseek-flash` (or `deepseek-v4-pro`) | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
@@ -202,9 +202,10 @@ headless argument group from `--help` and constrains legacy Windows console
 encoding only when the probe says it is needed, so the same gate works across
 the current npm and Python CLI families.
 
-The Codex reviewer stays on `gpt-5.6-sol` independently of the interactive
-session model. `CODEX_REVIEW_MODEL=gpt-6-astra` selects Astra for an explicitly
-assigned review; `--print-args` shows the resolved choice before a paid call.
+The Codex reviewer defaults to `gpt-6.1-sol` at `high` effort independently of
+the interactive session model. The Claude reviewer defaults to `claude-opus-5-5`
+at `high` effort. The `sol` and `opus` aliases select these respective model IDs.
+`CODEX_REVIEW_MODEL=gpt-6-astra` selects Astra for an explicitly assigned review; `--print-args` shows the resolved choice before a paid call.
 
 Kimi gets longer because it drives git itself rather than receiving a
 pre-injected diff. CLI availability and authentication probes are capped at 30
