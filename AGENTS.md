@@ -11,8 +11,9 @@ preferences and run evidence stay in their ignored `.afk/` directory.
   examples in a design doc, issue or PR body rather than inline commentary.
 - **No personal, project, or non-public information** in any file, ever.
 - **English only** for all repository content.
-- **Every PR is reviewed by the owner/maintainer before merge.** Never commit to
-  `main`; one topic per branch; squash-merge.
+- **Every PR receives independent review by a different model before merge.**
+  Native GitHub human approval is not required. Never commit to `main`; one topic
+  per branch; squash-merge. Follow the consuming merge policy.
 - **Bump the plugin `version`** in any PR changing shipped skills, scripts, libraries,
   hooks, templates or manifests — it is the install cache key, and hosts ignore changes without it.
 - **Secrets live in the environment only** — a shell env var or a gitignored
@@ -83,9 +84,9 @@ node --test                                  # unit tests
 ## Contribution and release
 
 Design non-trivial changes under `docs/designs/specs/`, then tests first,
-implementation, self-review and a PR. Every PR needs the owner/maintainer's review
-before merge. CI green is necessary, not sufficient; configured independent
-external roles also apply. Each actual reviewer differs from the implementer
+implementation, self-review and a PR. Independent-model review satisfies the
+review requirement; CI green alone does not. Configured independent external
+roles apply. Each actual reviewer differs from the implementer
 and every other review role. Read the [canonical role profile and independence
 rules](skills/afk/references/external-review.md) before selecting those roles.
 
