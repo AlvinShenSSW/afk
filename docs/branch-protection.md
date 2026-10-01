@@ -1,9 +1,11 @@
 # Branch protection
 
 Required GitHub controls make the documented PR path apply to repository updates.
-Owner review remains workflow doctrine; the current `gate` accepts an admin-authored
-PR automatically and therefore does not establish that a human reviewed it.
-The separate admin-author identity policy is outside this settings change.
+Independent review by a different model satisfies the repository review policy;
+native GitHub human approval is not required. Model-review execution remains
+workflow doctrine (level 3). The `gate` check supplies contributor authorization,
+accepting an admin author or the latest effective current-head admin approval.
+It does not establish that any model reviewed the change.
 
 ## Intended main controls
 
@@ -18,8 +20,14 @@ The repository ruleset for `refs/heads/main` is active with no bypass actors:
 
 These controls constrain updates while the settings remain active. Administrators
 can change settings; neither this document nor a workflow guarantees otherwise.
-`gate` applies its existing admin-permission/current-head approval policy, with
-its admin-author exemption. `CODEOWNERS` routes requests but is not proof of review.
+`gate` retains its admin-author exemption. For other authors, it reads complete
+chronological review history and keeps each reviewer's latest decisive review
+(APPROVED, CHANGES_REQUESTED or DISMISSED), then requires an admin's approval on
+the current head. Comments and pending reviews do not replace decisive reviews.
+This workflow's computation is mechanically checked when it runs; its source is
+part of the PR, so a green result is not independent attestation of review.
+`CODEOWNERS` routes requests but is not proof of review. The consuming merge
+policy still determines whether a reviewed PR is left open or merged.
 
 ## Read-only drift audit
 
