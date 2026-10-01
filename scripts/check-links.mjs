@@ -15,7 +15,7 @@ const utf8 = bytes => new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 function inventory(rootDir) {
   try {
-    const root = utf8(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: rootDir, stdio: ['ignore', 'pipe', 'pipe'] })).replace(/\r?\n$/, '');
+    const root = resolve(utf8(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: rootDir, stdio: ['ignore', 'pipe', 'pipe'] })).replace(/\r?\n$/, ''));
     const names = utf8(execFileSync('git', ['ls-files', '--cached', '-z'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }));
     if (names && !names.endsWith('\0')) throw new Error('incomplete inventory');
     return { root, files: [...new Set(names.split('\0').filter(path => /\.md$/i.test(path)))] };
