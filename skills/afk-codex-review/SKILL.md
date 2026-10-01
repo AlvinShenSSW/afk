@@ -16,7 +16,11 @@ Before supplying context/receipts or reusing receipts, read
 Reuse only the same installed revision already read and still in context;
 otherwise reread it. Apply these routes for standalone invocations too.
 
-An independent second-opinion review by Codex (a *different* model), used as the
+For standalone review, run only the requested gate and return its verdict.
+Follow [external review](../afk/references/external-review.md) for the distinction
+between standalone invocation and driver-managed AFK sequencing.
+
+In driver-managed AFK, Codex is an independent review by a *different* model, the
 default **outer** role before later configured roles (Kimi is the default final
 when a final role is configured; the built-in default is a single Codex gate).
 Run the ordered `gates` profile from `.afk/config.md`, never use a reviewer whose
