@@ -228,7 +228,7 @@ const timeoutMs = reviewTimeoutMs('claude');
 
 if (!isPinnedModelId(model)) {
   emitError(
-    `cannot review — CLAUDE_REVIEW_MODEL "${model}" is an alias, not a pinned model ID. An alias is resolved by the host and can select an older generation with no visible symptom, which this gate cannot allow. Set a full ID, e.g. claude-opus-5.`,
+    `cannot review — CLAUDE_REVIEW_MODEL "${model}" is an alias, not a pinned model ID. An alias is resolved by the host and can select an older generation with no visible symptom, which this gate cannot allow. Set a full ID, e.g. claude-opus-5-5.`,
     1,
   );
 }

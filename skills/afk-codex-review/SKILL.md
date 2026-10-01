@@ -72,7 +72,7 @@ read-only on every OS. A missing or unreadable `--design` path fails loudly
 `AFK_REVIEW_TIMEOUT_MS` as the shared fallback. A timeout is a non-zero `ERROR`,
 never a partial verdict; it follows the role's transient retry rule.
 
-**The reviewer's model defaults to `gpt-5.6-sol`**, pinned independently of
+**The reviewer's model defaults to `gpt-6.1-sol`**, pinned independently of
 `~/.codex/config.toml`: an
 interactive session tuned for speed or cost would otherwise decide the gate's
 model, and a downgraded reviewer reads exactly like a thorough one.
@@ -84,7 +84,7 @@ reports the resolved model without spending a call.
 
 Per-run `--model <alias-or-id>` and `--effort <level>` override their environment
 values independently. Model aliases `sol`, `terra`, and `astra` resolve through
-`../../lib/gate/model-select.mjs`; the default remains Sol at medium effort.
+`../../lib/gate/model-select.mjs`; the default is Sol 6.1 at high effort.
 Efforts are `low`, `medium`, `high`, `xhigh`, and `max`; legacy `minimal` is
 rejected for GPT-5.6 and GPT-6. Explicit Codex `-c model=...` and
 `-c model_reasoning_effort=...` retain last-wins precedence, with the effective

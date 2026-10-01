@@ -57,7 +57,7 @@ if (${JSON.stringify(family)} === 'kimi') {
   if (match) prompt = fs.readFileSync(match[1], 'utf8');
 } else prompt = fs.readFileSync(0, 'utf8');
 fs.writeFileSync(${JSON.stringify(capture)}, JSON.stringify({ args, prompt }));
-if (${JSON.stringify(family)} === 'claude') console.log(JSON.stringify({ is_error: false, result: 'F96-001 verified.\\nAPPROVE', modelUsage: { 'claude-opus-5': {} } }));
+if (${JSON.stringify(family)} === 'claude') console.log(JSON.stringify({ is_error: false, result: 'F96-001 verified.\\nAPPROVE', modelUsage: { 'claude-opus-5-5': {} } }));
 else if (${JSON.stringify(family)} === 'codex') fs.writeFileSync(args[args.indexOf('-o') + 1], 'F96-001 verified.\\nSOUND');
 else console.log('F96-001 verified.\\nAPPROVE');
 `);
