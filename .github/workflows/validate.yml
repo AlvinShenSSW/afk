@@ -71,4 +71,4 @@ jobs:
             "https://github.com/gitleaks/gitleaks/releases/download/v${ver}/gitleaks_${ver}_linux_x64.tar.gz"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz" | sha256sum --check --strict
           tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
-          /tmp/gitleaks detect --source . --config .gitleaks.toml --no-banner --redact
+          /tmp/gitleaks detect --source . --config .gitleaks.toml --no-banner --redact --log-opts=HEAD
