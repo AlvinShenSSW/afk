@@ -18,6 +18,47 @@ invariants, reports, and run ledgers live in the consuming repository's
 gitignored `.afk/` directory — nothing about your project is ever written back
 into the plugin.
 
+## Audit hardening in 1.3.2–1.3.6
+
+Five audit fixes strengthen the boundaries used by review and direction helpers:
+
+1. **Credentials and execution.** Redaction handles supported quoted values
+   under known credential labels, including spaces and JSON escapes. Windows
+   bare-name CLI lookup uses absolute PATH entries to prevent implicit
+   current-directory executable shadowing. Shared HTTP transport rejects
+   redirects to avoid forwarding credentials or review content to another origin.
+2. **Review and contributor authorization.** This repository accepts independent
+   review by a different model without requiring native GitHub human approval.
+   Contributor authorization remains separate: admin authors satisfy it directly;
+   other authors need a current-head admin approval. The check uses complete
+   history and each reviewer's latest decisive state, so a later request for
+   changes or dismissal supersedes an earlier approval. See
+   [branch protection](docs/branch-protection.md) for the distinction.
+3. **Complete review inputs and consistent upgrades.** Uncommitted reviews
+   started from a subdirectory include repository-wide untracked files. Inventory
+   and tracker configuration read failures surface as errors. Claude reads from
+   the repository root while preserving the caller's executable selection. The
+   environment instructions direct the driver to reconcile an upgraded
+   installation with the recorded plugin root before invoking helpers.
+4. **Reliable direction completion.** Result writers, readers and terminal state
+   checks share the same size limit. Terminal records retain the observed
+   started/not-started dispatch state. Retained audits can be finalized after a
+   runtime upgrade without another provider request or a refunded attempt.
+5. **Clearer review routing and dependable documentation checks.** Review
+   instructions tell the driver to run only the requested gate for a standalone
+   review and follow the selected role sequence in AFK. This sequencing and the
+   upgrade reconciliation above remain driver instructions, not runtime controls.
+   Internal link checks use tracked Markdown and current working content,
+   ignoring local run artifacts while reporting unreadable or unsafe source files
+   explicitly.
+
+No new consuming configuration keys or state migration are required. Link checks
+require a full checkout of tracked Markdown. Direction auditing remains opt-in
+and off by default; the changed runtime invalidates prior transport qualification,
+so enabling it requires qualification for the current profile. Finalizing an old
+audit does not qualify a new dispatch. See the
+[rollout guide](docs/direction-rollout.md) for adoption and rollback conditions.
+
 ## What's new since 1.0
 
 Versions 1.0.1 to 1.2.2 changed the pipeline in five ways:
