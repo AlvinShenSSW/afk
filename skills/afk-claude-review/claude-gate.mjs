@@ -252,10 +252,7 @@ const args = [
   '--no-session-persistence',
 ];
 
-// resolveCliBin: an npm-installed `claude.cmd` with no `.exe` is invisible to
-// libuv's Windows PATH search, so the shell-less spawn below ENOENTs and this
-// gate reports an installed CLI as missing. A no-op off Windows and whenever
-// libuv can find the name itself.
+// Absolute Windows resolution prevents a checkout executable from shadowing PATH.
 const bin = resolveCliBin((process.env.CLAUDE_GATE_BIN || 'claude').trim());
 
 if (printPromptOnly) {
@@ -293,6 +290,8 @@ if (printArgsOnly) {
 if (!hasChanges) {
   emitSkip(`No changes found for ${target.label}.`);
 }
+
+if (bin === null) emitSkip('Claude CLI not found in an absolute PATH directory.');
 
 const workDir = gateWorkDir('claude-gate-');
 if (workDir.error) emitError(workDir.error, 1);
