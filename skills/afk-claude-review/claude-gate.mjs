@@ -316,8 +316,15 @@ function dropEmptyValued(argv, flag) {
   return i >= 0 && argv[i + 1] === '' ? [...argv.slice(0, i), ...argv.slice(i + 2)] : argv;
 }
 
+// POSIX resolves relative and empty PATH entries after chdir; retain the caller's
+// executable search identity when repository-wide review changes that directory.
+const reviewEnv = reviewCwd && !isWin && process.env.PATH !== undefined
+  ? { ...process.env, PATH: process.env.PATH.split(':').map(entry => resolve(entry || '.')).join(':') }
+  : process.env;
+
 const spawnOpts = {
   cwd: reviewCwd,
+  env: reviewEnv,
   input: prompt,
   encoding: 'utf8',
   maxBuffer: 64 * 1024 * 1024,

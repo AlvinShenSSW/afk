@@ -71,24 +71,27 @@ test('Claude nested preview includes root and nested new paths and the repositor
   assert.equal(JSON.parse(args.stdout).reviewCwd, root);
 });
 
-test('Claude keeps the relative caller-selected executable while reviewing from the root', {
-  skip: process.platform === 'win32' ? 'fixture executables use POSIX shebangs' : false,
-}, (t) => {
-  const { root, nested } = fixture(t);
-  for (const [dir, selected] of [[root, 'wrong-root'], [nested, 'caller-selected']]) {
-    mkdirSync(join(dir, 'tools'));
-    const bin = join(dir, 'tools', 'reviewer');
-    writeFileSync(bin, `#!${process.execPath}\nprocess.stdin.resume(); process.stdin.on('end', () => console.log(JSON.stringify({is_error:false,result:'SELECTED=${selected}\\nREVIEW_CWD='+process.cwd()+'\\nAPPROVE',modelUsage:{'claude-opus-5':{}}})));\n`);
-    chmodSync(bin, 0o755);
-  }
-  const result = spawnSync(process.execPath, [gate, '--implementer', 'codex', '--uncommitted'], {
-    cwd: nested, encoding: 'utf8', timeout: 10000,
-    env: gateTestEnv({ CLAUDE_GATE_BIN: './tools/reviewer', CLAUDE_REVIEW_MODEL: 'claude-opus-5' }),
+for (const [kind, entry] of [['explicit', './tools'], ['PATH', './tools'], ['PATH', '']]) {
+  test(`Claude retains caller executable identity for ${kind} ${entry || 'empty entry'}`, {
+    skip: process.platform === 'win32' ? 'fixture executables use POSIX shebangs' : false,
+  }, (t) => {
+    const { root, nested } = fixture(t);
+    for (const [dir, selected] of [[root, 'wrong-root'], [nested, 'caller-selected']]) {
+      if (entry) mkdirSync(join(dir, 'tools'));
+      const bin = entry ? join(dir, 'tools', 'reviewer') : join(dir, 'reviewer');
+      writeFileSync(bin, `#!${process.execPath}\nprocess.stdin.resume(); process.stdin.on('end', () => console.log(JSON.stringify({is_error:false,result:'SELECTED=${selected}\\nREVIEW_CWD='+process.cwd()+'\\nAPPROVE',modelUsage:{'claude-opus-5':{}}})));\n`);
+      chmodSync(bin, 0o755);
+    }
+    const result = spawnSync(process.execPath, [gate, '--implementer', 'codex', '--uncommitted'], {
+      cwd: nested, encoding: 'utf8', timeout: 10000,
+      env: gateTestEnv({ CLAUDE_GATE_BIN: kind === 'explicit' ? './tools/reviewer' : 'reviewer',
+        CLAUDE_REVIEW_MODEL: 'claude-opus-5', PATH: `${entry}:${process.env.PATH}` }),
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(result.stdout.includes('SELECTED=caller-selected'), result.stdout);
+    assert.ok(result.stdout.includes(`REVIEW_CWD=${root}\n`), result.stdout);
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.ok(result.stdout.includes('SELECTED=caller-selected'), result.stdout);
-  assert.ok(result.stdout.includes(`REVIEW_CWD=${root}\n`), result.stdout);
-});
+}
 
 for (const shape of ['directory', 'invalid UTF-8']) {
   test(`${shape} forge config cannot fall back or launch a tracker`, (t) => {

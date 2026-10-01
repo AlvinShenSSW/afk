@@ -30,7 +30,9 @@ Pin explicit relative CLI paths against the original invocation directory before
 changing child cwd, so the caller-selected executable retains its identity.
 The original cwd-change proposal omitted this requirement (D133-1); a fixture
 with distinct root and nested executables must verify both the selected binary
-and its root working directory.
+and its root working directory. I133-1 extends the same identity boundary to
+relative and empty POSIX PATH entries: normalize the child search path against
+the invocation directory, with actual distinct-executable regressions for both.
 
 Use the existing strict section reader for forge config. The relay reads the
 forge fields once, passes that snapshot to `resolveForge`, and takes organization
