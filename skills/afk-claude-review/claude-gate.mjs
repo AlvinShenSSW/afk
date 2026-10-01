@@ -27,7 +27,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { closeSync, openSync, writeSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import { isGateDisabled, isSpawnTimeout, reviewTimeoutMs } from '../../lib/gate/env.mjs';
 import { classifyChildOutcome, describeChildOutcome } from '../../lib/gate/child-outcome.mjs';
@@ -129,6 +129,7 @@ receipt.capture({ target });
 let prompt;
 let changedFiles = [];
 let hasChanges = true;
+let reviewCwd;
 
 if (isDesign) {
   // The reviewer keeps its Read/Grep/Glob tools: a design cites code, so it can
@@ -149,11 +150,12 @@ if (isDesign) {
   ].join('\n');
   prompt = buildDesignReviewPrompt({ scope: target.label, context });
 } else {
-  const { diff, stat, changedFiles: cf, untracked = [], error: diffError } = collectDiff(target);
+  const { diff, stat, changedFiles: cf, untracked = [], worktreeRoot, error: diffError } = collectDiff(target);
   if (diffError) {
     // Never a skip: a target git cannot read is unreviewable, not unchanged.
     emitError(`cannot review — ${diffError}`, 1);
   }
+  reviewCwd = worktreeRoot;
   changedFiles = cf;
   hasChanges = Boolean(diff.trim() || changedFiles.length);
 
@@ -253,7 +255,10 @@ const args = [
 ];
 
 // Absolute Windows resolution prevents a checkout executable from shadowing PATH.
-const bin = resolveCliBin((process.env.CLAUDE_GATE_BIN || 'claude').trim());
+const selectedBin = resolveCliBin((process.env.CLAUDE_GATE_BIN || 'claude').trim());
+// Changing the review cwd must not change an explicit caller-selected executable.
+const bin = reviewCwd && selectedBin && !isAbsolute(selectedBin) && /[\\/]/.test(selectedBin)
+  ? resolve(selectedBin) : selectedBin;
 
 if (printPromptOnly) {
   emitPreview(`${prompt}\n`);
@@ -267,6 +272,7 @@ if (printArgsOnly) {
   // able to report which base it resolved.
   emitPreview(`${JSON.stringify({
     bin,
+    reviewCwd,
     model,
     effort,
     selectionSources: selection.sources,
@@ -309,7 +315,15 @@ function dropEmptyValued(argv, flag) {
   return i >= 0 && argv[i + 1] === '' ? [...argv.slice(0, i), ...argv.slice(i + 2)] : argv;
 }
 
+// POSIX resolves relative and empty PATH entries after chdir; retain the caller's
+// executable search identity when repository-wide review changes that directory.
+const reviewEnv = reviewCwd && !isWin && process.env.PATH !== undefined
+  ? { ...process.env, PATH: process.env.PATH.split(':').map(entry => resolve(entry || '.')).join(':') }
+  : process.env;
+
 const spawnOpts = {
+  cwd: reviewCwd,
+  env: reviewEnv,
   input: prompt,
   encoding: 'utf8',
   maxBuffer: 64 * 1024 * 1024,
