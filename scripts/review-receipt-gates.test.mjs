@@ -16,13 +16,13 @@ writeFileSync(join(cwd, '.git', 'info', 'exclude'), '.afk/\n');
 writeFileSync(join(cwd, '.afk', 'design.md'), '# Fixture design\nRequired behavior is explicit.\n');
 const gate = (family) => fileURLToPath(new URL(`../skills/afk-${family}-review/${family}-gate.mjs`, import.meta.url));
 const models = { claude: 'claude-opus-5-5', codex: 'gpt-6.1-sol', kimi: null,
-  glm: 'glm-5.3', deepseek: 'deepseek-flash', mimo: 'mimo-v2.5-pro' };
+  glm: 'glm-5.3', deepseek: 'deepseek-flash', mimo: 'mimo-v2.5-pro', gemini: 'gemini-4-argon' };
 let sequence = 0;
 function attempt(family, overrides = {}) {
   const attemptId = `gate-${++sequence}`;
   const request = { version: 1, runId: 'receipt-run', issue: '97', attemptId, roleIndex: 0,
     profile: { source: 'flags', roles: [{ preferred: family, reviewer: family,
-      model: models[family], effort: ['claude', 'codex'].includes(family) ? 'high' : null }] }, ...overrides };
+      model: models[family], effort: ['claude', 'codex', 'gemini'].includes(family) ? 'high' : null }] }, ...overrides };
   const path = join(cwd, '.afk', `${attemptId}.json`);
   writeFileSync(path, JSON.stringify(request));
   const output = join(cwd, '.afk', 'runs', 'receipt-run', 'receipts', attemptId);
@@ -136,7 +136,7 @@ test('GLM protocol error has one started attempt and a distinct error terminal',
   assert.equal(readdirSync(receipt.output).filter((name) => name === 'started.json').length, 1);
 });
 
-for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVIEW_API_KEY'], ['mimo', 'MIMO_REVIEW_API_KEY']]) {
+for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVIEW_API_KEY'], ['mimo', 'MIMO_REVIEW_API_KEY'], ['gemini', 'GEMINI_REVIEW_API_KEY']]) {
   test(`${family} actual HTTP receipt records response model and sanitizes saved review`, async () => {
     let calls = 0;
     const server = createServer(async (req, res) => {
@@ -157,6 +157,7 @@ for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVI
       const terminal = receipt.terminal();
       assert.equal(terminal.model.verification, 'verified');
       assert.deepEqual(terminal.model.observed, [models[family]]);
+      assert.deepEqual(terminal.model.requested, { model: models[family], effort: family === 'gemini' ? 'high' : null });
       assert.equal(terminal.execution.completion, 'stop');
       assert.doesNotMatch(readFileSync(join(receipt.output, 'review.txt'), 'utf8'), /fixture-http-private-key/);
     } finally { server.closeAllConnections?.(); server.close(); }

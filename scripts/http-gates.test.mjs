@@ -35,12 +35,21 @@ const CASES = {
     marker: 'MIMO',
     defaultMaxTokens: 8192,
   },
+  gemini: {
+    gate: join(repoRoot, 'skills/afk-gemini-review/gemini-gate.mjs'),
+    keyEnv: 'GEMINI_REVIEW_API_KEY',
+    baseEnv: 'GEMINI_REVIEW_BASE_URL',
+    model: 'gemini-4-argon',
+    marker: 'GEMINI',
+    defaultMaxTokens: 65536,
+  },
 };
 
 // glm stays out because its dual-protocol request shapes need separate asserts.
 const GATE_PATHS = {
   deepseek: CASES.deepseek.gate,
   mimo: CASES.mimo.gate,
+  gemini: CASES.gemini.gate,
   glm: join(repoRoot, 'skills/afk-glm-review/glm-gate.mjs'),
 };
 
@@ -162,6 +171,12 @@ for (const [family, config] of Object.entries(CASES)) {
         assert.equal(captured.headers.authorization, `Bearer ${key}`);
         assert.equal(captured.body.max_tokens, config.defaultMaxTokens);
         assert.deepEqual(captured.body.thinking, { type: 'enabled' });
+      } else if (family === 'gemini') {
+        assert.equal(captured.url, '/chat/completions');
+        assert.equal(captured.headers.authorization, `Bearer ${key}`);
+        assert.equal(captured.body.max_tokens, config.defaultMaxTokens);
+        assert.equal(captured.body.max_completion_tokens, undefined);
+        assert.equal(captured.body.reasoning_effort, 'high');
       } else {
         assert.equal(captured.headers['api-key'], key);
         assert.equal(captured.headers.authorization, undefined);
@@ -192,7 +207,7 @@ for (const [family, config] of Object.entries(CASES)) {
       });
       assert.equal(result.status, 0, result.stderr);
     });
-    const field = family === 'deepseek' ? 'max_tokens' : 'max_completion_tokens';
+    const field = family === 'mimo' ? 'max_completion_tokens' : 'max_tokens';
     assert.equal(body[field], 1234);
   });
 
@@ -558,6 +573,7 @@ test('both gate entry points support branch, commit, uncommitted, and design tar
 const DIRECTION_FAMILIES = {
   deepseek: { KEY_ENV: 'DEEPSEEK_REVIEW_API_KEY', BASE_ENV: 'DEEPSEEK_REVIEW_BASE_URL', MODEL_ENV: 'DEEPSEEK_REVIEW_MODEL' },
   mimo: { KEY_ENV: 'MIMO_REVIEW_API_KEY', BASE_ENV: 'MIMO_REVIEW_BASE_URL', MODEL_ENV: 'MIMO_REVIEW_MODEL' },
+  gemini: { KEY_ENV: 'GEMINI_REVIEW_API_KEY', BASE_ENV: 'GEMINI_REVIEW_BASE_URL', MODEL_ENV: 'GEMINI_REVIEW_MODEL' },
   glm: { KEY_ENV: 'ZAI_API_KEY', BASE_ENV: 'GLM_REVIEW_BASE_URL', MODEL_ENV: 'GLM_REVIEW_MODEL' },
 };
 
@@ -609,7 +625,7 @@ test('a glm 401 skips as unauthenticated, naming the key env', async () => {
 });
 
 
-for (const family of ['glm', 'deepseek', 'mimo']) {
+for (const family of ['glm', 'deepseek', 'mimo', 'gemini']) {
   test(`${family} rejects incomplete required coverage before a provider request`, async () => {
     await withRepo(async ({ dir }) => {
       writeFileSync(join(dir, 'safe.txt'), 'ordinary changed text\n'.repeat(1000));
@@ -637,7 +653,7 @@ for (const family of ['glm', 'deepseek', 'mimo']) {
 }
 
 
-for (const family of ['glm', 'deepseek', 'mimo']) {
+for (const family of ['glm', 'deepseek', 'mimo', 'gemini']) {
   for (const answer of ['I could not review the supplied code.', 'I cannot APPROVE without reading files.', 'SOUND', 'REQUEST CHANGES\nAPPROVE']) {
     test(`${family} refuses invalid explicit verdict ${JSON.stringify(answer)}`, async () => {
       await withRepo(async ({ dir }) => {
@@ -667,7 +683,7 @@ for (const family of ['glm', 'deepseek', 'mimo']) {
 }
 
 
-for (const family of ['glm', 'deepseek', 'mimo']) {
+for (const family of ['glm', 'deepseek', 'mimo', 'gemini']) {
   test(`${family} accepts the design vocabulary for a design target`, async () => {
     await withRepo(async ({ dir }) => {
       const design = join(dir, 'design.md');
@@ -693,3 +709,78 @@ for (const family of ['glm', 'deepseek', 'mimo']) {
     });
   });
 }
+
+
+test('gemini defaults to high reasoning effort and reports it without a provider call', () => {
+  const result = runGate('gemini', { args: ['--commit', TEST_COMMIT, '--print-args'] });
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.model, 'gemini-4-argon');
+  assert.equal(parsed.baseUrl, 'https://generativelanguage.googleapis.com/v1beta/openai');
+  assert.equal(parsed.reasoningEffort, 'high');
+  assert.equal(parsed.maxContextBytes, 400000);
+  assert.equal(parsed.maxTokens, 65536);
+});
+
+test('gates without a reasoning-effort setting keep their preview unchanged', () => {
+  for (const family of ['deepseek', 'mimo']) {
+    const result = runGate(family, { args: ['--commit', TEST_COMMIT, '--print-args'] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal('reasoningEffort' in JSON.parse(result.stdout), false, family);
+  }
+});
+
+test('gemini refuses an undocumented reasoning effort before any request', async () => {
+  let requests = 0;
+  await withServer((_request, response) => {
+    requests++;
+    response.writeHead(500); response.end('unexpected request');
+  }, async (port) => {
+    for (const effort of ['max', 'none', 'HIGH ']) {
+      const result = await runGateAsync('gemini', {
+        env: {
+          GEMINI_REVIEW_API_KEY: 'test-only',
+          GEMINI_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+          GEMINI_REVIEW_REASONING_EFFORT: effort,
+        },
+      });
+      if (effort === 'HIGH ') {
+        assert.notEqual(result.status, 0);
+        assert.match(result.stdout, /ERROR: .*GEMINI_REVIEW_REASONING_EFFORT/);
+        continue;
+      }
+      assert.notEqual(result.status, 0, effort);
+      assert.match(result.stdout, /ERROR: .*GEMINI_REVIEW_REASONING_EFFORT must be one of minimal, low, medium, high/);
+      assert.doesNotMatch(result.stdout, /SKIPPED:|APPROVE/);
+    }
+  });
+  assert.equal(requests, 0);
+});
+
+test('gemini sends an overridden reasoning effort and accepts the GEMINI_API_KEY fallback', async () => {
+  const captured = {};
+  await withServer(async (request, response) => {
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    captured.headers = request.headers;
+    captured.body = JSON.parse(raw);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({
+      model: 'gemini-4-argon',
+      choices: [{ finish_reason: 'stop', message: { content: 'APPROVE' } }],
+      usage: {},
+    }));
+  }, async (port) => {
+    const result = await runGateAsync('gemini', {
+      env: {
+        GEMINI_API_KEY: 'fallback-only-key',
+        GEMINI_REVIEW_BASE_URL: `http://127.0.0.1:${port}`,
+        GEMINI_REVIEW_REASONING_EFFORT: 'medium',
+      },
+    });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /APPROVE/);
+  });
+  assert.equal(captured.headers.authorization, 'Bearer fallback-only-key');
+  assert.equal(captured.body.reasoning_effort, 'medium');
+});

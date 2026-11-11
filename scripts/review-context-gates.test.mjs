@@ -102,7 +102,7 @@ for (const mode of ['shim', 'large-native']) {
   });
 }
 
-for (const family of ['claude', 'kimi', 'codex', 'glm', 'deepseek', 'mimo']) {
+for (const family of ['claude', 'kimi', 'codex', 'glm', 'deepseek', 'mimo', 'gemini']) {
   test(`${family} refuses required missing context and duplicate context options before skip`, () => {
     for (const args of [['--review-phase', 're-review'], ['--review-context=x', '--review-context=y']]) {
       const result = run(family, ['--commit', revision, ...args], { [`${family.toUpperCase()}_REVIEW_GATE`]: 'off' });
@@ -152,6 +152,7 @@ async function httpCall(family, args, env, response, verify) {
 for (const [family, model, keyEnv, protocol] of [
   ['glm', 'glm-5.3', 'ZAI_API_KEY', 'openai'], ['glm', 'glm-5.3', 'ZAI_API_KEY', 'anthropic'],
   ['deepseek', 'deepseek-flash', 'DEEPSEEK_REVIEW_API_KEY', 'openai'], ['mimo', 'mimo-v2.5-pro', 'MIMO_REVIEW_API_KEY', 'openai'],
+  ['gemini', 'gemini-4-argon', 'GEMINI_REVIEW_API_KEY', 'openai'],
 ]) {
   test(`${family} ${protocol} actual HTTP request preserves artifact digest and proof`, async () => {
     const { args, context, packet } = prepare(['--design', '.afk/design.md']);
