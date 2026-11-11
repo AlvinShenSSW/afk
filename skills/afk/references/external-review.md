@@ -108,11 +108,11 @@ recorded at kickoff but blocks **ready**, not safe implementation work. Recheck
 unstamped roles immediately before review.
 
 Local presence is deliberately narrow: Codex requires its binary plus `codex
-login status`; Claude/Kimi require their binaries (and Claude rejects an alias in
+login status`; Claude/Kimi/Gemini require their binaries (Gemini's `agy`
+through `PATH` or `GEMINI_GATE_BIN`; Claude rejects an alias in
 `CLAUDE_REVIEW_MODEL`); GLM requires `ZAI_API_KEY`/`GLM_API_KEY`, DeepSeek
-requires `DEEPSEEK_REVIEW_API_KEY`/`DEV_DEEPSEEK_API_KEY`, MiMo requires
-`MIMO_REVIEW_API_KEY`/`DEV_MIMO_API_KEY`, and Gemini requires
-`GEMINI_REVIEW_API_KEY`/`GEMINI_API_KEY`, from the environment or ignored
+requires `DEEPSEEK_REVIEW_API_KEY`/`DEV_DEEPSEEK_API_KEY`, and MiMo requires
+`MIMO_REVIEW_API_KEY`/`DEV_MIMO_API_KEY`, from the environment or ignored
 `.env` locations. Remote auth, credit, network, and model identity may still
 fail on first invocation.
 

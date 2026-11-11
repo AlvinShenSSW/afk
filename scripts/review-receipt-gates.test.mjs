@@ -16,13 +16,13 @@ writeFileSync(join(cwd, '.git', 'info', 'exclude'), '.afk/\n');
 writeFileSync(join(cwd, '.afk', 'design.md'), '# Fixture design\nRequired behavior is explicit.\n');
 const gate = (family) => fileURLToPath(new URL(`../skills/afk-${family}-review/${family}-gate.mjs`, import.meta.url));
 const models = { claude: 'claude-opus-5-5', codex: 'gpt-6.1-sol', kimi: null,
-  glm: 'glm-5.3', deepseek: 'deepseek-flash', mimo: 'mimo-v2.5-pro', gemini: 'gemini-4-argon' };
+  glm: 'glm-5.3', deepseek: 'deepseek-flash', mimo: 'mimo-v2.5-pro', gemini: 'gemini-4-argon-high' };
 let sequence = 0;
 function attempt(family, overrides = {}) {
   const attemptId = `gate-${++sequence}`;
   const request = { version: 1, runId: 'receipt-run', issue: '97', attemptId, roleIndex: 0,
     profile: { source: 'flags', roles: [{ preferred: family, reviewer: family,
-      model: models[family], effort: ['claude', 'codex', 'gemini'].includes(family) ? 'high' : null }] }, ...overrides };
+      model: models[family], effort: ['claude', 'codex'].includes(family) ? 'high' : null }] }, ...overrides };
   const path = join(cwd, '.afk', `${attemptId}.json`);
   writeFileSync(path, JSON.stringify(request));
   const output = join(cwd, '.afk', 'runs', 'receipt-run', 'receipts', attemptId);
@@ -44,6 +44,7 @@ if(process.env.RECEIPT_STUB_NONZERO==='1'){console.log('SOUND');process.exit(1);
 if(process.env.RECEIPT_STUB_HANG==='1') {process.stderr.write('fixture waiting\\n');setInterval(()=>{},1000);}
 else if(${JSON.stringify(family)}==='claude')console.log(JSON.stringify({is_error:false,result:'Fixture review.\\nSOUND',modelUsage:{[process.env.RECEIPT_STUB_MODEL||'claude-opus-5-5']:{}}}));
 else if(${JSON.stringify(family)}==='codex')fs.writeFileSync(args[args.indexOf('-o')+1],'Fixture review.\\nSOUND');
+else if(${JSON.stringify(family)}==='gemini'){fs.readFileSync(0);console.log(JSON.stringify({event:'init',init:{model:process.env.RECEIPT_STUB_MODEL||args[args.indexOf('--model')+1]}}));console.log(JSON.stringify({event:'result',result:{status:'SUCCESS',response:'Fixture review.\\nSOUND'}}));}
 else console.log('Fixture review.\\nSOUND');
 `);
   const path = join(cwd, '.afk', `${family}-receipt-stub.${process.platform === 'win32' ? 'cmd' : 'sh'}`);
@@ -87,14 +88,14 @@ for (const family of Object.keys(models)) {
 
   test(`${family} preview receipt is explicit and never a review`, () => {
     const receipt = attempt(family);
-    const result = run(family, [...receipt.args, '--print-prompt'], ['claude', 'codex', 'kimi'].includes(family) ? stub(family) : {});
+    const result = run(family, [...receipt.args, '--print-prompt'], ['claude', 'codex', 'kimi', 'gemini'].includes(family) ? stub(family) : {});
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(receipt.terminal().outcome.kind, 'preview');
     assert.equal(receipt.terminal().review, null);
   });
 }
 
-for (const family of ['claude', 'codex', 'kimi']) {
+for (const family of ['claude', 'codex', 'kimi', 'gemini']) {
   test(`${family} actual stub review records factual identity and consumes receipt flag`, () => {
     const receipt = attempt(family);
     const result = run(family, receipt.args, stub(family));
@@ -102,7 +103,7 @@ for (const family of ['claude', 'codex', 'kimi']) {
     const terminal = receipt.terminal();
     assert.equal(terminal.outcome.kind, 'review');
     assert.equal(terminal.outcome.verdict, family === 'codex' ? null : 'SOUND');
-    assert.equal(terminal.model.verification, family === 'claude' ? 'verified' : 'unavailable');
+    assert.equal(terminal.model.verification, ['claude', 'gemini'].includes(family) ? 'verified' : 'unavailable');
     assert.equal(terminal.model.requested.model, models[family]);
     assert.equal(terminal.execution.exitCode, 0);
   });
@@ -136,7 +137,7 @@ test('GLM protocol error has one started attempt and a distinct error terminal',
   assert.equal(readdirSync(receipt.output).filter((name) => name === 'started.json').length, 1);
 });
 
-for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVIEW_API_KEY'], ['mimo', 'MIMO_REVIEW_API_KEY'], ['gemini', 'GEMINI_REVIEW_API_KEY']]) {
+for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVIEW_API_KEY'], ['mimo', 'MIMO_REVIEW_API_KEY']]) {
   test(`${family} actual HTTP receipt records response model and sanitizes saved review`, async () => {
     let calls = 0;
     const server = createServer(async (req, res) => {
@@ -157,7 +158,7 @@ for (const [family, key] of [['glm', 'ZAI_API_KEY'], ['deepseek', 'DEEPSEEK_REVI
       const terminal = receipt.terminal();
       assert.equal(terminal.model.verification, 'verified');
       assert.deepEqual(terminal.model.observed, [models[family]]);
-      assert.deepEqual(terminal.model.requested, { model: models[family], effort: family === 'gemini' ? 'high' : null });
+      assert.deepEqual(terminal.model.requested, { model: models[family], effort: null });
       assert.equal(terminal.execution.completion, 'stop');
       assert.doesNotMatch(readFileSync(join(receipt.output, 'review.txt'), 'utf8'), /fixture-http-private-key/);
     } finally { server.closeAllConnections?.(); server.close(); }

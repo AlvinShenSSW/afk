@@ -144,7 +144,7 @@ in the pipeline is plain git.
 | `afk-glm-review` | Runs a GLM fallback role with bounded diff context. |
 | `afk-deepseek-review` | Runs an optional DeepSeek Flash (default) or V4 Pro snapshot-backed role. |
 | `afk-mimo-review` | Runs an optional MiMo V2.5 Pro Token Plan snapshot-backed role. |
-| `afk-gemini-review` | Runs an optional Gemini 4 Argon snapshot-backed role at high reasoning effort. |
+| `afk-gemini-review` | Runs an optional Gemini 4 Argon role through the signed-in Antigravity CLI (`agy`). |
 | `afk-agent-relay` | Offloads large reads or scoping work to an external model. |
 
 ## Pipeline
@@ -172,12 +172,14 @@ The plugin never deploys.
 ## External review roles
 
 Each role is an independent model reading the diff and bounded by a timeout.
-Claude is constrained to read-only tools, while GLM, DeepSeek, MiMo, and Gemini receive
+Claude is constrained to read-only tools, while GLM, DeepSeek, and MiMo receive
 a bounded snapshot through a tool-less API call. Codex uses its read-only
 sandbox on macOS and Linux; on Windows the CLI cannot launch that sandbox under
 a normal user token, so the helper uses Codex's built-in review workflow without
 OS sandbox enforcement. Kimi drives git itself, so its read-only behaviour is
-requested in the prompt rather than constrained by the helper.
+requested in the prompt rather than constrained by the helper. Gemini runs
+through the Antigravity CLI in plan mode with its sandbox; that restricts the
+agent, but its read-only behaviour is likewise not enforced by construction.
 
 | Role | Default model | Runs via | Credential | Timeout |
 |------|---------------|----------|------------|---------|
@@ -187,7 +189,7 @@ requested in the prompt rather than constrained by the helper.
 | `glm` | `glm-5.3` | Z.ai REST API (OpenAI protocol by default) | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
 | `deepseek` | `deepseek-flash` (or `deepseek-v4-pro`) | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
 | `mimo` | `mimo-v2.5-pro` | Xiaomi MiMo REST API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
-| `gemini` | `gemini-4-argon` | Gemini API (OpenAI compatibility), `high` reasoning effort | `GEMINI_REVIEW_API_KEY`, else `GEMINI_API_KEY` | 15 min |
+| `gemini` | `gemini-4-argon-high` | Antigravity CLI (`agy`), plan mode + sandbox | the CLI's own sign-in | 15 min |
 
 A REST reviewer model must be a pinned ID that contains a version digit,
 because a name without a version can move to another model without notice.
@@ -362,7 +364,7 @@ the agent being governed is also the orchestrator.
   merge" — a driver may skip a helper or ignore its exit code. These are
   doctrine the driver follows.
 
-Claude, Kimi and the snapshot-backed GLM/DeepSeek/MiMo/Gemini helpers validate an
+Claude, Kimi, Gemini and the snapshot-backed GLM/DeepSeek/MiMo helpers validate an
 explicit final nonempty verdict line when invoked. Diff verdicts are `APPROVE`,
 `APPROVE WITH COMMENTS` or `REQUEST CHANGES`; design verdicts are `SOUND`,
 `SOUND WITH CONCERNS` or `RETHINK`. Supported forms are `TOKEN`, `**TOKEN**`,
@@ -480,6 +482,12 @@ Secrets never belong in `.afk/config.md`; use environment variables or a
 gitignored `.env`. The API-backed gates call the provider directly and do not
 import credentials from any editor or extension.
 
+The Gemini gate needs no key: it drives the Antigravity CLI, which uses its own
+sign-in (run `agy` once). The installer puts the binary at `~/.gemini/bin/agy`;
+run `~/.gemini/bin/agy install` to add it to `PATH`, or set `GEMINI_GATE_BIN`.
+`GEMINI_REVIEW_MODEL` (default `gemini-4-argon-high`) accepts only a versioned
+`gemini-*` ID, because `agy` also serves other model families.
+
 GLM defaults to the OpenAI Chat Completion protocol at the Coding Plan endpoint
 `https://api.z.ai/api/coding/paas/v4`. Set `GLM_REVIEW_PROTOCOL=anthropic` to
 use the Anthropic Messages endpoint at `https://api.z.ai/api/anthropic`.
@@ -492,7 +500,6 @@ For the current shell, export only the provider you intend to use:
 export ZAI_API_KEY="<your-zai-key>" # GLM; GLM_API_KEY is also accepted
 export DEEPSEEK_REVIEW_API_KEY="<your-deepseek-key>"
 export MIMO_REVIEW_API_KEY="<your-mimo-token-plan-key>"
-export GEMINI_REVIEW_API_KEY="<your-gemini-api-key>" # GEMINI_API_KEY is also accepted
 ```
 
 For a persistent per-repository setup, put the same assignment without
@@ -505,16 +512,13 @@ git check-ignore -v .env
 If that command prints no matching rule, do not put a credential in the file;
 run `/afk-init` or add `.env` to a local Git exclude first.
 
-The snapshot-backed API gates (GLM, DeepSeek, MiMo, Gemini) and the agent relay filter
+The snapshot-backed API gates (GLM, DeepSeek, MiMo) and the agent relay filter
 their payload before it leaves the machine: secret-bearing paths (`.env`, keys,
 credential and secret files) are dropped from the snapshot, and known token
 shapes are redacted from what is sent.
 
 GLM and DeepSeek default to a 160000-byte input snapshot and 65536 output
-tokens; MiMo retains the shared 400000-byte / 8192-token defaults. Gemini keeps
-the 400000-byte input default with 65536 output tokens, because Gemini counts
-reasoning against the output cap; `GEMINI_REVIEW_REASONING_EFFORT` (default
-`high`) accepts only `minimal`, `low`, `medium`, or `high`. Code-review
+tokens; MiMo retains the shared 400000-byte / 8192-token defaults. Code-review
 snapshots place exact referenced tracked files ahead of full changed-file
 contents and report references omitted by the byte budget. Each family keeps
 environment overrides for both limits.
