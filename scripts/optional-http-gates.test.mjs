@@ -4,8 +4,8 @@ import { test } from 'node:test';
 
 const root = new URL('..', import.meta.url);
 
-test('optional DeepSeek and MiMo gate entry points and skills are bundled', () => {
-  for (const family of ['deepseek', 'mimo']) {
+test('optional DeepSeek, MiMo and Gemini gate entry points and skills are bundled', () => {
+  for (const family of ['deepseek', 'mimo', 'gemini']) {
     const dir = new URL(`skills/afk-${family}-review/`, root);
     assert.equal(existsSync(new URL('SKILL.md', dir)), true, `${family} skill missing`);
     assert.equal(existsSync(new URL(`${family}-gate.mjs`, dir)), true, `${family} helper missing`);
@@ -23,11 +23,11 @@ test('optional families are documented without changing built-in defaults', () =
   const claude = readFileSync(new URL('skills/afk-claude-review/SKILL.md', root), 'utf8');
   const readme = readFileSync(new URL('README.md', root), 'utf8');
   const template = readFileSync(new URL('templates/afk-config.example.md', root), 'utf8');
-  assert.match(afk, /valid role families[^\n]*deepseek[^\n]*mimo/i);
+  assert.match(afk, /valid role families[^\n]*deepseek[^\n]*mimo[^\n]*gemini/i);
   assert.match(template, /^gates:\s+codex\s*$/m);
   assert.match(template, /^priority:\s+codex > claude > kimi > glm\b/m);
-  assert.doesNotMatch(template, /^priority:.*(?:deepseek|mimo)/m);
-  for (const name of ['ZAI_API_KEY', 'DEEPSEEK_REVIEW_API_KEY', 'MIMO_REVIEW_API_KEY']) {
+  assert.doesNotMatch(template, /^priority:.*(?:deepseek|mimo|gemini)/m);
+  for (const name of ['ZAI_API_KEY', 'DEEPSEEK_REVIEW_API_KEY', 'MIMO_REVIEW_API_KEY', 'GEMINI_REVIEW_API_KEY']) {
     assert.match(readme, new RegExp(`export ${name}=`), `${name} needs copyable setup guidance`);
   }
   assert.match(readme, /git check-ignore -v \.env/);

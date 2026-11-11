@@ -119,7 +119,7 @@ never-scale-down-gates rule, which governs PR gates only.
   a design target: `--design <path>` in place of a diff selector. The gate reviews
   the document, not a diff. It is read-only **by construction** for `codex`
   (`exec -s read-only`), `claude` (`Read,Grep,Glob` only), and `glm`, `deepseek`,
-  and `mimo` (tool-less API calls); `kimi` is the exception — its read-only is only *requested in the
+  `mimo`, and `gemini` (tool-less API calls); `kimi` is the exception — its read-only is only *requested in the
   prompt* (the same weaker guarantee it carries for diff reviews), so prefer
   another gate for design when one qualifies. A missing or unreadable `--design`
   path is operator error → the gate errors (nonzero), never a skip — skipping here

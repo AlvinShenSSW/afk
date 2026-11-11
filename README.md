@@ -144,6 +144,7 @@ in the pipeline is plain git.
 | `afk-glm-review` | Runs a GLM fallback role with bounded diff context. |
 | `afk-deepseek-review` | Runs an optional DeepSeek Flash (default) or V4 Pro snapshot-backed role. |
 | `afk-mimo-review` | Runs an optional MiMo V2.5 Pro Token Plan snapshot-backed role. |
+| `afk-gemini-review` | Runs an optional Gemini 4 Argon snapshot-backed role at high reasoning effort. |
 | `afk-agent-relay` | Offloads large reads or scoping work to an external model. |
 
 ## Pipeline
@@ -171,7 +172,7 @@ The plugin never deploys.
 ## External review roles
 
 Each role is an independent model reading the diff and bounded by a timeout.
-Claude is constrained to read-only tools, while GLM, DeepSeek, and MiMo receive
+Claude is constrained to read-only tools, while GLM, DeepSeek, MiMo, and Gemini receive
 a bounded snapshot through a tool-less API call. Codex uses its read-only
 sandbox on macOS and Linux; on Windows the CLI cannot launch that sandbox under
 a normal user token, so the helper uses Codex's built-in review workflow without
@@ -186,6 +187,7 @@ requested in the prompt rather than constrained by the helper.
 | `glm` | `glm-5.3` | Z.ai REST API (OpenAI protocol by default) | `ZAI_API_KEY` or `GLM_API_KEY` | 15 min |
 | `deepseek` | `deepseek-flash` (or `deepseek-v4-pro`) | DeepSeek REST API | `DEEPSEEK_REVIEW_API_KEY`, else `DEV_DEEPSEEK_API_KEY` | 15 min |
 | `mimo` | `mimo-v2.5-pro` | Xiaomi MiMo REST API | `MIMO_REVIEW_API_KEY`, else `DEV_MIMO_API_KEY` | 15 min |
+| `gemini` | `gemini-4-argon` | Gemini API (OpenAI compatibility), `high` reasoning effort | `GEMINI_REVIEW_API_KEY`, else `GEMINI_API_KEY` | 15 min |
 
 A REST reviewer model must be a pinned ID that contains a version digit,
 because a name without a version can move to another model without notice.
@@ -216,7 +218,8 @@ a verdict.
 Set `AFK_REVIEW_TIMEOUT_MS` to change the shared limit, or override one provider
 with `CODEX_REVIEW_TIMEOUT_MS`, `CLAUDE_REVIEW_TIMEOUT_MS`,
 `KIMI_REVIEW_TIMEOUT_MS`, `GLM_REVIEW_TIMEOUT_MS`,
-`DEEPSEEK_REVIEW_TIMEOUT_MS`, or `MIMO_REVIEW_TIMEOUT_MS`. Values must be
+`DEEPSEEK_REVIEW_TIMEOUT_MS`, `MIMO_REVIEW_TIMEOUT_MS`, or
+`GEMINI_REVIEW_TIMEOUT_MS`. Values must be
 positive integer milliseconds; an unusable value retains a bounded limit and
 emits a warning.
 
@@ -263,7 +266,7 @@ The complete review target stays intact; the repair range is additional context.
 Missing, stale, inaccessible, recognized sensitive, or oversized evidence is an
 error before the provider call, rather than silently shortened history.
 
-Claude, Kimi, GLM, DeepSeek, MiMo, and Codex **design** review accept this channel.
+Claude, Kimi, GLM, DeepSeek, MiMo, Gemini, and Codex **design** review accept this channel.
 Native Codex **diff** review does not: the driver retains history and applies
 triage without claiming that custom context reached that reviewer. Packets are
 claims for a reviewer to verify, not proof that the stated checks ran.
@@ -359,7 +362,7 @@ the agent being governed is also the orchestrator.
   merge" — a driver may skip a helper or ignore its exit code. These are
   doctrine the driver follows.
 
-Claude, Kimi and the snapshot-backed GLM/DeepSeek/MiMo helpers validate an
+Claude, Kimi and the snapshot-backed GLM/DeepSeek/MiMo/Gemini helpers validate an
 explicit final nonempty verdict line when invoked. Diff verdicts are `APPROVE`,
 `APPROVE WITH COMMENTS` or `REQUEST CHANGES`; design verdicts are `SOUND`,
 `SOUND WITH CONCERNS` or `RETHINK`. Supported forms are `TOKEN`, `**TOKEN**`,
@@ -463,7 +466,8 @@ and no `gates` keep their prior behavior until the operator opts in. A config
 bootstrapped before 0.4.0 carries a template-written `gates: codex > kimi`;
 delete the line (or set `gates: codex`) to adopt the single-gate default.
 
-Explicit `gates:` and `priority:` profiles may also name `deepseek` or `mimo`.
+Explicit `gates:` and `priority:` profiles may also name `deepseek`, `mimo`, or
+`gemini`.
 They remain opt-in and do not alter the built-in sequence or fallback pool.
 
 An optional `design-gate:` key runs one external role over the *design doc*
@@ -488,6 +492,7 @@ For the current shell, export only the provider you intend to use:
 export ZAI_API_KEY="<your-zai-key>" # GLM; GLM_API_KEY is also accepted
 export DEEPSEEK_REVIEW_API_KEY="<your-deepseek-key>"
 export MIMO_REVIEW_API_KEY="<your-mimo-token-plan-key>"
+export GEMINI_REVIEW_API_KEY="<your-gemini-api-key>" # GEMINI_API_KEY is also accepted
 ```
 
 For a persistent per-repository setup, put the same assignment without
@@ -500,13 +505,16 @@ git check-ignore -v .env
 If that command prints no matching rule, do not put a credential in the file;
 run `/afk-init` or add `.env` to a local Git exclude first.
 
-The snapshot-backed API gates (GLM, DeepSeek, MiMo) and the agent relay filter
+The snapshot-backed API gates (GLM, DeepSeek, MiMo, Gemini) and the agent relay filter
 their payload before it leaves the machine: secret-bearing paths (`.env`, keys,
 credential and secret files) are dropped from the snapshot, and known token
 shapes are redacted from what is sent.
 
 GLM and DeepSeek default to a 160000-byte input snapshot and 65536 output
-tokens; MiMo retains the shared 400000-byte / 8192-token defaults. Code-review
+tokens; MiMo retains the shared 400000-byte / 8192-token defaults. Gemini keeps
+the 400000-byte input default with 65536 output tokens, because Gemini counts
+reasoning against the output cap; `GEMINI_REVIEW_REASONING_EFFORT` (default
+`high`) accepts only `minimal`, `low`, `medium`, or `high`. Code-review
 snapshots place exact referenced tracked files ahead of full changed-file
 contents and report references omitted by the byte budget. Each family keeps
 environment overrides for both limits.
@@ -625,6 +633,7 @@ itself.
 /afk-glm-review
 /afk-deepseek-review
 /afk-mimo-review
+/afk-gemini-review
 ```
 
 ## Instruction routing
